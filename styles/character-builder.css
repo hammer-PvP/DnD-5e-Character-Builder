@@ -1918,3 +1918,55 @@
   border-color: rgba(219,177,76,.7);
   background: rgba(219,177,76,.09);
 }
+
+/* 0.9.2 Beta — native Advancement choice badges */
+.cb-advancement-choice-badges,
+.cb-review-choice-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+  margin-top: 4px;
+}
+.cb-advancement-choice-badge,
+.cb-review-choice-badges > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 6px;
+  border: 1px solid rgba(79,158,190,.55);
+  border-radius: 999px;
+  background: rgba(45,105,130,.2);
+  color: #bce8f6;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: normal;
+}
+.cb-advancement-choice-badge i,
+.cb-review-choice-badges > span i { flex: 0 0 auto; }
+.cb-advancement-choice-badges {
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.cb-review-choice-badges {
+  display: flex;
+  margin: 4px 0 6px;
+}
+.cb-mini-item:has(.cb-review-choice-badges) {
+  min-height: 66px;
+  height: auto;
+}
+.cb-mini-item .cb-review-choice-badges,
+.cb-review-item-list .cb-review-choice-badges {
+  overflow: visible;
+  margin: 3px 0 0;
+}
+.cb-review-level-grid article .cb-review-choice-badges {
+  justify-content: center;
+}
+.cb-automatic-grant-card .cb-automatic-choice-badges {
+  grid-column: 2;
+  margin: 2px 0 0;
+}

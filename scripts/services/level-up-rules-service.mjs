@@ -1,6 +1,8 @@
 import { MODULE_ID, SPELL_ACCESS_MODELS, WIZARD_SCHOOLS } from "../constants.mjs";
 import { LevelUpDraftManager } from "./level-up-draft-manager.mjs";
 import { SourceResolver } from "./source-resolver.mjs";
+import { AdvancementChoiceAnnotationService } from "./advancement-choice-annotation-service.mjs";
+import { ItemGrantIntegrityService } from "./item-grant-integrity-service.mjs";
 
 export class LevelUpRulesService {
   static async buildContext(sourceActor, draft, registry) {
@@ -25,7 +27,12 @@ export class LevelUpRulesService {
     const existingSpells = draft.items.filter(item => item.type === "spell");
     const existingIdentifiers = new Set(existingSpells.map(item => item.system?.identifier).filter(Boolean));
     const stateChoices = state.additionalChoices ?? {};
-    const automaticItemGrants = foundry.utils.deepClone(state.itemGrantReconciliation?.items ?? []);
+    const automaticItemGrants = foundry.utils.deepClone(
+      state.itemGrantIntegrity?.items ?? state.itemGrantReconciliation?.items ?? []
+    ).map(row => ({
+      ...row,
+      badges: AdvancementChoiceAnnotationService.getBadges(draft.items.get(row.itemId))
+    }));
     const selectedCantripSet = new Set(stateChoices.cantrips ?? []);
     const selectedSpellSet = new Set(stateChoices.spells ?? []);
     const selectedSavantSet = new Set(stateChoices.savantSpells ?? []);
@@ -72,7 +79,7 @@ export class LevelUpRulesService {
     savant.levelGroups = this.#groupSpellsByLevel(savant.groups.flatMap(group => group.items), registry);
 
     const invocations = identifier === "warlock"
-      ? await this.#invocationContext(draft, cls, registry, stateChoices)
+      ? await this.#invocationContext(draft, cls, registry, stateChoices, cantripOptions)
       : this.#emptyInvocationContext();
 
     const replacement = model === "limited" && oldClassLevel > 0
@@ -278,6 +285,8 @@ export class LevelUpRulesService {
     );
     await SourceResolver.enforceAllowedSources(draft, registry);
     await this.#refreshCantripAugments(draft);
+    await ItemGrantIntegrityService.reconcile(draft, registry, { context: "levelUp", state });
+    await AdvancementChoiceAnnotationService.refresh(draft, { state: LevelUpDraftManager.getState(draft) });
 
     const choices = {
       cantrips: selectedCantrips,
@@ -432,7 +441,7 @@ export class LevelUpRulesService {
     };
   }
 
-  static async #invocationContext(draft, cls, registry, stateChoices) {
+  static async #invocationContext(draft, cls, registry, stateChoices, pendingCantripOptions = []) {
     const advancement = this.#advancementData(cls).find(entry =>
       entry.type === "ItemChoice" && String(entry.title ?? "").toLowerCase() === "eldritch invocations"
     );
@@ -501,7 +510,11 @@ export class LevelUpRulesService {
       };
     }).sort((a, b) => a.name.localeCompare(b.name, game.i18n.lang));
 
-    const targetCantrips = await this.#eligibleWarlockCantrips(draft, registry);
+    const targetCantrips = await this.#eligibleWarlockCantrips(
+      draft,
+      pendingCantripOptions,
+      new Set(stateChoices.cantrips ?? [])
+    );
     const selected = stateChoices.invocationSelections ?? [];
     const availableIdentifiers = new Set(existingIdentifiers);
     const selectedUuids = new Set();
@@ -555,6 +568,9 @@ export class LevelUpRulesService {
       existingIdentifiersString: [...existingIdentifiers].join("|"),
       replacement: {
         available: allowReplacement && existing.length > 0,
+        selectedRemoveId: stateChoices.invocationReplacement?.removeId ?? "",
+        selectedUuid: stateChoices.invocationReplacement?.uuid ?? "",
+        selectedTarget: stateChoices.invocationReplacement?.targetIdentifier ?? "",
         existing: existing.map(item => ({
           id: item.id,
           name: item.name,
@@ -588,34 +604,56 @@ export class LevelUpRulesService {
       .join(" ");
   }
 
-  static async #eligibleWarlockCantrips(draft, registry) {
+  static async #eligibleWarlockCantrips(draft, pendingCantripOptions = [], selectedPending = new Set()) {
     const candidates = new Map();
     for (const item of draft.items.filter(item => item.type === "spell" && Number(item.system?.level ?? 0) === 0)) {
-      const classIdentifier = item.getFlag(MODULE_ID, "classSpellAccess")?.classIdentifier
-        ?? item.getFlag(MODULE_ID, "classIdentifier")
-        ?? item.getFlag(MODULE_ID, "levelUpSpell")?.classIdentifier
-        ?? (String(item.system?.sourceItem ?? "").startsWith("class:") ? String(item.system.sourceItem).split(":")[1] : null);
+      const classIdentifier = this.#spellClassIdentifier(item, draft);
       if (classIdentifier !== "warlock" || !this.#spellDealsDamage(item)) continue;
       candidates.set(item.system.identifier, {
         identifier: item.system.identifier,
         name: item.name,
         itemId: item.id,
-        pending: false
+        pending: false,
+        eligible: true
       });
     }
-    const pool = await this.#classSpellPool("warlock", registry);
-    for (const option of pool.filter(option => Number(option.system?.level ?? 0) === 0)) {
-      if (candidates.has(option.identifier)) continue;
+
+    // Only cantrips that can actually be selected during this same Level Up are
+    // shown as pending targets. The rest of the Warlock catalogue is excluded.
+    for (const option of pendingCantripOptions) {
+      if (!option?.identifier || candidates.has(option.identifier)) continue;
       const document = await fromUuid(option.uuid);
       if (!document || !this.#spellDealsDamage(document)) continue;
       candidates.set(option.identifier, {
         identifier: option.identifier,
         name: option.name,
         uuid: option.uuid,
-        pending: true
+        pending: true,
+        eligible: selectedPending.has(option.identifier)
       });
     }
     return [...candidates.values()].sort((a, b) => a.name.localeCompare(b.name, game.i18n.lang));
+  }
+
+  static #spellClassIdentifier(item, draft, seen = new Set()) {
+    const explicit = item.getFlag(MODULE_ID, "classSpellAccess")?.classIdentifier
+      ?? item.getFlag(MODULE_ID, "classIdentifier")
+      ?? item.getFlag(MODULE_ID, "levelUpSpell")?.classIdentifier;
+    if (explicit) return explicit;
+
+    const sourceItem = String(item.system?.sourceItem ?? "");
+    if (sourceItem.startsWith("class:")) return sourceItem.slice("class:".length);
+
+    const origin = item.getFlag("dnd5e", "advancementRoot")
+      ?? item.getFlag("dnd5e", "advancementOrigin");
+    const [ownerId] = String(origin ?? "").split(".");
+    if (!ownerId || seen.has(ownerId)) return null;
+    seen.add(ownerId);
+    const owner = draft.items.get(ownerId);
+    if (!owner) return null;
+    if (owner.type === "class") return owner.system?.identifier ?? null;
+    if (owner.type === "subclass") return owner.system?.classIdentifier ?? owner.class?.system?.identifier ?? null;
+    return this.#spellClassIdentifier(owner, draft, seen);
   }
 
   static #spellReplacementContext(draft, classIdentifier, leveledPool, stateChoices, blockedIdentifiers = new Set()) {

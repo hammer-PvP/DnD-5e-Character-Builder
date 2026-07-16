@@ -53,12 +53,39 @@ export class LevelUpDraftManager {
     return next;
   }
 
+
+  static async restartClassSelection(actor) {
+    if (!actor?.isOwner) throw new Error("You do not own this Actor.");
+    const draftId = actor.getFlag(MODULE_ID, "levelUpDraftId");
+    const draft = draftId ? game.actors.get(draftId) : null;
+    const { HitPointAdvancementService } = await import("./hit-point-advancement-service.mjs");
+    const lock = HitPointAdvancementService.lockedRoll(actor);
+    if (draft) await draft.delete();
+    await actor.unsetFlag(MODULE_ID, "levelUpDraftId");
+    const fresh = await this.getOrCreate(actor);
+    await this.setState(fresh, {
+      transactionId: lock?.transactionId ?? this.getState(fresh).transactionId,
+      step: "class",
+      restartClassSelection: Boolean(lock),
+      retainedHitPointRoll: lock ? {
+        raw: Number(lock.result?.raw ?? 0),
+        denomination: lock.result?.denomination ?? lock.denomination ?? null
+      } : null
+    });
+    return fresh;
+  }
+
   static async discard(actor, { gmReset = false } = {}) {
-    if (!gmReset && !game.user.isGM) {
-      throw new Error("Only the GM can reset a pending Level Up draft after an HP result has been locked.");
+    if (!game.user.isGM || !gmReset) {
+      throw new Error("Only an explicit GM reset can delete a pending Level Up and release its locked Hit Die result.");
     }
     const draftId = actor.getFlag(MODULE_ID, "levelUpDraftId");
     const draft = draftId ? game.actors.get(draftId) : null;
+    const { HitPointAdvancementService } = await import("./hit-point-advancement-service.mjs");
+    await HitPointAdvancementService.clearLockedRoll(actor, {
+      reason: "gm-reset",
+      archive: true
+    });
     if (draft) await draft.delete();
     await actor.unsetFlag(MODULE_ID, "levelUpDraftId");
   }
@@ -82,8 +109,11 @@ export class LevelUpDraftManager {
       targetClassLevel: null,
       hpMethod: null,
       hpResult: null,
+      restartClassSelection: false,
+      retainedHitPointRoll: null,
       nativeRunning: false,
       nativeComplete: false,
+      itemGrantIntegrity: { items: [], repairedItemIds: [] },
       itemGrantReconciliation: { items: [], repairedItemIds: [] },
       additionalChoices: {},
       additionalComplete: false,

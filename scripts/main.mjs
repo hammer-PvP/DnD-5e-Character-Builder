@@ -3,6 +3,8 @@ import { CharacterBuilderSettingsApp } from "./apps/settings-app.mjs";
 import { CharacterBuilderApp } from "./apps/character-builder-app.mjs";
 import { LevelUpApp } from "./apps/level-up-app.mjs";
 import { LevelUpService } from "./services/level-up-service.mjs";
+import { LevelUpDraftManager } from "./services/level-up-draft-manager.mjs";
+import { AdvancementChoiceAnnotationService } from "./services/advancement-choice-annotation-service.mjs";
 
 Hooks.once("init", async () => {
   if (!Handlebars.helpers.eq) Handlebars.registerHelper("eq", (a, b) => a === b);
@@ -17,10 +19,18 @@ Hooks.once("init", async () => {
     default: defaultSettings()
   });
 
+  const localizedSettingText = (key, fallback) => {
+    const localized = game.i18n.localize(key);
+    return localized && localized !== key ? localized : fallback;
+  };
+
   game.settings.registerMenu(MODULE_ID, "configuration", {
-    name: "CB.Settings.Title",
-    label: "CB.Settings.Button",
-    hint: "CB.Settings.Hint",
+    name: localizedSettingText("CB.Settings.Title", "Character Builder Settings"),
+    label: localizedSettingText("CB.Settings.Button", "Configure Character Builder"),
+    hint: localizedSettingText(
+      "CB.Settings.Hint",
+      "Configure content sources, Ability Score methods, the Starting Equipment Shop, Level Up availability, multiclassing, and Hit Point advancement."
+    ),
     icon: "fa-solid fa-person-rays",
     type: CharacterBuilderSettingsApp,
     restricted: true
@@ -49,7 +59,7 @@ Hooks.once("init", async () => {
   };
 });
 
-Hooks.once("ready", () => {
+Hooks.once("ready", async () => {
   console.info(`Character Builder ${MODULE_VERSION} (${MODULE_BUILD}) loaded.`);
   if (game.system.id !== "dnd5e") {
     ui.notifications.error("Character Builder requires the D&D5e system.");
@@ -61,6 +71,17 @@ Hooks.once("ready", () => {
   const settings = LevelUpService.settings();
   if (game.user.isGM && settings.sources?.some(source => source.id === "srd51" && source.enabled)) {
     ui.notifications.warn("SRD 5.1 Legacy is enabled, but this beta officially supports only D&D 2024 and SRD 5.2 Modern.");
+  }
+  if (game.user.isGM) {
+    for (const actor of game.actors.filter(candidate => candidate.type === "character"
+      && !candidate.getFlag(MODULE_ID, "isDraft")
+      && !candidate.getFlag(MODULE_ID, "isLevelUpDraft"))) {
+      try {
+        await AdvancementChoiceAnnotationService.migrateActor(actor);
+      } catch (error) {
+        console.warn(`${MODULE_ID} | Could not migrate Level Up badges for ${actor.name}.`, error);
+      }
+    }
   }
 });
 
@@ -97,18 +118,21 @@ Hooks.on("getHeaderControlsApplicationV2", (app, controls) => {
   if (settings.levelUpMode !== "milestone") return;
   if (!actor.items.some(item => item.type === "class") || LevelUpService.actorLevel(actor) >= 20) return;
 
-  // Once a Level Up Draft exists, the player must finish or reset that transaction before the grant can be changed.
   const eligibility = LevelUpService.eligibility(actor);
-  if (eligibility.hasDraft) return;
-
+  const hasPending = eligibility.hasDraft || Boolean(actor.getFlag(MODULE_ID, "levelUpHitPointRoll"));
   const granted = Boolean(actor.getFlag(MODULE_ID, "levelUpGrant")?.available);
-  controls.unshift({
+  const moduleControls = [{
     action: "cbToggleLevelUpGrant",
     label: granted ? "Revoke Level Up" : "Grant Level Up",
     icon: granted ? "fa-solid fa-arrow-rotate-left" : "fa-solid fa-arrow-up",
     visible: true,
+    disabled: hasPending,
     onClick: async () => {
       try {
+        if (hasPending) {
+          ui.notifications.warn("Finish or reset the pending Level Up before changing its GM grant.");
+          return;
+        }
         if (actor.getFlag(MODULE_ID, "levelUpGrant")?.available) {
           await LevelUpService.revoke(actor);
           ui.notifications.info(`Level Up revoked for ${actor.name}.`);
@@ -122,8 +146,58 @@ Hooks.on("getHeaderControlsApplicationV2", (app, controls) => {
         ui.notifications.error(error.message);
       }
     }
-  });
+  }];
+
+  if (hasPending) {
+    moduleControls.push({
+      action: "cbResetPendingLevelUp",
+      label: "Reset Pending Level Up",
+      icon: "fa-solid fa-rotate-left",
+      visible: true,
+      onClick: async () => {
+        try {
+          const confirmed = await confirmAction({
+            title: "Reset Pending Level Up",
+            content: `<p>Delete the pending Level Up for <strong>${foundry.utils.escapeHTML(actor.name)}</strong>, including its locked Hit Die result and every draft choice?</p>`,
+            yes: "Reset Level Up"
+          });
+          if (!confirmed) return;
+          await LevelUpDraftManager.discard(actor, { gmReset: true });
+          ui.notifications.info(`Pending Level Up reset for ${actor.name}.`);
+          await app.render({ force: true });
+        } catch (error) {
+          console.error(`${MODULE_ID} | Reset Pending Level Up failed.`, error);
+          ui.notifications.error(error.message);
+        }
+      }
+    });
+  }
+
+  controls.unshift(...moduleControls);
 });
+
+async function confirmAction({ title, content, yes }) {
+  const DialogV2 = foundry.applications.api.DialogV2;
+  if (DialogV2?.confirm) {
+    return DialogV2.confirm({
+      window: { title },
+      content,
+      yes: { label: yes, icon: "fa-solid fa-check" },
+      no: { label: "Cancel", icon: "fa-solid fa-xmark" }
+    });
+  }
+  return new Promise(resolve => {
+    new Dialog({
+      title, content,
+      buttons: {
+        yes: { label: yes, callback: () => resolve(true) },
+        no: { label: "Cancel", callback: () => resolve(false) }
+      },
+      default: "no",
+      close: () => resolve(false)
+    }).render(true);
+  });
+}
 
 function isCharacterActorSheet(app) {
   const actor = app?.actor ?? app?.document;
@@ -144,6 +218,8 @@ function renderCharacterActorSheetControls(app, element) {
   if (isCreationEligible(actor)) injectCreationButton(actor, root);
   else if (actor.isOwner && actor.items.some(item => item.type === "class")) injectLevelUpButton(actor, root);
   injectCantripAugmentAnnotations(actor, root);
+  injectInvocationTargetAnnotations(actor, root);
+  injectAdvancementChoiceAnnotations(actor, root);
 }
 
 function findSheetHeader(root) {
@@ -211,10 +287,52 @@ function injectCantripAugmentAnnotations(actor, root) {
     const badge = document.createElement("span");
     badge.className = "cb-eldritch-augment";
     const names = augments.map(entry => entry.name).filter(Boolean);
-    badge.dataset.tooltip = `Eldritch Invocation Augmented: ${names.join(", ")}`;
-    badge.innerHTML = '<i class="fa-solid fa-wand-sparkles" inert></i> Eldritch Invocation Augmented';
+    badge.dataset.tooltip = `Augmented by: ${names.join(", ")}`;
+    badge.innerHTML = `<i class="fa-solid fa-wand-sparkles" inert></i> Augmented: ${foundry.utils.escapeHTML(names.join(", "))}`;
     const destination = row.querySelector(".item-name, .name, .item-summary") ?? row;
     destination.append(badge);
+  }
+}
+
+function injectInvocationTargetAnnotations(actor, root) {
+  for (const item of actor.items) {
+    const data = item.getFlag(MODULE_ID, "invocationInstance");
+    if (!data?.targetCantripName) continue;
+    const escapedId = globalThis.CSS?.escape ? CSS.escape(item.id) : item.id;
+    const row = root.querySelector?.(`[data-item-id="${escapedId}"]`);
+    if (!row || row.querySelector(".cb-invocation-target-badge")) continue;
+    const badge = document.createElement("span");
+    badge.className = "cb-invocation-target-badge cb-advancement-choice-badge";
+    badge.dataset.tooltip = `${item.name} target: ${data.targetCantripName}`;
+    badge.innerHTML = `<i class="fa-solid fa-bullseye" inert></i> Target: ${foundry.utils.escapeHTML(data.targetCantripName)}`;
+    const destination = row.querySelector(".item-name, .name, .item-summary") ?? row;
+    destination.append(badge);
+  }
+}
+
+function injectAdvancementChoiceAnnotations(actor, root) {
+  for (const item of actor.items) {
+    const escapedId = globalThis.CSS?.escape ? CSS.escape(item.id) : item.id;
+    const row = root.querySelector?.(`[data-item-id="${escapedId}"]`);
+    if (!row) continue;
+    row.querySelector(".cb-advancement-choice-badges")?.remove();
+
+    const badges = AdvancementChoiceAnnotationService.getBadges(item);
+    if (!badges.length) continue;
+    const group = document.createElement("span");
+    group.className = "cb-advancement-choice-badges";
+    for (const data of badges) {
+      const badge = document.createElement("span");
+      badge.className = `cb-advancement-choice-badge cb-badge-${data.kind ?? "choice"}`;
+      badge.dataset.tooltip = data.tooltip ?? data.label;
+      const icon = document.createElement("i");
+      icon.className = data.icon ?? "fa-solid fa-tag";
+      icon.setAttribute("inert", "");
+      badge.append(icon, document.createTextNode(data.label));
+      group.append(badge);
+    }
+    const destination = row.querySelector(".item-name, .name, .item-summary") ?? row;
+    destination.append(group);
   }
 }
 

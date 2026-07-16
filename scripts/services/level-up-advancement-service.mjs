@@ -3,7 +3,8 @@ import { LevelUpDraftManager } from "./level-up-draft-manager.mjs";
 import { HitPointAdvancementService } from "./hit-point-advancement-service.mjs";
 import { SourceResolver } from "./source-resolver.mjs";
 import { AdvancementService } from "./advancement-service.mjs";
-import { ItemGrantReconciliationService } from "./item-grant-reconciliation-service.mjs";
+import { ItemGrantIntegrityService } from "./item-grant-integrity-service.mjs";
+import { AdvancementChoiceAnnotationService } from "./advancement-choice-annotation-service.mjs";
 
 export class LevelUpAdvancementService {
   static async apply(draft, registry) {
@@ -61,7 +62,12 @@ export class LevelUpAdvancementService {
 
       await SourceResolver.enforceAllowedSources(draft, registry);
       await AdvancementService.dedupe(draft);
-      await ItemGrantReconciliationService.reconcile(draft, registry, state);
+      await ItemGrantIntegrityService.reconcile(draft, registry, {
+        context: "levelUp",
+        state,
+        recoveryActor: manager.clone
+      });
+      await AdvancementChoiceAnnotationService.refresh(draft, { state: LevelUpDraftManager.getState(draft) });
 
       const classItem = state.multiclass
         ? draft.items.find(item => item.type === "class" && item.system?.identifier === classIdentifier)

@@ -6,6 +6,7 @@ import { HitPointAdvancementService } from "../services/hit-point-advancement-se
 import { LevelUpAdvancementService } from "../services/level-up-advancement-service.mjs";
 import { LevelUpRulesService } from "../services/level-up-rules-service.mjs";
 import { LevelUpCommitService } from "../services/level-up-commit-service.mjs";
+import { AdvancementChoiceAnnotationService } from "../services/advancement-choice-annotation-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -38,9 +39,11 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const eligibility = LevelUpService.eligibility(this.actor);
     if (!eligibility.ready) throw new Error(eligibility.reason || "Level Up is not available for this Actor.");
     this.draft ??= await LevelUpDraftManager.getOrCreate(this.actor);
+    await HitPointAdvancementService.hydrateLockedRoll(this.actor, this.draft);
     await this.registry.load();
 
     const state = LevelUpDraftManager.getState(this.draft);
+    const hpRollLocked = Boolean(HitPointAdvancementService.lockedRoll(this.actor));
     const settings = LevelUpService.settings();
     const classes = LevelUpService.classItems(this.draft).map(item => ({
       id: item.id,
@@ -70,6 +73,10 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
           })
       })).filter(group => group.items.length)
       : [];
+
+    const hpMethodAvailability = state.selectedClassIdentifier
+      ? await HitPointAdvancementService.methodAvailability(this.draft, this.registry)
+      : HitPointAdvancementService.methods().map(method => ({ ...method, disabled: false }));
 
     const rules = state.nativeComplete
       ? await LevelUpRulesService.buildContext(this.actor, this.draft, this.registry)
@@ -103,13 +110,12 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       classes,
       multiclassGroups,
       multiclassAvailable: settings.allowMulticlassing && multiclassGroups.some(group => group.items.length),
-      hpMethods: HitPointAdvancementService.methods().map(method => ({
+      hpRollLocked,
+      hpMethods: hpMethodAvailability.map(method => ({
         ...method,
-        selected: state.hpMethod === method.id,
-        disabled: Boolean(state.hpResult?.method === "roll"
-          && settings.hitPointAdvancement?.lockRoll
-          && method.id !== "roll")
+        selected: state.hpMethod === method.id
       })),
+      retainedHitPointRoll: HitPointAdvancementService.lockedRoll(this.actor),
       hpSummary: HitPointAdvancementService.summary(state.hpResult),
       rules,
       review,
@@ -164,6 +170,9 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
           await LevelUpDraftManager.setState(this.draft, { step: "class" });
           this.render({ force: true });
           break;
+        case "restart-class":
+          await this.#restartClassSelection();
+          break;
         case "run-native":
           await this.#runNativeAdvancements();
           break;
@@ -172,9 +181,6 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
           break;
         case "commit":
           await this.#commit();
-          break;
-        case "reset":
-          await this.#reset();
           break;
         case "open-document": {
           const uuid = target.dataset.uuid;
@@ -208,6 +214,10 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const cls = this.draft.items.get(itemId);
     if (!cls || cls.type !== "class") throw new Error("The selected Class was not found.");
     const level = Number(cls.system?.levels ?? 0);
+    const lockedResult = HitPointAdvancementService.assertClassSelectionAllowed(this.actor, {
+      selectedClassIdentifier: cls.system?.identifier,
+      targetClassLevel: level + 1
+    }, { allowRetarget: Boolean(state.restartClassSelection) });
     await LevelUpDraftManager.setState(this.draft, {
       step: "hp",
       selectedClassId: cls.id,
@@ -217,9 +227,10 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       multiclass: false,
       sourceClassLevel: level,
       targetClassLevel: level + 1,
-      hpMethod: null,
-      hpResult: null,
+      hpMethod: state.restartClassSelection ? null : (lockedResult ? "roll" : null),
+      hpResult: state.restartClassSelection ? null : lockedResult,
       nativeComplete: false,
+      itemGrantIntegrity: { items: [], repairedItemIds: [] },
       itemGrantReconciliation: { items: [], repairedItemIds: [] },
       additionalChoices: {},
       additionalComplete: false,
@@ -240,6 +251,10 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     }
     const prerequisite = LevelUpService.multiclassPrerequisite(this.draft, option.identifier);
     if (!prerequisite.qualified) throw new Error(prerequisite.message);
+    const lockedResult = HitPointAdvancementService.assertClassSelectionAllowed(this.actor, {
+      selectedClassIdentifier: option.identifier,
+      targetClassLevel: 1
+    }, { allowRetarget: Boolean(state.restartClassSelection) });
     await LevelUpDraftManager.setState(this.draft, {
       step: "hp",
       selectedClassId: null,
@@ -249,9 +264,10 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       multiclass: true,
       sourceClassLevel: 0,
       targetClassLevel: 1,
-      hpMethod: null,
-      hpResult: null,
+      hpMethod: state.restartClassSelection ? null : (lockedResult ? "roll" : null),
+      hpResult: state.restartClassSelection ? null : lockedResult,
       nativeComplete: false,
+      itemGrantIntegrity: { items: [], repairedItemIds: [] },
       itemGrantReconciliation: { items: [], repairedItemIds: [] },
       additionalChoices: {},
       additionalComplete: false,
@@ -312,19 +328,24 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     this.actor.sheet?.render(false);
   }
 
-  async #reset() {
-    if (!game.user.isGM) throw new Error("Only the GM can reset a pending Level Up.");
+  async #restartClassSelection() {
+    const lock = HitPointAdvancementService.lockedRoll(this.actor);
     const confirmed = await this.#confirm({
-      title: "Reset Pending Level Up",
-      content: "<p>Delete this pending Level Up, including its locked Hit Point result and all draft choices?</p>",
-      yes: "Reset Level Up"
+      title: "Restart Class Selection",
+      content: lock
+        ? `<p>Discard the current Class, multiclass, and all later draft choices?</p><p><strong>The locked Hit Die result (${foundry.utils.escapeHTML(String(lock.result?.raw ?? "—"))} on ${foundry.utils.escapeHTML(lock.result?.denomination ?? lock.denomination ?? "Hit Die")}) will be preserved.</strong> You may reuse that number when it fits the newly selected Class Hit Die, or choose Average.</p>`
+        : "<p>Discard the current Class, multiclass, and all later draft choices and return to Class selection?</p>",
+      yes: "Restart Class Selection"
     });
     if (!confirmed) return;
-    await LevelUpDraftManager.discard(this.actor, { gmReset: true });
-    this.draft = null;
-    ui.notifications.info("Pending Level Up reset.");
-    await this.close();
-    this.actor.sheet?.render(false);
+    this.busy = true;
+    this.render({ force: true });
+    this.draft = await LevelUpDraftManager.restartClassSelection(this.actor);
+    this.busy = false;
+    ui.notifications.info(lock
+      ? "Class selection restarted. The locked Hit Die result was preserved."
+      : "Class selection restarted.");
+    this.render({ force: true });
   }
 
   #reviewContext(state) {
@@ -332,7 +353,13 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const draftIds = new Set(this.draft.items.map(item => item.id));
     const added = this.draft.items
       .filter(item => !sourceIds.has(item.id))
-      .map(item => ({ id: item.id, name: item.name, img: item.img, type: item.type }));
+      .map(item => ({
+        id: item.id,
+        name: item.name,
+        img: item.img,
+        type: item.type,
+        badges: AdvancementChoiceAnnotationService.getBadges(item)
+      }));
     const removed = this.actor.items
       .filter(item => !draftIds.has(item.id))
       .map(item => ({ id: item.id, name: item.name, img: item.img, type: item.type }));
@@ -347,7 +374,12 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       targetClassLevel: state.targetClassLevel,
       multiclass: Boolean(state.multiclass),
       hpSummary: HitPointAdvancementService.summary(state.hpResult),
-      classItem: selectedClass ? { id: selectedClass.id, name: selectedClass.name, img: selectedClass.img } : null,
+      classItem: selectedClass ? {
+        id: selectedClass.id,
+        name: selectedClass.name,
+        img: selectedClass.img,
+        badges: AdvancementChoiceAnnotationService.getBadges(selectedClass)
+      } : null,
       added,
       removed,
       addedCount: added.length,
@@ -508,7 +540,10 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     if (targetRow) {
       targetRow.hidden = !requiresTarget;
       const target = targetRow.querySelector("select");
-      if (target) target.required = requiresTarget;
+      if (target) {
+        target.required = requiresTarget;
+        if (!requiresTarget) target.value = "";
+      }
     }
     const card = container.querySelector("[data-invocation-detail]");
     if (!card) return;
@@ -541,10 +576,37 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     }
   }
 
+  #refreshInvocationTargetEligibility() {
+    const root = this.element;
+    const checkedPendingCantrips = new Set(
+      [...root.querySelectorAll('input[name="levelUp.cantrips"][data-spell-identifier]:checked')]
+        .map(input => input.dataset.spellIdentifier)
+        .filter(Boolean)
+    );
+
+    for (const select of root.querySelectorAll("[data-invocation-target-select]")) {
+      const current = select.value;
+      for (const option of [...select.options].slice(1)) {
+        const pending = option.dataset.pending === "true";
+        const identifier = option.dataset.cantripIdentifier ?? option.value;
+        const eligible = !pending || checkedPendingCantrips.has(identifier);
+        const baseLabel = option.dataset.baseLabel ?? option.textContent;
+        option.disabled = !eligible;
+        option.textContent = pending
+          ? `${baseLabel} — ${eligible ? "selected during this Level Up" : "choose this cantrip above first"}`
+          : baseLabel;
+      }
+      const selected = [...select.options].find(option => option.value === current);
+      if (current && selected?.disabled) select.value = "";
+    }
+  }
+
   #refreshSpellSelectionState() {
     const root = this.element;
     const selectionRoot = root.querySelector("[data-spell-selection-root]");
     if (!selectionRoot) return;
+
+    this.#refreshInvocationTargetEligibility();
 
     const controls = [...selectionRoot.querySelectorAll("input[type=checkbox][data-spell-identifier]")];
     const replacement = selectionRoot.querySelector('[name="levelUp.replaceSpell.add"]');

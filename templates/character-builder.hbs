@@ -477,7 +477,12 @@
     <section class="cb-step-content review-step">
       <header class="cb-section-header"><div><h2>Review Character</h2><p>The original Actor remains unchanged until Finish Character is pressed.</p></div></header>
       <div class="cb-review-grid">
-        <section><h3>Origins and Class</h3><p><strong>Background:</strong> {{review.background}}</p><p><strong>Species:</strong> {{review.species}}</p><p><strong>Class:</strong> {{review.class}}</p><p><strong>Hit Points:</strong> {{review.hp}}</p></section>
+        <section><h3>Origins and Class</h3>
+          <p><strong>Background:</strong> {{review.background}}</p>
+          <p><strong>Species:</strong> {{review.species}}</p>
+          <p><strong>Class:</strong> {{review.class}}</p>
+          <p><strong>Hit Points:</strong> {{review.hp}}</p>
+        </section>
         <section><h3>Ability Scores</h3>{{#each review.abilities}}<p><strong>{{label}}:</strong> {{value}}</p>{{/each}}</section>
         <section><h3>Currency</h3><p>PP {{review.currency.pp}} · GP {{review.currency.gp}} · EP {{review.currency.ep}} · SP {{review.currency.sp}} · CP {{review.currency.cp}}</p></section>
       </div>

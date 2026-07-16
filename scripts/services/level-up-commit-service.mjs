@@ -2,7 +2,8 @@ import { MODULE_ID, MODULE_VERSION } from "../constants.mjs";
 import { LevelUpDraftManager } from "./level-up-draft-manager.mjs";
 import { LevelUpService } from "./level-up-service.mjs";
 import { HitPointAdvancementService } from "./hit-point-advancement-service.mjs";
-import { ItemGrantReconciliationService } from "./item-grant-reconciliation-service.mjs";
+import { ItemGrantIntegrityService } from "./item-grant-integrity-service.mjs";
+import { AdvancementChoiceAnnotationService } from "./advancement-choice-annotation-service.mjs";
 
 /**
  * Applies a completed Level Up draft as one recoverable transaction. The live
@@ -24,9 +25,11 @@ export class LevelUpCommitService {
     if (currentLevel !== Number(state.sourceCharacterLevel)) {
       throw new Error(`The live Actor is now level ${currentLevel}, but this Level Up began at level ${state.sourceCharacterLevel}. Ask the GM to reset the pending Level Up.`);
     }
+    HitPointAdvancementService.validateLockedResult(actor, state);
 
     await this.#validateClassIntegrity(actor, draft, state);
-    ItemGrantReconciliationService.validate(draft, state);
+    await AdvancementChoiceAnnotationService.refresh(draft, { state: LevelUpDraftManager.getState(draft) });
+    ItemGrantIntegrityService.validate(draft, { context: "levelUp", state });
 
     const snapshot = this.#actorSnapshot(actor);
     const draftData = this.#documentSource(draft);
@@ -119,6 +122,7 @@ export class LevelUpCommitService {
       }].slice(-50);
       await actor.setFlag(MODULE_ID, "levelUpHistory", history);
       await actor.setFlag(MODULE_ID, "lastLevelUp", history.at(-1));
+      await HitPointAdvancementService.clearLockedRoll(actor, { reason: "committed", archive: false });
       await actor.unsetFlag(MODULE_ID, "levelUpDraftId");
       if (LevelUpService.settings().levelUpMode === "milestone") {
         await actor.unsetFlag(MODULE_ID, "levelUpGrant");

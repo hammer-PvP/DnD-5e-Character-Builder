@@ -12,6 +12,7 @@ import { HitPointService } from "../services/hit-point-service.mjs";
 import { ValidationService } from "../services/validation-service.mjs";
 import { SourceResolver } from "../services/source-resolver.mjs";
 import { CustomBackgroundService, CUSTOM_BACKGROUND_UUID } from "../services/custom-background-service.mjs";
+import { ItemGrantIntegrityService } from "../services/item-grant-integrity-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 const TextEditorImplementation = foundry.applications.ux.TextEditor.implementation;
@@ -819,7 +820,9 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
     try {
       await SourceResolver.enforceAllowedSources(this.draft, this.registry);
+      await ItemGrantIntegrityService.reconcile(this.draft, this.registry, { context: "creation" });
       await AdvancementService.dedupe(this.draft);
+      ItemGrantIntegrityService.validate(this.draft, { context: "creation" });
       await DraftManager.commit(this.actor, this.draft);
       ui.notifications.info(`${this.actor.name} was completed with Character Builder.`);
       this.close();
@@ -880,7 +883,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         name: item.name,
         img: item.img,
         uuid: item.uuid,
-        source: this.#itemSource(item, "Feature or Feat")
+        source: this.#itemSource(item, "Feature or Feat"),
       })),
       spells: spells.map(item => ({
         name: item.name,

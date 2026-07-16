@@ -22,7 +22,7 @@ SRD 5.1 Legacy is not officially supported in this beta. It can remain disabled 
 - Transactional mundane Starting Equipment Shop with Checkout, exact purchase manifests, containers, quantity support, and GM Bonus Gold.
 - Review and recoverable application to the original Actor.
 
-## Level Up 0.9.1 beta
+## Level Up 0.9.4 beta
 
 Level Up uses a separate hidden transaction Draft. The live Actor is unchanged until **Commit Level Up** succeeds.
 
@@ -30,6 +30,7 @@ Level Up uses a separate hidden transaction Draft. The live Actor is unchanged u
 
 - **Experience Points:** Level Up becomes available when the Actor reaches the next total character-level XP threshold.
 - **Milestone:** the GM grants or revokes Level Up on each individual Actor sheet.
+- **GM controls:** `Reset Pending Level Up` is located directly below Grant/Revoke Level Up in the Actor sheet Toggle Controls. It performs a complete administrative reset, including the locked Hit Die.
 
 ### Character and Class levels
 
@@ -47,7 +48,7 @@ The GM controls which methods are available:
 - Average
 - Maximum
 
-A Roll is locked to the Actor, target character level, Class, and target Class level. Closing and reopening Level Up does not reroll it. An optional Minimum Average policy replaces a lower roll with the Class average. Only the GM can reset a pending Level Up and its locked HP result.
+The first Roll is persisted on the live Actor and locked to the source and target character levels. Closing the interface, losing the Draft, or restarting Class selection never creates another roll. After **Restart Class Selection**, the player may reuse the original numeric result when it fits the newly selected Class Hit Die, or choose Average; Maximum and a new roll remain unavailable. An optional Minimum Average policy uses the currently selected Class average. Only **Reset Pending Level Up** in the GM Actor-sheet controls or a successful Commit releases the locked result.
 
 ### Spells and managed features
 
@@ -55,8 +56,9 @@ The Level Up interface uses the same confirmation pattern as level 1 creation: *
 
 
 - Native D&D5e Advancements handle source-defined features, subclasses, feats, proficiencies, and choices.
+- Level Up choices with a clear owning feature are summarized with compact read-only badges on that feature, such as `Scholar — Expertise: Arcana`. Character Creation badges are intentionally omitted because those choices already have dedicated native sheet sections.
 - The module handles Class spell-list additions, newly accessible full-list spells, limited-caster gains and replacements, Wizard spellbook additions, and Wizard Savant bonus spells.
-- Mandatory Class and Subclass `ItemGrant` results are audited after native Advancement and restored from the configured source when D&D5e records a grant without retaining its Item document.
+- Mandatory `ItemGrant` results are audited through one shared integrity service during both Character Creation and Level Up, then restored from the configured source when D&D5e records a grant without retaining its Item document.
 - Granted spells preserve their native preparation method, casting method, free uses, recovery, activities, and Advancement origin.
 - Equal names or spell identifiers from different acquisition origins are preserved as separate resources; the module does not merge source-granted and player-selected instances.
 - Cantrip scaling remains native to D&D5e and is validated against total character level.
@@ -65,8 +67,8 @@ The Level Up interface uses the same confirmation pattern as level 1 creation: *
 - Unavailable invocations remain visible with their Warlock-level and Item prerequisites.
 - Earlier invocation choices in the same Level Up can satisfy later invocation prerequisites in slot order.
 - Selected invocation cards open the official enabled-source Item sheet instead of duplicating source text.
-- Cantrip-targeted invocations select from eligible known damaging Warlock cantrips and store the chosen cantrip ID, identifier, and name.
-- Affected cantrips display an **Eldritch Invocation Augmented** annotation on the Actor sheet.
+- Cantrip-targeted invocations select only from damaging Warlock cantrips already owned or selected during the same Level Up, then store the chosen cantrip ID, identifier, and name.
+- Each cantrip-targeted Invocation displays its chosen target on the Invocation feature row, and each affected cantrip displays the names of the Invocations augmenting it. Repeatable `Agonizing Blast` instances retain independent targets.
 - Review lists only augment relationships changed by the current transaction, not unchanged active augments inherited from another Class.
 
 ## Transaction model

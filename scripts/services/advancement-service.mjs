@@ -1,6 +1,7 @@
 import { MODULE_ID } from "../constants.mjs";
 import { HitPointService } from "./hit-point-service.mjs";
 import { SourceResolver } from "./source-resolver.mjs";
+import { ItemGrantIntegrityService } from "./item-grant-integrity-service.mjs";
 
 export class AdvancementService {
   static async replacePrimaryDocument(draft, document, type, onComplete, options = {}) {
@@ -28,9 +29,16 @@ export class AdvancementService {
 
     if (registry) data = SourceResolver.filterAdvancementPools(data, registry);
 
+    let recoveryActor = null;
     const finish = async () => {
       await this.#postProcessPrimary(draft, document, type);
-      if (registry) await SourceResolver.enforceAllowedSources(draft, registry);
+      if (registry) {
+        await SourceResolver.enforceAllowedSources(draft, registry);
+        await ItemGrantIntegrityService.reconcile(draft, registry, {
+          context: "creation",
+          recoveryActor
+        });
+      }
       await onComplete?.();
     };
 
@@ -45,6 +53,7 @@ export class AdvancementService {
       return draft.items.find(item => item.type === type && item.system?.identifier === data.system?.identifier);
     }
 
+    recoveryActor = manager.clone;
     await new Promise((resolve, reject) => {
       const hookId = Hooks.on("dnd5e.advancementManagerComplete", async completed => {
         if (completed !== manager) return;

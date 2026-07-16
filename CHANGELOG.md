@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.9.4 Beta — Feature-Owned Badges and Safe Class Restart
+
+- Removes Advancement-choice badges from Character Creation and migrates legacy 0.9.2/0.9.3 badge flags out of Class, Background, Species, and other creation summaries.
+- Restricts badges to Level Up choices that can be resolved to one specific feature. Wizard Scholar Expertise is displayed on the `Scholar` feature row instead of the `Wizard` Class header.
+- Keeps Warlock target annotations bidirectional: each repeatable Invocation instance shows its own target cantrip, while the cantrip lists every Invocation augmenting it.
+- Moves the complete GM-only `Reset Pending Level Up` action from the Level Up window to Actor Sheet → Toggle Controls, directly below Grant/Revoke Level Up.
+- Replaces the old in-window reset with player-accessible `Restart Class Selection`, which rebuilds the Draft from the live Actor while preserving the first locked Hit Die roll.
+- Allows the retained numeric roll to be reused for another Class when it fits that Class Hit Die, or replaced with the selected Class Average. A new roll and Maximum remain blocked; an impossible retained value leaves only Average available.
+- Keeps `ItemGrantIntegrityService` active during both Character Creation and Level Up, with all 0.9.3 settings-localization, ItemGrant, cantrip-target, acquisition-origin, and original-Class protections.
+
+## 0.9.3 Beta — Release Consistency, Settings Localization, and Hit Die Verification
+
+- Synchronizes the release version across the manifest, runtime constants, README, changelog, download URL, and versioned GitHub asset name.
+- Publishes the installable asset as `dnd5e-character-builder-v0.9.3.zip` to avoid confusing it with earlier unversioned downloads and reduce release-cache ambiguity.
+- Changes the English localization file to flat Foundry keys and adds an explicit English fallback when registering the Character Builder settings menu, preventing unresolved `CB.Settings.*` labels and restoring the full settings hint.
+- Revalidates the persistent Hit Die lock: the first roll is written to the live Actor before the temporary Draft is trusted, is restored into a rebuilt Draft, blocks changing the HP method or advanced Class, and is compared again during final Commit.
+- Keeps all 0.9.2 features: shared Character Creation and Level Up ItemGrant integrity, Advancement choice badges, acquisition-safe duplicate handling, and owned-or-currently-selected Warlock cantrip targeting.
+
+## 0.9.2 Beta — Shared Integrity, Choice Badges, and Persistent Hit Dice
+
+- Refactors mandatory D&D5e `ItemGrant` auditing into `ItemGrantIntegrityService`, shared by Character Creation and Level Up.
+- Reconciles missing mandatory grants after native Advancement, preserves each acquisition origin as a separate Item, and blocks final commit when a required grant remains incomplete.
+- Adds read-only Advancement choice badges to source features and review screens, including Expertise, proficiencies, languages, tools, Ability Score assignments, Item Choices, and optional Item Grants.
+- Derives badges from native Advancement values instead of renaming official Items or maintaining a second choice record.
+- Restricts cantrip-targeted Eldritch Invocations to damaging Warlock cantrips already owned or explicitly selected during the same Level Up. Pending targets remain disabled until their cantrip is selected, and invalid targets are cleared and rejected again during validation.
+- Persists the first rolled Hit Die result on the live Actor, bound to the source and target character levels, selected Class, and target Class level. Closing the application, rebuilding the Draft, or returning to Class selection cannot create another roll.
+- Migrates rolled results from pending 0.9.1 Drafts into the persistent Actor lock. Only an explicit GM reset or a successful Level Up commit releases the lock.
+- Corrects the Game Settings entry to display English labels and its full hint without exposing unresolved localization keys.
+
 ## 0.9.1 Beta — Native ItemGrant Integrity Candidate
 
 - Preserves the Actor's existing `system.details.originalClass` through the transactional delete-and-recreate commit sequence.

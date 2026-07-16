@@ -25,11 +25,9 @@
       <p class="hint">Sources: {{sourceOrder}}</p>
     </section>
 
-    {{#if isGM}}
-    <button type="button" class="cb-danger-button" data-action="reset" {{#if busy}}disabled{{/if}}>
-      <i class="fa-solid fa-rotate-left"></i> Reset Pending Level Up
+    <button type="button" class="cb-danger-button" data-action="restart-class" {{#if busy}}disabled{{/if}}>
+      <i class="fa-solid fa-rotate-left"></i> Restart Class Selection
     </button>
-    {{/if}}
   </aside>
 
   <main class="cb-level-up-main">
@@ -60,6 +58,10 @@
         </article>
         {{/each}}
       </div>
+
+      {{#if hpRollLocked}}
+      <p class="cb-notice"><i class="fa-solid fa-lock"></i> A Hit Die result is already locked for this character level. Restarting Class selection preserves that number; only the GM can fully reset it.</p>
+      {{/if}}
 
       {{#if multiclassAvailable}}
       <section class="cb-multiclass-section">
@@ -114,9 +116,9 @@
         <button type="button" class="cb-hp-method {{#if selected}}selected{{/if}}" data-action="resolve-hp" data-method="{{id}}" {{#if disabled}}disabled{{/if}} {{#if ../busy}}disabled{{/if}}>
           <i class="{{icon}}"></i>
           <strong>{{label}}</strong>
-          {{#if (eq id "roll")}}<small>Roll once and lock the result to this Actor, Class, and target level.</small>{{/if}}
-          {{#if (eq id "average")}}<small>Use the fixed class average.</small>{{/if}}
-          {{#if (eq id "maximum")}}<small>Use the full Hit Die value.</small>{{/if}}
+          {{#if (eq id "roll")}}<small>{{description}}</small>{{/if}}
+          {{#if (eq id "average")}}<small>{{description}}</small>{{/if}}
+          {{#if (eq id "maximum")}}<small>{{description}}</small>{{/if}}
         </button>
         {{/each}}
       </div>
@@ -131,7 +133,7 @@
       <p class="cb-notice"><i class="fa-solid fa-shield-heart"></i> Minimum Average is enabled. A lower roll uses the class average.</p>
       {{/if}}
       <footer class="cb-panel-footer">
-        <button type="button" data-action="back-class" {{#if busy}}disabled{{/if}}><i class="fa-solid fa-arrow-left"></i> Back to Class</button>
+        <button type="button" data-action="back-class" {{#if hpRollLocked}}disabled title="Use Restart Class Selection to change Class while preserving the locked Hit Die."{{/if}} {{#if busy}}disabled{{/if}}><i class="fa-solid fa-arrow-left"></i> Back to Class</button>
       </footer>
     </section>
     {{/if}}
@@ -202,6 +204,11 @@
               {{#if freeUses}}<span>{{freeUses}} Free Use{{#unless (eq freeUses "1")}}s{{/unless}}</span>{{/if}}
               {{#if repaired}}<span>Grant Restored</span>{{/if}}
             </div>
+            {{#if badges.length}}
+            <div class="cb-review-choice-badges cb-automatic-choice-badges">
+              {{#each badges}}<span title="{{tooltip}}"><i class="{{icon}}"></i>{{label}}</span>{{/each}}
+            </div>
+            {{/if}}
           </article>
           {{/each}}
         </div>
@@ -351,10 +358,15 @@
               </select>
             </label>
             <label data-invocation-target-row hidden>Target Cantrip
-              <select name="levelUp.invocation.{{index}}.target">
+              <select name="levelUp.invocation.{{index}}.target" data-invocation-target-select>
                 <option value="">Choose a known damaging Warlock cantrip</option>
                 {{#each ../rules.invocations.targetCantrips}}
-                <option value="{{identifier}}" {{#if (eq ../../selectedTarget identifier)}}selected{{/if}}>{{name}}{{#if pending}} — selected during this Level Up{{/if}}</option>
+                <option value="{{identifier}}"
+                  data-cantrip-identifier="{{identifier}}"
+                  data-pending="{{pending}}"
+                  data-base-label="{{name}}"
+                  {{#unless eligible}}disabled{{/unless}}
+                  {{#if (eq ../../selectedTarget identifier)}}selected{{/if}}>{{name}}{{#if pending}}{{#unless eligible}} — choose this cantrip above first{{else}} — selected during this Level Up{{/unless}}{{/if}}</option>
                 {{/each}}
               </select>
             </label>
@@ -375,7 +387,7 @@
           <label>Replace
             <select name="levelUp.replaceInvocation.remove">
               <option value="">No replacement</option>
-              {{#each rules.invocations.replacement.existing}}<option value="{{id}}">{{name}}</option>{{/each}}
+              {{#each rules.invocations.replacement.existing}}<option value="{{id}}" {{#if (eq ../rules.invocations.replacement.selectedRemoveId id)}}selected{{/if}}>{{name}}</option>{{/each}}
             </select>
           </label>
           <i class="fa-solid fa-arrow-right"></i>
@@ -384,6 +396,7 @@
               <option value="">No replacement</option>
               {{#each rules.invocations.replacement.options}}
               <option value="{{uuid}}"
+                {{#if (eq ../rules.invocations.replacement.selectedUuid uuid)}}selected{{/if}}
                 data-identifier="{{identifier}}"
                 data-target-cantrip="{{targetCantrip}}"
                 data-minimum-level="{{minimumLevel}}"
@@ -400,9 +413,16 @@
             </select>
           </label>
           <label data-invocation-target-row hidden>Target Cantrip
-            <select name="levelUp.replaceInvocation.target">
+            <select name="levelUp.replaceInvocation.target" data-invocation-target-select>
               <option value="">Choose a known damaging Warlock cantrip</option>
-              {{#each rules.invocations.targetCantrips}}<option value="{{identifier}}">{{name}}</option>{{/each}}
+              {{#each rules.invocations.targetCantrips}}
+              <option value="{{identifier}}"
+                data-cantrip-identifier="{{identifier}}"
+                data-pending="{{pending}}"
+                data-base-label="{{name}}"
+                {{#unless eligible}}disabled{{/unless}}
+                {{#if (eq ../rules.invocations.replacement.selectedTarget identifier)}}selected{{/if}}>{{name}}{{#if pending}}{{#unless eligible}} — choose this cantrip above first{{else}} — selected during this Level Up{{/unless}}{{/if}}</option>
+              {{/each}}
             </select>
           </label>
         </div>
@@ -438,7 +458,7 @@
 
       <div class="cb-review-level-grid">
         <article><span>Character Level</span><strong>{{review.sourceCharacterLevel}} → {{review.targetCharacterLevel}}</strong></article>
-        <article><span>{{review.className}}</span><strong>{{review.sourceClassLevel}} → {{review.targetClassLevel}}</strong></article>
+        <article><span>{{review.className}}</span><strong>{{review.sourceClassLevel}} → {{review.targetClassLevel}}</strong>{{#if review.classItem.badges.length}}<div class="cb-review-choice-badges">{{#each review.classItem.badges}}<span title="{{tooltip}}"><i class="{{icon}}"></i>{{label}}</span>{{/each}}</div>{{/if}}</article>
         <article><span>Hit Points</span><strong>{{review.hpSummary}}</strong></article>
         <article><span>Advancement</span><strong>{{#if review.multiclass}}New Multiclass{{else}}Existing Class{{/if}}</strong></article>
       </div>
@@ -448,7 +468,7 @@
           <h3>Added Items <span>{{review.addedCount}}</span></h3>
           {{#if review.added.length}}
           <div class="cb-review-item-list">
-            {{#each review.added}}<article><img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{type}}</small></span></article>{{/each}}
+            {{#each review.added}}<article><img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{type}}</small>{{#if badges.length}}<span class="cb-review-choice-badges">{{#each badges}}<span title="{{tooltip}}"><i class="{{icon}}"></i>{{label}}</span>{{/each}}</span>{{/if}}</span></article>{{/each}}
           </div>
           {{else}}<p class="hint">No new embedded Item documents.</p>{{/if}}
         </div>
