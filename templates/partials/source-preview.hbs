@@ -1,0 +1,36 @@
+<section class="cb-source-preview">
+  {{#if preview}}
+  <header class="cb-preview-header">
+    <img src="{{preview.img}}" alt="">
+    <div class="cb-preview-title">
+      <h2>{{preview.name}}</h2>
+      <span class="cb-badge">{{preview.sourceLabel}}</span>
+    </div>
+  </header>
+
+  {{#if preview.advancements.length}}
+  <section class="cb-advancement-preview">
+    <h3>Advancements</h3>
+    {{#each preview.advancements}}
+    <article>
+      <strong>{{title}}</strong>
+      <small>{{type}}{{#if level}} · Level {{level}}{{/if}}</small>
+      {{#if hint}}<p>{{hint}}</p>{{/if}}
+    </article>
+    {{/each}}
+  </section>
+  {{/if}}
+
+  <div class="cb-source-description">{{{preview.description}}}</div>
+  <footer>
+    <button type="button" data-action="open-preview" data-uuid="{{preview.uuid}}">
+      <i class="fa-solid fa-arrow-up-right-from-square"></i> Open Source Document
+    </button>
+  </footer>
+  {{else}}
+  <div class="cb-empty-preview">
+    <i class="fa-solid fa-book-open"></i>
+    <p>Select an option to view its native image, description, links, and Advancements.</p>
+  </div>
+  {{/if}}
+</section>

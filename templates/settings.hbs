@@ -1,0 +1,100 @@
+<section class="cb-settings">
+  <header class="cb-app-header">
+    <i class="fa-solid fa-person-rays"></i>
+    <div>
+      <h1>Character Builder</h1>
+      <p>Configure D&D 2024 / SRD 5.2 Modern character creation and Level Up behavior.</p>
+    </div>
+  </header>
+
+  <fieldset>
+    <legend>Content Sources and Priority</legend>
+    <p class="hint">Sources are complete packages or logical SRD sources. Higher rows have higher priority.</p>
+    <div class="cb-source-order">
+      {{#each sources}}
+      <div class="cb-source-setting" data-source-id="{{id}}">
+        <input type="checkbox" {{checked enabled}} {{#unless installed}}disabled{{/unless}}>
+        <strong>{{label}}</strong>
+        {{#if legacy}}<span class="cb-badge warning">Not Officially Supported</span>{{/if}}
+        {{#unless installed}}<span class="cb-badge warning">Not Installed</span>{{/unless}}
+        <div class="cb-order-buttons">
+          <button type="button" data-action="move-source" data-direction="up" aria-label="Move Up">
+            <i class="fa-solid fa-arrow-up"></i>
+          </button>
+          <button type="button" data-action="move-source" data-direction="down" aria-label="Move Down">
+            <i class="fa-solid fa-arrow-down"></i>
+          </button>
+        </div>
+      </div>
+      {{/each}}
+    </div>
+    <p class="hint"><strong>Official compatibility:</strong> Player's Handbook 2024 and SRD 5.2 Modern. SRD 5.1 Legacy remains available only for future validation.</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>Ability Score Methods</legend>
+    <label><input type="checkbox" name="pointBuy" {{checked settings.abilityMethods.pointBuy}}> Point Buy</label>
+    <label><input type="checkbox" name="standardArray" {{checked settings.abilityMethods.standardArray}}> Standard Array</label>
+    <label><input type="checkbox" name="roll" {{checked settings.abilityMethods.roll}}> Roll</label>
+    <label><input type="checkbox" name="manual" {{checked settings.abilityMethods.manual}}> Manual Entry</label>
+
+    <div class="form-group">
+      <label>Complete Roll Sets Allowed</label>
+      <select name="rollSets">
+        <option value="1" {{#if (eq settings.rollSets 1)}}selected{{/if}}>1 — No Reroll</option>
+        <option value="2" {{#if (eq settings.rollSets 2)}}selected{{/if}}>2 — One Reroll</option>
+        <option value="unlimited" {{#if (eq settings.rollSets 0)}}selected{{/if}}>Unlimited</option>
+      </select>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Starting Equipment Shop</legend>
+    <div class="form-group">
+      <label>Shop Bonus Gold</label>
+      <input type="number" name="shopBonusGold" value="{{settings.shopBonusGold}}" min="0" step="1">
+      <p class="hint">Additional GP added to every new character's Shop budget. The value is captured when the Draft first opens the Shop.</p>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Level Up Availability</legend>
+    <div class="form-group">
+      <label>Advancement Method</label>
+      <select name="levelUpMode">
+        <option value="xp" {{#if (eq settings.levelUpMode "xp")}}selected{{/if}}>Experience Points</option>
+        <option value="milestone" {{#if (eq settings.levelUpMode "milestone")}}selected{{/if}}>Milestone — GM Grant Required</option>
+      </select>
+      <p class="hint">XP unlocks Level Up when the Actor reaches the next character-level threshold. Milestone requires the GM to grant Level Up on each Actor sheet.</p>
+    </div>
+    <label><input type="checkbox" name="allowMulticlassing" {{checked settings.allowMulticlassing}}> Allow players to add a new multiclass during Level Up.</label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Hit Point Advancement</legend>
+    <p class="hint">Choose which methods players may use. A Roll is locked to the pending Actor and target level so closing the application cannot reroll it.</p>
+    <label><input type="checkbox" name="hpMethod.roll" {{checked settings.hitPointAdvancement.methods.roll}}> Roll Hit Die</label>
+    <label><input type="checkbox" name="hpMethod.average" {{checked settings.hitPointAdvancement.methods.average}}> Average</label>
+    <label><input type="checkbox" name="hpMethod.maximum" {{checked settings.hitPointAdvancement.methods.maximum}}> Maximum Hit Die</label>
+    <label><input type="checkbox" name="minimumAverageOnRoll" {{checked settings.hitPointAdvancement.minimumAverageOnRoll}}> Use the class average whenever a locked roll is lower.</label>
+    <div class="form-group">
+      <label>Default Method</label>
+      <select name="hpDefaultMethod">
+        <option value="roll" {{#if (eq settings.hitPointAdvancement.defaultMethod "roll")}}selected{{/if}}>Roll</option>
+        <option value="average" {{#if (eq settings.hitPointAdvancement.defaultMethod "average")}}selected{{/if}}>Average</option>
+        <option value="maximum" {{#if (eq settings.hitPointAdvancement.defaultMethod "maximum")}}selected{{/if}}>Maximum</option>
+      </select>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Creation Prompt</legend>
+    <label><input type="checkbox" name="promptOnCreate" {{checked settings.promptOnCreate}}> Ask whether to use Character Builder when a new Player Character Actor is created.</label>
+  </fieldset>
+
+  <footer class="cb-footer">
+    <button type="button" class="gold-button" data-action="save">
+      <i class="fa-solid fa-floppy-disk"></i> Save Settings
+    </button>
+  </footer>
+</section>

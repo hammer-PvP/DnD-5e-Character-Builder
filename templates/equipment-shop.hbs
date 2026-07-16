@@ -1,0 +1,137 @@
+<div class="cb-shop-shell">
+  <header class="cb-shop-header">
+    <div>
+      <h1>Starting Equipment Shop</h1>
+      <p>Purchase mundane level-1 equipment from enabled content sources.</p>
+    </div>
+    <button type="button" class="cb-primary-continue cb-shop-return" data-action="return-equipment">
+      <i class="fa-solid fa-arrow-left"></i><span>Return to Equipment</span>
+    </button>
+  </header>
+
+  <div class="cb-shop-layout">
+    <aside class="cb-shop-filters">
+      <label class="cb-shop-search">
+        <span>Search Items</span>
+        <input type="search" name="shopSearch" value="{{searchQuery}}" placeholder="Search equipment..." autocomplete="off">
+      </label>
+
+      <nav class="cb-shop-categories" aria-label="Shop Categories">
+        <button type="button" class="cb-shop-category {{#if (eq selectedCategory 'all')}}active{{/if}}"
+                data-action="shop-category" data-category="all">
+          <span>All Items</span><small>{{shop.items.length}}</small>
+        </button>
+        {{#each shop.categories}}
+        <details open class="cb-shop-category-group">
+          <summary>
+            <span class="cb-shop-disclosure" aria-hidden="true"><i class="fa-solid fa-chevron-right"></i></span>
+            <button type="button" class="cb-shop-category" data-action="shop-category" data-category="{{id}}">
+              <span>{{label}}</span><small>{{count}}</small>
+            </button>
+          </summary>
+          {{#if children.length}}
+          <div class="cb-shop-category-children">
+            {{#each children}}
+            <details open class="cb-shop-category-group nested">
+              <summary>
+                <span class="cb-shop-disclosure" aria-hidden="true"><i class="fa-solid fa-chevron-right"></i></span>
+                <button type="button" class="cb-shop-category" data-action="shop-category" data-category="{{id}}">
+                  <span>{{label}}</span><small>{{count}}</small>
+                </button>
+              </summary>
+              {{#if children.length}}
+              <div class="cb-shop-category-children">
+                {{#each children}}
+                <button type="button" class="cb-shop-category leaf" data-action="shop-category" data-category="{{id}}">
+                  <span>{{label}}</span><small>{{count}}</small>
+                </button>
+                {{/each}}
+              </div>
+              {{/if}}
+            </details>
+            {{/each}}
+          </div>
+          {{/if}}
+        </details>
+        {{/each}}
+      </nav>
+    </aside>
+
+    <main class="cb-shop-catalog">
+      <header class="cb-shop-catalog-header">
+        <div><h2>Items</h2><small>{{selectedCategoryPath}}</small></div>
+        <span><strong data-visible-count>{{shop.items.length}}</strong> available</span>
+      </header>
+      <div class="cb-shop-items">
+        {{#each shop.items}}
+        <article class="cb-shop-item" data-shop-item data-search="{{search}}" data-categories="{{categoriesText}}">
+          <button type="button" class="cb-shop-item-details" data-action="shop-details" data-uuid="{{uuid}}" title="Open {{name}} details">
+            <img src="{{img}}" alt="">
+            <span>
+              <strong>{{name}}</strong>
+              <small>{{sourceLabel}}{{#if focusPriceOverride}} · Focus price override{{/if}}</small>
+            </span>
+          </button>
+          <div class="cb-shop-item-buy">
+            <strong>{{priceLabel}}</strong>
+            {{#if affordable}}
+            <button type="button" data-action="shop-add" data-uuid="{{uuid}}">
+              <i class="fa-solid fa-cart-plus"></i> Add to Cart
+            </button>
+            {{else}}
+            <button type="button" disabled>Not Enough Gold</button>
+            {{/if}}
+          </div>
+        </article>
+        {{/each}}
+        <p class="cb-shop-empty-results" hidden>No mundane items match the current filters.</p>
+      </div>
+    </main>
+
+    <aside class="cb-shop-cart-panel">
+      <header>
+        <h2>Pending Cart</h2>
+        <span>{{shop.cartCount}} items</span>
+      </header>
+
+      <div class="cb-shop-cart-items">
+        {{#each shop.cart}}
+        <article class="cb-shop-cart-item">
+          <img src="{{img}}" alt="">
+          <span class="cb-shop-cart-title"><strong>{{name}}</strong><small>{{priceLabel}} each</small></span>
+          <div class="cb-shop-quantity">
+            <button type="button" data-action="shop-decrease" data-uuid="{{uuid}}" aria-label="Remove one {{name}}">−</button>
+            <output>{{quantity}}</output>
+            <button type="button" data-action="shop-increase" data-uuid="{{uuid}}" aria-label="Add one {{name}}">+</button>
+          </div>
+          <strong class="cb-shop-line-total">{{lineTotalLabel}}</strong>
+        </article>
+        {{else}}
+        <p class="cb-shop-empty-cart">No pending purchases.</p>
+        {{/each}}
+      </div>
+
+      <section class="cb-shop-budget">
+        <p class="cb-shop-checkout-status {{#if shop.checkoutRequired}}pending{{else}}{{#if shop.checkoutComplete}}complete{{/if}}{{/if}}">
+          <i class="fa-solid {{#if shop.checkoutRequired}}fa-cart-arrow-down{{else}}{{#if shop.checkoutComplete}}fa-circle-check{{else}}fa-circle-info{{/if}}{{/if}}"></i>
+          <span>{{shop.checkoutMessage}}</span>
+        </p>
+        {{#if shop.existingCurrencyCp}}<p><span>Existing Currency</span><strong>{{shop.existingCurrencyLabel}}</strong></p>{{/if}}
+        <p><span>Class Gold</span><strong>{{shop.classGoldLabel}}</strong></p>
+        <p><span>Background Gold</span><strong>{{shop.backgroundGoldLabel}}</strong></p>
+        <p><span>GM Bonus Gold</span><strong>{{shop.bonusGoldLabel}}</strong></p>
+        <hr>
+        <p><span>Total Budget</span><strong>{{shop.totalBudgetLabel}}</strong></p>
+        <p><span>Spent</span><strong>{{shop.spentLabel}}</strong></p>
+        <p class="cb-shop-remaining {{#if shop.overspent}}invalid{{/if}}">
+          <span>Remaining</span><strong>{{shop.remainingLabel}}</strong>
+        </p>
+        <button type="button" class="cb-shop-checkout" data-action="shop-checkout"
+                {{#if shop.overspent}}disabled{{/if}} {{#if checkoutBusy}}disabled{{/if}}>
+          <i class="fa-solid fa-cash-register"></i>
+          <span><strong>Checkout</strong><small>Commit items and remaining currency</small></span>
+        </button>
+      </section>
+    </aside>
+  </div>
+</div>

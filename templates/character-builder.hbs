@@ -1,0 +1,517 @@
+<div class="cb-shell">
+  <aside class="cb-sidebar">
+    <header>
+      <h1>Character Builder</h1>
+    </header>
+
+    <label class="cb-character-name">
+      <span>Character Name</span>
+      <input type="text" name="characterName" value="{{characterName}}" autocomplete="off" maxlength="100">
+    </label>
+
+    <nav class="cb-steps">
+      {{#each steps}}
+      <button type="button" class="cb-step {{#if active}}active{{/if}} {{#if complete}}complete{{/if}}"
+              data-action="step" data-step="{{id}}">
+        <i class="fa-solid {{#if complete}}fa-circle-check{{else}}fa-circle{{/if}}"></i>
+        <span>{{label}}</span>
+      </button>
+      {{/each}}
+    </nav>
+
+    <section class="cb-draft-summary">
+      <h3>Current Build</h3>
+      <p><strong>Background:</strong> {{#if background}}{{background.name}}{{else}}—{{/if}}</p>
+      <p><strong>Species:</strong> {{#if species}}{{species.name}}{{else}}—{{/if}}</p>
+      <p><strong>Class:</strong> {{#if characterClass}}{{characterClass.name}} {{characterClass.system.levels}}{{else}}—{{/if}}</p>
+    </section>
+
+    <button type="button" class="cb-danger" data-action="discard">
+      <i class="fa-solid fa-trash"></i> Discard Draft
+    </button>
+  </aside>
+
+  <main class="cb-main">
+    {{#if (eq step "abilitiesBackground")}}
+    <section class="cb-step-content abilities-background-step">
+      <header class="cb-section-header">
+        <div>
+          <h2>Ability Scores & Background</h2>
+          <p>Build the base Ability Scores and choose the character's Background.</p>
+        </div>
+      </header>
+
+      <div class="cb-step-toolbar">
+        <div class="cb-methods">
+          {{#each enabledMethods}}
+          <label class="cb-method-card">
+            <input type="radio" name="abilityMethod" value="{{id}}" {{checked (eq ../abilityMethod id)}}>
+            <strong>{{label}}</strong>
+          </label>
+          {{/each}}
+        </div>
+        <div class="cb-primary-actions">
+          <button type="button" class="cb-primary-confirm" data-action="save-abilities-background"
+                  {{#unless selectedBackgroundUuid}}disabled{{/unless}}>
+            <i class="fa-solid fa-circle-check"></i>
+            <span><strong>Confirm</strong><small>Ability Scores & Background</small></span>
+          </button>
+          <button type="button" class="cb-primary-continue" data-action="continue"
+                  {{#unless state.abilitiesSaved}}disabled{{/unless}}>
+            <span>Continue</span><i class="fa-solid fa-chevron-right"></i>
+          </button>
+        </div>
+      </div>
+
+      {{#if (eq abilityMethod "roll")}}
+      <section class="cb-roll-panel">
+        <div class="cb-inline-heading">
+          <h3>Rolled Sets</h3>
+          <button type="button" data-action="roll-set" {{#unless canRollMore}}disabled{{/unless}}>
+            <i class="fa-solid fa-dice"></i> Roll 4d6, Drop Lowest
+          </button>
+        </div>
+        <p class="hint">Choose one complete set. Values from different sets cannot be mixed.</p>
+        <div class="cb-roll-sets">
+          {{#each rollSets}}
+          <button type="button" class="cb-roll-set {{#if selected}}selected{{/if}}"
+                  data-action="select-roll-set" data-index="{{index}}">
+            <strong>{{label}}</strong><span>{{valuesText}}</span>
+          </button>
+          {{else}}<p>No roll sets generated.</p>{{/each}}
+        </div>
+      </section>
+      {{/if}}
+
+      <div class="cb-theorycraft-grid">
+        <section class="cb-compact-abilities">
+          <header>
+            <h3>Base Ability Scores</h3>
+            {{#if (eq abilityMethod "pointBuy")}}
+            <span class="cb-budget {{#unless pointBuy.valid}}invalid{{/unless}}">{{pointBuy.remaining}} Points Remaining</span>
+            {{/if}}
+          </header>
+
+          <div class="cb-ability-table compact">
+            <div class="cb-ability-row header">
+              <span>Ability</span><span>Base</span><span>Background</span><span>Final</span>
+            </div>
+            {{#each abilities}}
+            <div class="cb-ability-row">
+              <strong>{{label}}</strong>
+              {{#if pointBuy}}
+              <div class="cb-score-stepper">
+                <button type="button" data-action="ability-adjust" data-ability="{{key}}" data-delta="-1"
+                        {{#unless canDecrease}}disabled{{/unless}} aria-label="Decrease {{label}}">−</button>
+                <output>{{base}}</output>
+                <button type="button" data-action="ability-adjust" data-ability="{{key}}" data-delta="1"
+                        {{#unless canIncrease}}disabled{{/unless}} aria-label="Increase {{label}}">+</button>
+              </div>
+              {{else if usesSelect}}
+              <select name="abilities.{{key}}">
+                {{#each options}}<option value="{{value}}" {{#if selected}}selected{{/if}}>{{value}}</option>{{/each}}
+              </select>
+              {{else}}
+              <input type="number" name="abilities.{{key}}" value="{{base}}" min="1" max="20" step="1">
+              {{/if}}
+              <span class="cb-bonus">{{#if bonus}}+{{bonus}}{{else}}—{{/if}}</span>
+              <strong class="cb-final-score">{{final}}</strong>
+            </div>
+            {{/each}}
+          </div>
+        </section>
+
+        <section class="cb-background-builder">
+          <header><h3>Background</h3></header>
+          <input type="hidden" name="selectedBackgroundUuid" value="{{selectedBackgroundUuid}}">
+          <details class="cb-background-picker">
+            <summary>
+              {{#if selectedBackgroundOption}}
+              <img src="{{selectedBackgroundOption.img}}" alt="">
+              <span><strong>{{selectedBackgroundOption.name}}</strong><small>{{selectedBackgroundOption.sourceLabel}}</small></span>
+              {{else}}
+              <i class="fa-solid fa-scroll"></i>
+              <span><strong>Choose a Background...</strong><small>Enabled sources only</small></span>
+              {{/if}}
+              <i class="fa-solid fa-chevron-down"></i>
+            </summary>
+            <div class="cb-background-picker-menu">
+              {{#each backgroundGroups}}
+              <section>
+                <h4>{{label}}</h4>
+                {{#each items}}
+                <button type="button" class="cb-background-picker-option {{#if selected}}selected{{/if}}"
+                        data-action="select-background" data-uuid="{{uuid}}">
+                  <img src="{{img}}" alt=""><span>{{name}}</span>
+                </button>
+                {{/each}}
+              </section>
+              {{/each}}
+            </div>
+          </details>
+
+          {{#if backgroundSelection}}
+          <article class="cb-background-card">
+            <img src="{{backgroundSelection.img}}" alt="">
+            <div><h4>{{backgroundSelection.name}}</h4><span class="cb-badge">{{backgroundSelection.sourceLabel}}</span></div>
+          </article>
+
+          <section class="cb-background-features">
+            <h4>Background Components</h4>
+            {{#each backgroundSelection.advancementSummary}}
+            <article><strong>{{title}}</strong>{{#if hint}}<p>{{hint}}</p>{{/if}}</article>
+            {{/each}}
+          </section>
+
+          <details class="cb-background-description" open>
+            <summary>Background Details</summary>
+            <div>{{{backgroundSelection.description}}}</div>
+          </details>
+          {{else}}
+          <div class="cb-empty-background"><i class="fa-solid fa-scroll"></i><p>Select a Background to review its details.</p></div>
+          {{/if}}
+        </section>
+      </div>
+    </section>
+    {{/if}}
+
+    {{#if (eq step "species")}}
+    <section class="cb-step-content species-step">
+      <header class="cb-section-header">
+        <div><h2>Select Species</h2><p>Choose one Species, review its details, then confirm the selection.</p></div>
+      </header>
+
+      <div class="cb-step-toolbar">
+        <input type="search" class="cb-toolbar-search" placeholder="Search Species" data-filter-target="#cb-species-options">
+        <div class="cb-primary-actions">
+          <button type="button" class="cb-primary-confirm" data-action="confirm-primary" data-kind="species"
+                  {{#if speciesConfirmDisabled}}disabled{{/if}}>
+            <i class="fa-solid fa-circle-check"></i>
+            <span><strong>{{#if speciesConfirmed}}Confirmed{{else}}Confirm{{/if}}</strong><small>Species</small></span>
+          </button>
+          <button type="button" class="cb-primary-continue" data-action="continue" {{#unless speciesCanContinue}}disabled{{/unless}}>
+            <span>Continue</span><i class="fa-solid fa-chevron-right"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="cb-browser-layout">
+        <section class="cb-browser">
+          <div id="cb-species-options" class="cb-option-groups">
+            {{#each speciesGroups}}
+            <section class="cb-source-group">
+              <h3>{{label}}</h3>
+              {{#each items}}
+              <article class="cb-primary-option {{#if committed}}committed{{/if}} {{#if pending}}pending{{/if}}" data-search="{{search}}">
+                <label class="cb-primary-toggle" title="Choose {{name}}">
+                  <input type="checkbox" name="pendingSpecies" value="{{uuid}}" data-kind="species" {{checked checked}}>
+                </label>
+                <button type="button" class="cb-primary-details" data-action="preview" data-kind="species" data-uuid="{{uuid}}" title="View {{name}} details">
+                  <img src="{{img}}" alt="">
+                  <span><strong>{{name}}</strong><small>{{sourceLabel}}</small></span>
+                </button>
+              </article>
+              {{/each}}
+            </section>
+            {{/each}}
+          </div>
+        </section>
+        {{> "modules/dnd5e-character-builder/templates/partials/source-preview.hbs"}}
+      </div>
+    </section>
+    {{/if}}
+
+    {{#if (eq step "class")}}
+    <section class="cb-step-content class-step">
+      <header class="cb-section-header">
+        <div><h2>Select Class</h2><p>Choose one Class, review its level 1 features, then confirm the selection.</p></div>
+      </header>
+
+      <div class="cb-step-toolbar">
+        <input type="search" class="cb-toolbar-search" placeholder="Search Classes" data-filter-target="#cb-class-options">
+        <div class="cb-primary-actions">
+          <button type="button" class="cb-primary-confirm" data-action="confirm-primary" data-kind="class"
+                  {{#if classConfirmDisabled}}disabled{{/if}}>
+            <i class="fa-solid fa-circle-check"></i>
+            <span><strong>{{#if classConfirmed}}Confirmed{{else}}Confirm{{/if}}</strong><small>Class</small></span>
+          </button>
+          <button type="button" class="cb-primary-continue" data-action="continue" {{#unless classCanContinue}}disabled{{/unless}}>
+            <span>Continue</span><i class="fa-solid fa-chevron-right"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="cb-browser-layout">
+        <section class="cb-browser">
+          <div id="cb-class-options" class="cb-option-groups">
+            {{#each classGroups}}
+            <section class="cb-source-group">
+              <h3>{{label}}</h3>
+              {{#each items}}
+              <article class="cb-primary-option {{#if committed}}committed{{/if}} {{#if pending}}pending{{/if}}" data-search="{{search}}">
+                <label class="cb-primary-toggle" title="Choose {{name}}">
+                  <input type="checkbox" name="pendingClass" value="{{uuid}}" data-kind="class" {{checked checked}}>
+                </label>
+                <button type="button" class="cb-primary-details" data-action="preview" data-kind="class" data-uuid="{{uuid}}" title="View {{name}} details">
+                  <img src="{{img}}" alt="">
+                  <span><strong>{{name}}</strong><small>{{sourceLabel}}</small></span>
+                </button>
+              </article>
+              {{/each}}
+            </section>
+            {{/each}}
+          </div>
+        </section>
+        {{> "modules/dnd5e-character-builder/templates/partials/source-preview.hbs"}}
+      </div>
+    </section>
+    {{/if}}
+
+    {{#if (eq step "spells")}}
+    <section class="cb-step-content spells-step">
+      <header class="cb-section-header">
+        <div>
+          <h2>Spell Selection</h2>
+          <p>Select the spells granted by the Class, confirm the choices, then continue.</p>
+        </div>
+      </header>
+
+      <div class="cb-step-toolbar">
+        <div class="cb-toolbar-context">
+          {{#if characterClass}}<span class="cb-badge">{{spellAccess.className}} · {{spellAccess.modelLabel}}</span>{{/if}}
+        </div>
+        <div class="cb-primary-actions">
+          <button type="button" class="cb-primary-confirm" data-action="save-spell-access"
+                  {{#unless characterClass}}disabled{{else}}{{#if state.spellAccessSaved}}disabled{{/if}}{{/unless}}>
+            <i class="fa-solid fa-circle-check"></i>
+            <span><strong>{{#if state.spellAccessSaved}}Confirmed{{else}}Confirm{{/if}}</strong><small>Spell Selection</small></span>
+          </button>
+          <button type="button" class="cb-primary-continue" data-action="continue" {{#unless state.spellAccessSaved}}disabled{{/unless}}>
+            <span>Continue</span><i class="fa-solid fa-chevron-right"></i>
+          </button>
+        </div>
+      </div>
+
+      <p class="cb-spell-note">{{spellAccess.note}}</p>
+
+      {{#if spellAccess.needsCantripChoice}}
+      <section class="cb-spell-section" data-spell-selection data-maximum="{{spellAccess.cantripCount}}">
+        <div class="cb-inline-heading">
+          <h3>Choose Cantrips</h3>
+          <span data-selection-count>{{spellAccess.selectedCantripCount}} / {{spellAccess.cantripCount}}</span>
+        </div>
+        <input type="search" placeholder="Search Cantrips" data-filter-target="#cb-cantrip-options">
+        <div id="cb-cantrip-options" class="cb-spell-groups">
+          {{#each spellAccess.cantripGroups}}
+          <section class="cb-source-group">
+            <h4>{{label}}</h4>
+            <div class="cb-spell-grid">
+              {{#each items}}
+              <article class="cb-spell-option" data-search="{{search}}">
+                <label class="cb-spell-toggle" title="Select {{name}}">
+                  <input type="checkbox" name="spellAccess.cantrips" value="{{identifier}}" {{checked selected}}>
+                </label>
+                <button type="button" class="cb-spell-details" data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}} details">
+                  <img src="{{img}}" alt="">
+                  <span><strong>{{name}}</strong><small>{{sourceLabel}}</small></span>
+                </button>
+              </article>
+              {{/each}}
+            </div>
+          </section>
+          {{/each}}
+        </div>
+      </section>
+      {{/if}}
+
+      {{#if spellAccess.needsSpellChoice}}
+      <section class="cb-spell-section" data-spell-selection data-maximum="{{spellAccess.spellCount}}">
+        <div class="cb-inline-heading">
+          <h3>{{#if (eq spellAccess.model 'spellbook')}}Choose Starting Spellbook Spells{{else}}Choose Class Spells{{/if}}</h3>
+          <span data-selection-count>{{spellAccess.selectedSpellCount}} / {{spellAccess.spellCount}}</span>
+        </div>
+        <input type="search" placeholder="Search Level 1 Spells" data-filter-target="#cb-level-spell-options">
+        <div id="cb-level-spell-options" class="cb-spell-groups">
+          {{#each spellAccess.spellGroups}}
+          <section class="cb-source-group">
+            <h4>{{label}}</h4>
+            <div class="cb-spell-grid">
+              {{#each items}}
+              <article class="cb-spell-option" data-search="{{search}}">
+                <label class="cb-spell-toggle" title="Select {{name}}">
+                  <input type="checkbox" name="spellAccess.spells" value="{{identifier}}" {{checked selected}}>
+                </label>
+                <button type="button" class="cb-spell-details" data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}} details">
+                  <img src="{{img}}" alt="">
+                  <span><strong>{{name}}</strong><small>{{sourceLabel}}</small></span>
+                </button>
+              </article>
+              {{/each}}
+            </div>
+          </section>
+          {{/each}}
+        </div>
+      </section>
+      {{/if}}
+
+      {{#if (eq spellAccess.model "fullList")}}
+      <section class="cb-spell-section">
+        <div class="cb-inline-heading">
+          <h3>Automatically Added Class Spells</h3>
+          <span>{{spellAccess.automaticSpellCount}} spells</span>
+        </div>
+        <p class="hint">These spells will be placed on the Actor as unprepared class spells. The native sheet displays the preparation limit.</p>
+        <div class="cb-spell-groups cb-automatic-spells">
+          {{#each spellAccess.automaticSpellGroups}}
+          <section class="cb-source-group">
+            <h4>{{label}}</h4>
+            <div class="cb-spell-grid">
+              {{#each items}}
+              <article class="cb-spell-option readonly" data-search="{{search}}">
+                <button type="button" class="cb-spell-details" data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}} details">
+                  <img src="{{img}}" alt="">
+                  <span><strong>{{name}}</strong><small>{{sourceLabel}}</small></span>
+                </button>
+              </article>
+              {{/each}}
+            </div>
+          </section>
+          {{/each}}
+        </div>
+      </section>
+      {{/if}}
+    </section>
+    {{/if}}
+
+    {{#if (eq step "equipment")}}
+    <section class="cb-step-content equipment-step">
+      <header class="cb-section-header">
+        <div><h2>Starting Equipment</h2><p>Choose Class and Background equipment, then use the Shop for additional mundane items.</p></div>
+      </header>
+
+      <div class="cb-step-toolbar cb-equipment-toolbar">
+        <div class="cb-toolbar-context">
+          <span class="cb-toolbar-hint">The Shop budget follows the current Class and Background currency choices.</span>
+        </div>
+        <div class="cb-primary-actions cb-equipment-actions">
+          <button type="button" class="cb-primary-confirm cb-open-shop" data-action="open-shop" {{#unless equipmentPanels.length}}disabled{{/unless}}>
+            <i class="fa-solid fa-cart-shopping"></i>
+            <span><strong>Open Shop</strong><small>Configure additional equipment</small></span>
+          </button>
+          <button type="button" class="cb-primary-continue cb-confirm-equipment" data-action="save-equipment" {{#if shoppingCart.overspent}}disabled{{else}}{{#if shoppingCart.checkoutRequired}}disabled{{/if}}{{/if}}>
+            <i class="fa-solid fa-circle-check"></i><span>Confirm Equipment</span>
+          </button>
+        </div>
+      </div>
+
+      <section class="cb-main-shopping-cart {{#unless shoppingCart.hasCartItems}}empty{{/unless}}">
+        <header>
+          <h3>Shopping Cart</h3>
+          {{#if shoppingCart.hasCartItems}}
+          <span>{{shoppingCart.spentLabel}} spent · {{shoppingCart.remainingLabel}} remaining</span>
+          {{/if}}
+        </header>
+        {{#if shoppingCart.checkoutRequired}}
+        <p class="cb-shop-checkout-warning"><i class="fa-solid fa-triangle-exclamation"></i> Return to the Shop and complete Checkout before confirming equipment.</p>
+        {{/if}}
+        {{#if shoppingCart.hasCartItems}}
+        <div class="cb-main-cart-grid">
+          {{#each shoppingCart.cart}}
+          <article class="cb-main-cart-item">
+            <img src="{{img}}" alt="">
+            <span><strong>{{#if (gt quantity 1)}}{{quantity}}× {{/if}}{{name}}</strong><small>Shop Purchase · {{lineTotalLabel}}</small></span>
+
+          </article>
+          {{/each}}
+        </div>
+        {{/if}}
+      </section>
+
+      {{#each equipmentPanels}}
+      <section class="cb-equipment-panel" data-equipment-panel="{{itemId}}">
+        <header><img src="{{itemImg}}" alt=""><h3>{{itemName}}</h3></header>
+        {{#if fixedOnly}}
+        <p class="cb-spell-note">This source has one fixed starting option.</p>
+        <input type="hidden" name="equipment.{{itemId}}.mode" value="package">
+        {{else}}
+        <div class="cb-equipment-modes">
+          <label><input type="radio" name="equipment.{{itemId}}.mode" value="package" {{checked (eq mode 'package')}} {{#unless hasPackages}}disabled{{/unless}}> Equipment Package</label>
+          <label><input type="radio" name="equipment.{{itemId}}.mode" value="wealth" {{checked (eq mode 'wealth')}} {{#unless wealth}}disabled{{/unless}}> Starting Currency {{#if wealth}}({{wealth}} GP){{/if}}</label>
+        </div>
+        {{/if}}
+        <div data-package-options>
+          {{#if packages.length}}
+          {{#unless fixedOnly}}
+          <select name="equipment.{{itemId}}.packageIndex">
+            {{#each packages}}<option value="{{index}}" {{#if (eq index ../selectedPackage)}}selected{{/if}}>{{label}}</option>{{/each}}
+          </select>
+          {{/unless}}
+          {{/if}}
+          {{#each packages}}
+          <div class="cb-equipment-package" data-package-index="{{index}}">
+            {{#each entries}}
+              {{#if fixed}}
+              <div class="cb-equipment-entry fixed"><img src="{{img}}" alt=""><span>{{#if (gt count 1)}}{{count}}× {{/if}}{{name}}</span></div>
+              {{else}}
+              <label class="cb-equipment-entry choice">
+                <span>{{label}}{{#if (gt count 1)}} ({{count}}){{/if}}</span>
+                <select name="equipment.{{../../itemId}}.selection.{{id}}" required>
+                  <option value="">Choose...</option>
+                  {{#each groups}}
+                  <optgroup label="{{label}}">{{#each items}}<option value="{{uuid}}" {{#if selected}}selected{{/if}}>{{name}}</option>{{/each}}</optgroup>
+                  {{/each}}
+                </select>
+              </label>
+              {{/if}}
+            {{/each}}
+          </div>
+          {{/each}}
+        </div>
+      </section>
+      {{else}}<p class="notification warning">Select a Class and confirm a Background before choosing equipment.</p>{{/each}}
+
+    </section>
+    {{/if}}
+
+    {{#if (eq step "review")}}
+    <section class="cb-step-content review-step">
+      <header class="cb-section-header"><div><h2>Review Character</h2><p>The original Actor remains unchanged until Finish Character is pressed.</p></div></header>
+      <div class="cb-review-grid">
+        <section><h3>Origins and Class</h3><p><strong>Background:</strong> {{review.background}}</p><p><strong>Species:</strong> {{review.species}}</p><p><strong>Class:</strong> {{review.class}}</p><p><strong>Hit Points:</strong> {{review.hp}}</p></section>
+        <section><h3>Ability Scores</h3>{{#each review.abilities}}<p><strong>{{label}}:</strong> {{value}}</p>{{/each}}</section>
+        <section><h3>Currency</h3><p>PP {{review.currency.pp}} · GP {{review.currency.gp}} · EP {{review.currency.ep}} · SP {{review.currency.sp}} · CP {{review.currency.cp}}</p></section>
+      </div>
+
+      <section class="cb-summary-list"><h3>Features and Feats ({{review.feats.length}})</h3><div class="cb-item-grid">
+        {{#each review.feats}}<button type="button" class="cb-mini-item" data-action="open-document" data-uuid="{{uuid}}" title="{{name}}"><img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{source}}</small></span></button>{{/each}}
+      </div></section>
+      <section class="cb-summary-list"><h3>Spells ({{review.spells.length}})</h3><div class="cb-item-grid">
+        {{#each review.spells}}<button type="button" class="cb-mini-item" data-action="open-document" data-uuid="{{uuid}}" title="{{name}}"><img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{source}}</small></span></button>{{/each}}
+      </div></section>
+      <section class="cb-summary-list"><h3>Equipment ({{review.equipment.length}})</h3><div class="cb-item-grid">
+        {{#each review.equipment}}<button type="button" class="cb-mini-item" data-action="open-document" data-uuid="{{uuid}}" title="{{name}}"><img src="{{img}}" alt=""><span><strong>{{#if (gt quantity 1)}}{{quantity}}× {{/if}}{{name}}</strong><small>{{source}}</small></span></button>{{/each}}
+      </div></section>
+    </section>
+    {{/if}}
+
+    <footer class="cb-navigation {{#if (eq step 'review')}}review-actions{{/if}}">
+      <button type="button" data-action="back" {{#if (eq step 'abilitiesBackground')}}disabled{{/if}}><i class="fa-solid fa-chevron-left"></i> Back</button>
+      {{#if (eq step "review")}}
+      <button type="button" class="cb-finish-character" data-action="finalize" {{#unless canFinalize}}disabled{{/unless}}>
+        <i class="fa-solid fa-circle-check"></i>
+        <span><strong>Finish Character</strong><small>Apply the completed Draft</small></span>
+      </button>
+      {{else if (eq step "abilitiesBackground")}}
+      <span class="cb-footer-status">Confirm the current selections above to continue.</span>
+      {{else if (eq step "species")}}
+      <span class="cb-footer-status">Confirm the Species above to continue.</span>
+      {{else if (eq step "class")}}
+      <span class="cb-footer-status">Confirm the Class above to continue.</span>
+      {{else if (eq step "spells")}}
+      <span class="cb-footer-status">Confirm Spell Selection above to continue.</span>
+      {{else if (eq step "equipment")}}
+      <span class="cb-footer-status">Confirm the complete equipment and Shopping Cart selection above.</span>
+      {{/if}}
+    </footer>
+  </main>
+</div>
