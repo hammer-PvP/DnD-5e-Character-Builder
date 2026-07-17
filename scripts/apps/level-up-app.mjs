@@ -132,7 +132,8 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       element.addEventListener("click", event => this.#onAction(event));
     });
     root.querySelectorAll('[name^="levelUp.invocation."], [name^="levelUp.replaceInvocation."]').forEach(input => {
-      input.addEventListener("change", () => {
+      input.addEventListener("change", event => {
+        this.#clearReplacementDownstream(event.currentTarget);
         this.#refreshInvocationSelectionState();
         this.#refreshSpellSelectionState();
       });
@@ -140,8 +141,11 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     root.querySelectorAll("[data-spell-selection-control]").forEach(input => {
       input.addEventListener("change", () => this.#refreshSpellSelectionState());
     });
-    root.querySelectorAll('[name^="levelUp.replaceSpell."]').forEach(input => {
-      input.addEventListener("change", () => this.#refreshSpellSelectionState());
+    root.querySelectorAll('[name^="levelUp.replaceSpell."], [name^="levelUp.replaceCantrip."], [name^="levelUp.featureReplace."], [name^="levelUp.itemReplace."], [name^="levelUp.featureOption."], [name="levelUp.land"], [name="levelUp.wildShapeForms"], [name^="levelUp.featureSpell."], [name^="levelUp.featureTarget."]').forEach(input => {
+      input.addEventListener("change", event => {
+        this.#clearReplacementDownstream(event.currentTarget);
+        this.#refreshSpellSelectionState();
+      });
     });
     this.#refreshInvocationSelectionState();
     this.#refreshSpellSelectionState();
@@ -201,9 +205,13 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
         }
       }
     } catch (error) {
-      console.error(`${MODULE_ID} | Level Up action failed.`, error);
-      ui.notifications.error(`Level Up failed: ${error.message}`);
+      console.error(`${MODULE_ID} | Level Up action failed.`, error?.diagnostic ?? error);
       this.busy = false;
+      if (error?.structuralLevelUp) {
+        await this.#handleStructuralLevelUpError(error);
+        return;
+      }
+      ui.notifications.error(`Level Up failed: ${error.message}`, { permanent: true });
       this.render({ force: true });
     }
   }
@@ -456,6 +464,27 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     return rows;
   }
 
+  #clearReplacementDownstream(input) {
+    if (!(input instanceof HTMLSelectElement) || !String(input.name ?? "").endsWith(".remove")) return;
+    const name = String(input.name);
+    let add = null;
+    let target = null;
+    if (name === "levelUp.replaceInvocation.remove") {
+      const section = input.closest("[data-invocation-replacement]");
+      add = section?.querySelector('[name="levelUp.replaceInvocation.add"]');
+      target = section?.querySelector('[name="levelUp.replaceInvocation.target"]');
+    } else if (name === "levelUp.replaceSpell.remove") {
+      add = this.element.querySelector('[name="levelUp.replaceSpell.add"]');
+    } else if (name === "levelUp.replaceCantrip.remove") {
+      add = this.element.querySelector('[name="levelUp.replaceCantrip.add"]');
+    } else {
+      const section = input.closest("[data-feature-replacement]");
+      add = section?.querySelector("[data-feature-replace-add]");
+    }
+    if (add) add.value = "";
+    if (target) target.value = "";
+  }
+
   #refreshInvocationSelectionState() {
     const root = this.element;
     const selectionRoot = root.querySelector("[data-spell-selection-root]");
@@ -662,6 +691,92 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       everySectionComplete &&= complete;
     }
 
+    const managedSpellControls = [...selectionRoot.querySelectorAll("input[type=checkbox][data-managed-spell-identifier]")];
+    const managedSelectedByIdentifier = new Map();
+    for (const control of managedSpellControls.filter(control => control.checked)) {
+      const identifier = control.dataset.managedSpellIdentifier;
+      const rows = managedSelectedByIdentifier.get(identifier) ?? [];
+      rows.push(control);
+      managedSelectedByIdentifier.set(identifier, rows);
+    }
+    for (const control of managedSpellControls) {
+      const identifier = control.dataset.managedSpellIdentifier;
+      const selectedAsBase = selectedByIdentifier.has(identifier);
+      const duplicateManaged = (managedSelectedByIdentifier.get(identifier) ?? []).some(row => row !== control);
+      const duplicate = selectedAsBase || duplicateManaged || replacementIdentifier === identifier;
+      if (!control.checked) control.disabled = duplicate;
+      if (control.checked && duplicate) conflict = true;
+      const card = control.closest("[data-spell-option]");
+      card?.classList.toggle("duplicate-disabled", !control.checked && duplicate);
+      if (card && duplicate) card.title = "Already selected or known through another spell choice.";
+      else if (card) card.removeAttribute("title");
+    }
+    for (const control of controls) {
+      const duplicateManaged = managedSelectedByIdentifier.has(control.dataset.spellIdentifier);
+      if (!control.checked && duplicateManaged) control.disabled = true;
+      if (control.checked && duplicateManaged) conflict = true;
+      control.closest("[data-spell-option]")?.classList.toggle("duplicate-disabled", !control.checked && duplicateManaged);
+    }
+
+    const pendingSpellIdentifiers = new Set(selectedControls.map(control => control.dataset.spellIdentifier).filter(Boolean));
+    for (const control of selectionRoot.querySelectorAll('[data-managed-target-identifier][data-pending="true"]')) {
+      const eligible = pendingSpellIdentifiers.has(control.dataset.managedTargetIdentifier);
+      control.disabled = !eligible;
+      if (!eligible) control.checked = false;
+      const card = control.closest("[data-spell-option]");
+      card?.classList.toggle("duplicate-disabled", !eligible);
+      if (card) card.title = eligible ? "Selected during this Level Up." : "Select this spell in the Wizard spellbook choices above first.";
+    }
+
+    let managedSectionsComplete = true;
+    for (const section of selectionRoot.querySelectorAll("[data-managed-selection-section]")) {
+      const expected = Number(section.dataset.required ?? 0);
+      const controls = [...section.querySelectorAll("input[type=checkbox][data-managed-selection-control]")];
+      const selected = controls.filter(control => control.checked).length;
+      section.querySelectorAll("[data-managed-selection-count]").forEach(node => {
+        node.textContent = `${selected} / ${expected}`;
+      });
+      const complete = selected === expected;
+      section.classList.toggle("complete", complete);
+      section.classList.toggle("invalid", selected > expected);
+      managedSectionsComplete &&= complete;
+    }
+
+    let managedSelectsComplete = true;
+    for (const select of selectionRoot.querySelectorAll("[data-managed-required-select]")) {
+      managedSelectsComplete &&= Boolean(select.value);
+      select.closest("[data-managed-select-section]")?.classList.toggle("invalid", !select.value);
+    }
+
+    let optionalPairsComplete = true;
+    for (const section of selectionRoot.querySelectorAll("[data-optional-pair]")) {
+      const remove = section.querySelector("[data-optional-pair-remove]");
+      const add = section.querySelector("[data-optional-pair-add]");
+      const complete = Boolean(remove?.value) === Boolean(add?.value);
+      optionalPairsComplete &&= complete;
+      section.classList.toggle("invalid", !complete);
+    }
+
+    let featureReplacementsComplete = true;
+    for (const section of selectionRoot.querySelectorAll("[data-feature-replacement]")) {
+      const remove = section.querySelector("[data-feature-replace-remove]");
+      const add = section.querySelector("[data-feature-replace-add]");
+      const selectedLevel = Number(remove?.selectedOptions?.[0]?.dataset.spellLevel ?? 0);
+      const sameLevel = section.dataset.sameLevel === "true";
+      if (sameLevel && add) {
+        const current = add.value;
+        for (const option of [...add.options].slice(1)) {
+          const eligible = !selectedLevel || Number(option.dataset.spellLevel ?? 0) === selectedLevel;
+          option.disabled = !eligible;
+          option.textContent = `${option.dataset.baseLabel ?? option.textContent}${eligible ? "" : ` — requires level ${selectedLevel}`}`;
+        }
+        if (current && add.selectedOptions?.[0]?.disabled) add.value = "";
+      }
+      const complete = Boolean(remove?.value) === Boolean(add?.value);
+      featureReplacementsComplete &&= complete;
+      section.classList.toggle("invalid", !complete);
+    }
+
     const expectedTotal = Number(selectionRoot.dataset.required ?? 0);
     const selectedTotal = selectedControls.length;
     const spellReplacementComplete = !replacement && !replacementRemove
@@ -703,6 +818,10 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     }
 
     const complete = everySectionComplete
+      && managedSectionsComplete
+      && managedSelectsComplete
+      && optionalPairsComplete
+      && featureReplacementsComplete
       && selectedTotal === expectedTotal
       && !conflict
       && spellReplacementComplete
@@ -713,6 +832,39 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
     const applyButton = selectionRoot.querySelector('[data-action="save-additional"]');
     if (applyButton && applyButton.dataset.busy !== "true") applyButton.disabled = !complete;
+  }
+
+  async #handleStructuralLevelUpError(error) {
+    const choice = foundry.utils.escapeHTML(error.choiceName ?? "The selected option");
+    const reason = foundry.utils.escapeHTML(error.reason ?? error.message ?? "The native Advancement result is inconsistent.");
+    const content = `<div class="cb-structural-error">
+      <p><strong>${choice} cannot be applied safely.</strong></p>
+      <p>${reason}</p>
+      <p>The native Advancement process is no longer in a safe state, so this pending Level Up must be restarted.</p>
+      <p><strong>Your live character has not been changed.</strong> The locked Hit Die result and GM Level Up grant will be preserved.</p>
+    </div>`;
+    const DialogV2 = foundry.applications.api.DialogV2;
+    if (DialogV2?.wait) {
+      await DialogV2.wait({
+        window: { title: error.title ?? "Level Up Must Be Restarted", modal: true },
+        content,
+        buttons: [{ action: "restart", label: "Restart Level Up", icon: "fa-solid fa-rotate-left", default: true }],
+        close: () => "restart"
+      });
+    } else {
+      await new Promise(resolve => {
+        new Dialog({
+          title: error.title ?? "Level Up Must Be Restarted",
+          content,
+          buttons: { restart: { label: "Restart Level Up", callback: resolve } },
+          default: "restart",
+          close: resolve
+        }).render(true);
+      });
+    }
+    this.draft = await LevelUpDraftManager.restartClassSelection(this.actor);
+    ui.notifications.warn("The pending Level Up was restarted safely. Choose the Class and complete the Level Up again.", { permanent: true });
+    this.render({ force: true });
   }
 
   async #confirm({ title, content, yes }) {

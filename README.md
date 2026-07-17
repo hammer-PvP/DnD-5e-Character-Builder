@@ -22,7 +22,10 @@ SRD 5.1 Legacy is not officially supported in this beta. It can remain disabled 
 - Transactional mundane Starting Equipment Shop with Checkout, exact purchase manifests, containers, quantity support, and GM Bonus Gold.
 - Review and recoverable application to the original Actor.
 
-## Level Up 0.9.4 beta
+## Level Up 0.9.4a private test beta
+
+> **Private test branch:** 0.9.4a is an installable Level Up test build only. It is not a GitHub release and does not include Runtime Character Management. The next public version is planned as 0.9.5.
+
 
 Level Up uses a separate hidden transaction Draft. The live Actor is unchanged until **Commit Level Up** succeeds.
 
@@ -71,13 +74,31 @@ The Level Up interface uses the same confirmation pattern as level 1 creation: *
 - Each cantrip-targeted Invocation displays its chosen target on the Invocation feature row, and each affected cantrip displays the names of the Invocations augmenting it. Repeatable `Agonizing Blast` instances retain independent targets.
 - Review lists only augment relationships changed by the current transaction, not unchanged active augments inherited from another Class.
 
+### 0.9.4a Level Up feature audit
+
+This private beta also adds Level Up-only handlers for:
+
+- College of Lore Magical Discoveries and Bard Magical Secrets;
+- Druid Known Wild Shape Forms and initial Circle of the Land configuration;
+- Eldritch Knight and Arcane Trickster spell progression;
+- Abjuration, Divination, Evocation, and Illusion Savant;
+- Wizard Spell Mastery and Signature Spells initial configuration;
+- Warlock Mystic Arcanum acquisition and same-level replacement;
+- Hunter's Prey and Defensive Tactics;
+- Sorcerer Metamagic replacement;
+- Blessed Warrior and Druidic Warrior nested cantrip ownership and replacement;
+- structural validation of native feats, ASIs, Fighting Styles, Maneuvers, Metamagic, and other source Advancements;
+- feature ownership for automatic Domain, Oath, Circle, Patron, subclass-list, and feature-granted spells.
+
+Runtime free-cast buttons, rest-triggered maintenance, and other event monitoring are intentionally deferred. See `TESTING-0.9.4a.md` for the class-by-class test matrix.
+
 ## Transaction model
 
 Character creation, Shop Checkout, native Level Up Advancements, module-managed Level Up choices, and final Level Up commit all use recoverable Draft transactions. The module never calls `Actor#prepareData` manually. Foundry and D&D5e prepare documents after normal updates.
 
 ## Beta testing priorities
 
-Test single-Class advancement, multiclass entry, subclass acquisition, every HP method, XP and Milestone availability, full-list and limited spellcasters, Wizard Savant features, Warlock repeatable invocations, cantrip-targeted invocations, feature-granted spell deduplication, and Actor JSON output after Commit Level Up.
+Follow `TESTING-0.9.4a.md`. The highest-value tests are Lore Bard 5→6 and 9→10, Druid 1→2 and Land Druid 2→3, Battle Master 2→3, Eldritch Knight and Arcane Trickster 2→3, Sorcerer 2→3, Blessed Warrior and Druidic Warrior, Wizard 17→18 and 19→20, and Warlock 10→11. Export Actor JSON after every successful commit.
 
 ## Repository
 

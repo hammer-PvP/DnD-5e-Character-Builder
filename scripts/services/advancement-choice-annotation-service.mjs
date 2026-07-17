@@ -8,7 +8,7 @@ import { MODULE_ID } from "../constants.mjs";
 export class AdvancementChoiceAnnotationService {
   static FLAG = "advancementChoiceBadges";
   static SCHEMA_FLAG = "advancementChoiceBadgeSchema";
-  static SCHEMA_VERSION = 2;
+  static SCHEMA_VERSION = 3;
 
   static getBadges(item) {
     return foundry.utils.deepClone(item?.getFlag(MODULE_ID, this.FLAG) ?? []);
@@ -120,7 +120,151 @@ export class AdvancementChoiceAnnotationService {
         });
       }
     }
+    for (const spell of actor.items.filter(item => item.type === "spell")) {
+      for (const owner of spell.getFlag(MODULE_ID, "featureSpellOwners") ?? []) {
+        if (scope?.transactionId && owner.transactionId !== scope.transactionId) continue;
+        if (owner.classIdentifier && owner.classIdentifier !== selectedClassIdentifier) continue;
+        const category = this.#featureSpellCategory(owner);
+        rows.push({
+          targetItemId: spell.id,
+          badge: {
+            advancementId: owner.featureItemId ?? owner.category,
+            advancementType: "ManagedFeatureSpell",
+            advancementTitle: owner.label ?? category,
+            level: Number(owner.acquiredAtClassLevel ?? targetClassLevel),
+            kind: "feature-spell",
+            icon: this.#featureSpellIcon(owner.category),
+            category,
+            values: [spell.name],
+            label: category,
+            tooltip: this.#featureSpellTooltip(owner, spell),
+            context: "levelUp",
+            transactionId: scope.transactionId ?? owner.transactionId ?? null,
+            characterLevel: Number(scope.targetCharacterLevel ?? owner.acquiredAtCharacterLevel ?? 0),
+            classIdentifier: selectedClassIdentifier,
+            classLevel: targetClassLevel,
+            sourceItemId: owner.featureItemId ?? owner.ownerItemId ?? owner.classItemId,
+            targetItemId: spell.id
+          }
+        });
+      }
+    }
+
+    for (const feature of actor.items.filter(item => item.type === "feat")) {
+      const choice = feature.getFlag(MODULE_ID, "managedFeatureChoice");
+      if (choice && (!scope?.transactionId || choice.transactionId === scope.transactionId)
+        && (!choice.classIdentifier || choice.classIdentifier === selectedClassIdentifier)) {
+        rows.push({
+          targetItemId: feature.id,
+          badge: {
+            advancementId: feature.id,
+            advancementType: "ManagedFeatureChoice",
+            advancementTitle: feature.name,
+            level: Number(choice.acquiredAtClassLevel ?? targetClassLevel),
+            kind: "managed-feature-choice",
+            icon: "fa-solid fa-list-check",
+            category: feature.name,
+            values: [choice.label],
+            label: choice.label,
+            tooltip: `${feature.name}: ${choice.label}`,
+            context: "levelUp",
+            transactionId: scope.transactionId ?? choice.transactionId ?? null,
+            characterLevel: Number(scope.targetCharacterLevel ?? choice.acquiredAtCharacterLevel ?? 0),
+            classIdentifier: selectedClassIdentifier,
+            classLevel: targetClassLevel,
+            sourceItemId: choice.classItemId ?? feature.id,
+            targetItemId: feature.id
+          }
+        });
+      }
+
+      const allForms = feature.getFlag(MODULE_ID, "knownWildShapeForms") ?? [];
+      const forms = scope?.transactionId
+        ? allForms.filter(row => row.transactionId === scope.transactionId)
+        : allForms;
+      if (forms.length && selectedClassIdentifier === "druid") {
+        rows.push({
+          targetItemId: feature.id,
+          badge: {
+            advancementId: "known-wild-shape-forms",
+            advancementType: "ManagedActorChoice",
+            advancementTitle: "Known Forms",
+            level: Number(forms[0]?.acquiredAtClassLevel ?? targetClassLevel),
+            kind: "known-forms",
+            icon: "fa-solid fa-paw",
+            category: "Known Forms",
+            values: forms.map(row => row.name),
+            label: `Known Forms: ${forms.map(row => row.name).join(", ")}`,
+            tooltip: `Known Wild Shape Forms: ${forms.map(row => row.name).join(", ")}`,
+            context: "levelUp",
+            transactionId: scope.transactionId ?? forms[0]?.transactionId ?? null,
+            characterLevel: Number(scope.targetCharacterLevel ?? forms[0]?.acquiredAtCharacterLevel ?? 0),
+            classIdentifier: "druid",
+            classLevel: targetClassLevel,
+            sourceItemId: feature.id,
+            targetItemId: feature.id
+          }
+        });
+      }
+
+      const land = feature.getFlag(MODULE_ID, "circleLand");
+      if (land && selectedClassIdentifier === "druid"
+        && (!scope?.transactionId || land.transactionId === scope.transactionId)) {
+        rows.push({
+          targetItemId: feature.id,
+          badge: {
+            advancementId: "circle-land",
+            advancementType: "ManagedFeatureChoice",
+            advancementTitle: "Circle of the Land",
+            level: Number(land.configuredAtDruidLevel ?? targetClassLevel),
+            kind: "circle-land",
+            icon: "fa-solid fa-leaf",
+            category: "Land",
+            values: [land.label],
+            label: `Land: ${land.label}`,
+            tooltip: `Circle of the Land: ${land.label}`,
+            context: "levelUp",
+            transactionId: scope.transactionId ?? land.transactionId ?? null,
+            characterLevel: Number(scope.targetCharacterLevel ?? 0),
+            classIdentifier: "druid",
+            classLevel: targetClassLevel,
+            sourceItemId: land.classItemId ?? feature.id,
+            targetItemId: feature.id
+          }
+        });
+      }
+    }
+
     return rows;
+  }
+
+  static #featureSpellCategory(owner) {
+    if (owner.category === "spell-mastery") return "Spell Mastery";
+    if (owner.category === "signature-spell") return owner.signaturePosition ? `Signature Spell ${owner.signaturePosition}` : "Signature Spell";
+    if (owner.category === "mystic-arcanum") return `Mystic Arcanum · Level ${owner.spellLevel}`;
+    if (owner.category === "magical-discoveries") return "Magical Discoveries";
+    if (owner.category === "magical-secrets") return "Magical Secrets";
+    if (owner.category === "wizard-savant") return owner.label ?? "Wizard Savant";
+    if (owner.category === "circle-of-the-land-spells") return "Circle of the Land Spell";
+    return owner.label ?? this.#humanize(owner.category ?? "Feature Spell");
+  }
+
+  static #featureSpellIcon(category) {
+    if (category === "mystic-arcanum") return "fa-solid fa-eye";
+    if (category === "spell-mastery") return "fa-solid fa-infinity";
+    if (category === "signature-spell") return "fa-solid fa-signature";
+    if (category === "magical-secrets") return "fa-solid fa-book-sparkles";
+    if (category === "wizard-savant") return "fa-solid fa-graduation-cap";
+    if (category === "circle-of-the-land-spells") return "fa-solid fa-leaf";
+    return "fa-solid fa-wand-magic-sparkles";
+  }
+
+  static #featureSpellTooltip(owner, spell) {
+    const details = [this.#featureSpellCategory(owner), spell.name];
+    if (owner.trackerActivityName) details.push(owner.trackerActivityName);
+    if (owner.unlimitedFreeCast) details.push("Free cast at base level; no upcast");
+    if (owner.category === "mystic-arcanum") details.push("1/Long Rest; no Pact Slot");
+    return details.join(" · ");
   }
 
   static #isScopeSource(item, selectedClassIdentifier) {

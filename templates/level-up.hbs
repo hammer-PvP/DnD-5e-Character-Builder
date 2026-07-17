@@ -330,6 +330,156 @@
       </section>
       {{/if}}
 
+      {{#if rules.cantripReplacement.available}}
+      <section class="cb-choice-section" data-optional-pair>
+        <h3>Optional Cantrip Replacement</h3>
+        <div class="cb-replacement-row">
+          <label>Replace
+            <select name="levelUp.replaceCantrip.remove" data-optional-pair-remove>
+              <option value="">No replacement</option>
+              {{#each rules.cantripReplacement.existing}}<option value="{{id}}" {{#if (eq ../rules.cantripReplacement.removeId id)}}selected{{/if}}>{{name}}</option>{{/each}}
+            </select>
+          </label>
+          <i class="fa-solid fa-arrow-right"></i>
+          <label>With
+            <select name="levelUp.replaceCantrip.add" data-optional-pair-add>
+              <option value="">No replacement</option>
+              {{#each rules.cantripReplacement.options}}<option value="{{identifier}}" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{#if disabled}}disabled{{/if}} {{#if (eq ../rules.cantripReplacement.addIdentifier identifier)}}selected{{/if}}>{{name}}{{#if disabled}} — already selected{{/if}}</option>{{/each}}
+            </select>
+          </label>
+        </div>
+      </section>
+      {{/if}}
+
+      {{#each rules.features.spellSections}}
+      <section class="cb-choice-section cb-spell-selection-section cb-managed-selection-section" data-managed-selection-section data-required="{{count}}">
+        <header class="cb-choice-section-header"><div><h3>{{title}}</h3><p>{{note}}</p></div><strong data-managed-selection-count>{{selectedCount}} / {{count}}</strong></header>
+        {{#each levelGroups}}
+        <div class="cb-spell-level-group" data-spell-level-group>
+          <button type="button" class="cb-spell-level-toggle" data-action="toggle-spell-level" aria-expanded="true"><span>{{label}}</span><i class="fa-solid fa-chevron-up" data-collapse-icon></i></button>
+          <div class="cb-spell-level-content">
+            {{#each groups}}
+            <h5 class="cb-source-heading">{{label}}</h5>
+            <div class="cb-choice-grid">
+              {{#each items}}
+              <article class="cb-choice-card cb-spell-choice-card" data-spell-option>
+                <input type="checkbox" name="levelUp.featureSpell.{{../../../id}}" value="{{identifier}}" data-managed-selection-control data-managed-spell-identifier="{{identifier}}" {{checked checked}}>
+                <button type="button" class="cb-spell-choice-preview" data-action="open-document" data-uuid="{{uuid}}"><img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}}</small></span></button>
+              </article>
+              {{/each}}
+            </div>
+            {{/each}}
+          </div>
+        </div>
+        {{/each}}
+      </section>
+      {{/each}}
+
+      {{#each rules.features.targetSpellSections}}
+      <section class="cb-choice-section cb-managed-selection-section" data-managed-selection-section data-required="{{count}}">
+        <header class="cb-choice-section-header"><div><h3>{{title}}</h3><p>{{note}}</p></div><strong data-managed-selection-count>{{selectedCount}} / {{count}}</strong></header>
+        <div class="cb-choice-grid">
+          {{#each items}}
+          <article class="cb-choice-card cb-spell-choice-card" data-spell-option>
+            <input type="checkbox" name="levelUp.featureTarget.{{../id}}" value="{{id}}" data-managed-selection-control data-feature-target="{{../id}}" data-managed-target-identifier="{{identifier}}" data-pending="{{pending}}" {{checked checked}}>
+            <button type="button" class="cb-spell-choice-preview" data-action="open-document" data-uuid="{{sourceUuid}}" {{#unless sourceUuid}}disabled{{/unless}}><img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}}{{#if pending}} · selected above{{/if}}</small></span></button>
+          </article>
+          {{/each}}
+        </div>
+      </section>
+      {{/each}}
+
+      {{#each rules.features.replacementSections}}
+      {{#if available}}
+      <section class="cb-choice-section" data-feature-replacement data-same-level="{{sameLevel}}">
+        <h3>{{title}}</h3><p>{{note}}</p>
+        <div class="cb-replacement-row">
+          <label>Replace
+            <select name="levelUp.featureReplace.{{id}}.remove" data-feature-replace-remove>
+              <option value="">No replacement</option>
+              {{#each existing}}<option value="{{id}}" data-spell-level="{{level}}" {{#if (eq ../selectedRemoveId id)}}selected{{/if}}>{{name}} — Level {{level}}</option>{{/each}}
+            </select>
+          </label>
+          <i class="fa-solid fa-arrow-right"></i>
+          <label>With
+            <select name="levelUp.featureReplace.{{id}}.add" data-feature-replace-add>
+              <option value="">No replacement</option>
+              {{#each options}}<option value="{{identifier}}" data-spell-level="{{level}}" data-base-label="{{name}} — {{levelLabel}}" {{#if (eq ../selectedAddValue identifier)}}selected{{/if}}>{{name}} — {{levelLabel}}</option>{{/each}}
+            </select>
+          </label>
+        </div>
+      </section>
+      {{/if}}
+      {{/each}}
+
+      {{#each rules.features.itemReplacementSections}}
+      {{#if available}}
+      <section class="cb-choice-section" data-feature-replacement data-same-level="false">
+        <h3>{{title}}</h3><p>{{note}}</p>
+        <div class="cb-replacement-row">
+          <label>Replace
+            <select name="levelUp.itemReplace.{{id}}.remove" data-feature-replace-remove>
+              <option value="">No replacement</option>
+              {{#each existing}}<option value="{{id}}" {{#if (eq ../selectedRemoveId id)}}selected{{/if}}>{{name}}</option>{{/each}}
+            </select>
+          </label>
+          <i class="fa-solid fa-arrow-right"></i>
+          <label>With
+            <select name="levelUp.itemReplace.{{id}}.add" data-feature-replace-add>
+              <option value="">No replacement</option>
+              {{#each options}}<option value="{{uuid}}" data-base-label="{{name}}" {{#if (eq ../selectedAddUuid uuid)}}selected{{/if}}>{{name}}</option>{{/each}}
+            </select>
+          </label>
+        </div>
+      </section>
+      {{/if}}
+      {{/each}}
+
+      {{#each rules.features.optionSections}}
+      <section class="cb-choice-section cb-managed-select-section" data-managed-select-section>
+        <h3>{{title}}</h3><p>{{note}}</p>
+        <label>{{title}}
+          <select name="levelUp.featureOption.{{id}}" data-managed-required-select required>
+            <option value="">Choose an option</option>
+            {{#each options}}<option value="{{value}}" {{#if (eq ../selected value)}}selected{{/if}}>{{label}}</option>{{/each}}
+          </select>
+        </label>
+      </section>
+      {{/each}}
+
+      {{#if rules.features.wildShape.count}}
+      <section class="cb-choice-section cb-managed-selection-section" data-managed-selection-section data-required="{{rules.features.wildShape.count}}">
+        <header class="cb-choice-section-header"><div><h3>Known Wild Shape Forms</h3><p>{{rules.features.wildShape.note}}</p></div><strong data-managed-selection-count>{{rules.features.wildShape.selectedCount}} / {{rules.features.wildShape.count}}</strong></header>
+        {{#each rules.features.wildShape.groups}}
+        <h5 class="cb-source-heading">{{label}}</h5>
+        <div class="cb-choice-grid">
+          {{#each items}}
+          <article class="cb-choice-card cb-spell-choice-card">
+            <input type="checkbox" name="levelUp.wildShapeForms" value="{{uuid}}" data-managed-selection-control {{checked checked}}>
+            <button type="button" class="cb-spell-choice-preview" data-action="open-document" data-uuid="{{uuid}}"><img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>CR {{crLabel}}{{#if fly}} · Fly{{/if}}</small></span></button>
+          </article>
+          {{/each}}
+        </div>
+        {{/each}}
+      </section>
+      {{/if}}
+
+      {{#if rules.features.land.featureItemId}}
+        {{#if rules.features.land.required}}
+        <section class="cb-choice-section cb-managed-select-section" data-managed-select-section>
+          <h3>Circle of the Land</h3><p>{{rules.features.land.note}}</p>
+          <label>Land
+            <select name="levelUp.land" data-managed-required-select required>
+              <option value="">Choose a land</option>
+              {{#each rules.features.land.options}}<option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>{{/each}}
+            </select>
+          </label>
+        </section>
+        {{else}}
+        <section class="cb-choice-section"><h3>Circle of the Land</h3><p>Current land: <strong>{{rules.features.land.current}}</strong>. Newly unlocked Circle Spells will be applied automatically.</p></section>
+        {{/if}}
+      {{/if}}
+
       {{#if rules.invocations.count}}
       <section class="cb-choice-section cb-invocation-section" data-invocation-selection-section data-required="{{rules.invocations.count}}" data-target-class-level="{{rules.invocations.targetClassLevel}}" data-existing-invocations="{{rules.invocations.existingIdentifiersString}}">
         <header class="cb-choice-section-header"><div><h3>Eldritch Invocations</h3><p>{{rules.invocations.note}}</p></div><strong data-invocation-count>0 / {{rules.invocations.count}}</strong></header>
@@ -339,21 +489,25 @@
             <label>Invocation {{add index 1}}
               <select name="levelUp.invocation.{{index}}.uuid" data-invocation-select required>
                 <option value="">Choose an Invocation</option>
-                {{#each options}}
-                <option value="{{uuid}}"
-                  data-identifier="{{identifier}}"
-                  data-target-cantrip="{{targetCantrip}}"
-                  data-minimum-level="{{minimumLevel}}"
-                  data-prerequisites="{{prerequisiteIdentifiersString}}"
-                  data-prerequisite-labels="{{prerequisiteLabelsString}}"
-                  data-repeatable="{{repeatable}}"
-                  data-already-known="{{alreadyKnown}}"
-                  data-base-label="{{displayLabel}}"
-                  data-name="{{name}}"
-                  data-img="{{img}}"
-                  data-detail-meta="{{detailMeta}}"
-                  {{#if disabled}}disabled{{/if}}
-                  {{#if (eq ../selectedUuid uuid)}}selected{{/if}}>{{displayLabel}}{{#if disabled}} — {{disabledReason}}{{/if}}{{#if repeatable}} — Repeatable{{/if}}</option>
+                {{#each levelGroups}}
+                <optgroup label="{{label}}">
+                  {{#each items}}
+                  <option value="{{uuid}}"
+                    data-identifier="{{identifier}}"
+                    data-target-cantrip="{{targetCantrip}}"
+                    data-minimum-level="{{minimumLevel}}"
+                    data-prerequisites="{{prerequisiteIdentifiersString}}"
+                    data-prerequisite-labels="{{prerequisiteLabelsString}}"
+                    data-repeatable="{{repeatable}}"
+                    data-already-known="{{alreadyKnown}}"
+                    data-base-label="{{displayLabel}}"
+                    data-name="{{name}}"
+                    data-img="{{img}}"
+                    data-detail-meta="{{detailMeta}}"
+                    {{#if disabled}}disabled{{/if}}
+                    {{#if (eq ../../selectedUuid uuid)}}selected{{/if}}>{{displayLabel}}{{#if disabled}} — {{disabledReason}}{{/if}}{{#if repeatable}} — Repeatable{{/if}}</option>
+                  {{/each}}
+                </optgroup>
                 {{/each}}
               </select>
             </label>
@@ -387,28 +541,32 @@
           <label>Replace
             <select name="levelUp.replaceInvocation.remove">
               <option value="">No replacement</option>
-              {{#each rules.invocations.replacement.existing}}<option value="{{id}}" {{#if (eq ../rules.invocations.replacement.selectedRemoveId id)}}selected{{/if}}>{{name}}</option>{{/each}}
+              {{#each rules.invocations.replacement.existing}}<option value="{{id}}" {{#if blocked}}disabled{{/if}} {{#if (eq ../rules.invocations.replacement.selectedRemoveId id)}}selected{{/if}}>{{name}}{{#if blocked}} — {{disabledReason}}{{/if}}</option>{{/each}}
             </select>
           </label>
           <i class="fa-solid fa-arrow-right"></i>
           <label>With
             <select name="levelUp.replaceInvocation.add">
               <option value="">No replacement</option>
-              {{#each rules.invocations.replacement.options}}
-              <option value="{{uuid}}"
-                {{#if (eq ../rules.invocations.replacement.selectedUuid uuid)}}selected{{/if}}
-                data-identifier="{{identifier}}"
-                data-target-cantrip="{{targetCantrip}}"
-                data-minimum-level="{{minimumLevel}}"
-                data-prerequisites="{{prerequisiteIdentifiersString}}"
-                data-prerequisite-labels="{{prerequisiteLabelsString}}"
-                data-repeatable="{{repeatable}}"
-                data-already-known="{{alreadyKnown}}"
-                data-base-label="{{displayLabel}}"
-                data-name="{{name}}"
-                data-img="{{img}}"
-                data-detail-meta="{{detailMeta}}"
-                {{#if disabled}}disabled{{/if}}>{{displayLabel}}{{#if disabled}} — {{disabledReason}}{{/if}}</option>
+              {{#each rules.invocations.replacement.levelGroups}}
+              <optgroup label="{{label}}">
+                {{#each items}}
+                <option value="{{uuid}}"
+                  {{#if (eq ../../selectedUuid uuid)}}selected{{/if}}
+                  data-identifier="{{identifier}}"
+                  data-target-cantrip="{{targetCantrip}}"
+                  data-minimum-level="{{minimumLevel}}"
+                  data-prerequisites="{{prerequisiteIdentifiersString}}"
+                  data-prerequisite-labels="{{prerequisiteLabelsString}}"
+                  data-repeatable="{{repeatable}}"
+                  data-already-known="{{alreadyKnown}}"
+                  data-base-label="{{displayLabel}}"
+                  data-name="{{name}}"
+                  data-img="{{img}}"
+                  data-detail-meta="{{detailMeta}}"
+                  {{#if disabled}}disabled{{/if}}>{{displayLabel}}{{#if disabled}} — {{disabledReason}}{{/if}}</option>
+                {{/each}}
+              </optgroup>
               {{/each}}
             </select>
           </label>

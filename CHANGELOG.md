@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.4a Private Level Up Test Beta
+
+- Private installable test build only; not intended for GitHub publication. The next public release remains 0.9.5.
+- Keeps Runtime Character Management out of scope; this build only configures and validates results produced during Level Up.
+- Adds managed Level Up flows for Bard Magical Discoveries and Magical Secrets, Druid known Wild Shape forms and Circle of the Land, Eldritch Knight and Arcane Trickster spell progression, all four Wizard Savant schools, Wizard Spell Mastery and Signature Spells, Warlock Mystic Arcanum, and Hunter choices.
+- Adds feature-owned spell metadata and badges so automatic grants, always-prepared ownership, replacements, and future runtime handlers can remove only the state owned by the granting feature.
+- Audits native ItemGrant spell ownership and retains native preparation, activities, uses, and recovery.
+- Adds structural validation around native Advancements, including duplicate non-repeatable feats, explicit prerequisites, nested ItemChoice completion, and full pending-draft restart when native state is unsafe.
+- Adds the persistent blocking “Level Up Must Be Restarted” flow while keeping the live Actor unchanged and preserving the locked Hit Die result and GM grant.
+- Extends limited-caster spell progression for Eldritch Knight and Arcane Trickster and keeps Bard Magical Secrets pools active after Bard level 10.
+- Adds dependency-aware Eldritch Invocation replacement validation and level-grouped alphabetical invocation display.
+
 ## 0.9.4 Beta — Feature-Owned Badges and Safe Class Restart
 
 - Removes Advancement-choice badges from Character Creation and migrates legacy 0.9.2/0.9.3 badge flags out of Class, Background, Species, and other creation summaries.

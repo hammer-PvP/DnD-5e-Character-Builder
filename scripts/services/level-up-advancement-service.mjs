@@ -5,6 +5,8 @@ import { SourceResolver } from "./source-resolver.mjs";
 import { AdvancementService } from "./advancement-service.mjs";
 import { ItemGrantIntegrityService } from "./item-grant-integrity-service.mjs";
 import { AdvancementChoiceAnnotationService } from "./advancement-choice-annotation-service.mjs";
+import { NativeAdvancementValidationService, StructuralLevelUpError } from "./native-advancement-validation-service.mjs";
+import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.mjs";
 
 export class LevelUpAdvancementService {
   static async apply(draft, registry) {
@@ -15,6 +17,7 @@ export class LevelUpAdvancementService {
     const Manager = globalThis.dnd5e?.applications?.advancement?.AdvancementManager;
     if (!Manager) throw new Error("D&D5e AdvancementManager is unavailable.");
     const rollbackSnapshot = this.#snapshot(draft);
+    const beforeItemIds = new Set(draft.items.map(item => item.id));
 
     try {
       let manager;
@@ -62,10 +65,17 @@ export class LevelUpAdvancementService {
 
       await SourceResolver.enforceAllowedSources(draft, registry);
       await AdvancementService.dedupe(draft);
-      await ItemGrantIntegrityService.reconcile(draft, registry, {
+      const integrityResult = await ItemGrantIntegrityService.reconcile(draft, registry, {
         context: "levelUp",
         state,
         recoveryActor: manager.clone
+      });
+      await FeatureSpellOwnershipService.reconcile(draft, integrityResult, state);
+      await NativeAdvancementValidationService.validate(draft, {
+        state,
+        beforeItemIds,
+        beforeAbilities: rollbackSnapshot.system?.abilities ?? null,
+        workflow: "Class Progression"
       });
       await AdvancementChoiceAnnotationService.refresh(draft, { state: LevelUpDraftManager.getState(draft) });
 
@@ -105,6 +115,14 @@ export class LevelUpAdvancementService {
         await this.#restore(draft, rollbackSnapshot);
       } catch (rollbackError) {
         console.error(`${MODULE_ID} | Native Level Up rollback failed.`, rollbackError);
+      }
+      if (error?.structuralLevelUp) throw error;
+      const message = String(error?.message ?? error ?? "");
+      if (/must not have taken|prerequisite|not eligible|cannot be selected|advancement/i.test(message)) {
+        throw new StructuralLevelUpError("A native Advancement choice could not be applied safely.", {
+          reason: message.replace(/^\[[^\]]+\]\s*/, "") || "The selected native option is invalid.",
+          diagnostic: message
+        });
       }
       throw error;
     }

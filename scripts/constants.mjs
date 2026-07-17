@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.4";
-export const MODULE_BUILD = "community-beta-094-level-up-badges-and-hp-restart";
+export const MODULE_VERSION = "0.9.4a";
+export const MODULE_BUILD = "private-beta-094a-level-up-class-feature-audit";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {

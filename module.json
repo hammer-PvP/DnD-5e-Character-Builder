@@ -1,8 +1,8 @@
 {
   "id": "dnd5e-character-builder",
   "title": "Character Builder",
-  "description": "A guided D&D 2024 / SRD 5.2 Modern character creation and transactional Level Up module with native Advancements, source-aware ItemGrant integrity, Advancement choice badges, multiclass controls, persistent Hit Die rolls, spell access, and a mundane equipment Shop.",
-  "version": "0.9.4",
+  "description": "Private 0.9.4a Level Up test beta with managed PHB 2024 class-feature choices, native Advancement safety, and feature-owned spell metadata. Runtime Character Management is not included.",
+  "version": "0.9.4a",
   "authors": [
     {
       "name": "Raphael Andrade"
@@ -48,8 +48,5 @@
   "license": "LICENSE",
   "readme": "README.md",
   "url": "https://github.com/hammer-PvP/DnD-5e-Character-Builder",
-  "manifest": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/latest/download/module.json",
-  "download": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/download/v0.9.4/dnd5e-character-builder-v0.9.4.zip",
-  "bugs": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/issues",
-  "changelog": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/tag/v0.9.4"
+  "bugs": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/issues"
 }
