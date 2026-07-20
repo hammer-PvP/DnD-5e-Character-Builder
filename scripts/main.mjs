@@ -132,38 +132,41 @@ Hooks.on("getHeaderControlsApplicationV2", (app, controls) => {
   if (!actor || actor.type !== "character" || actor.getFlag(MODULE_ID, "isDraft") || actor.getFlag(MODULE_ID, "isLevelUpDraft")) return;
 
   const settings = LevelUpService.settings();
-  if (settings.levelUpMode !== "milestone") return;
-  if (!actor.items.some(item => item.type === "class") || LevelUpService.actorLevel(actor) >= 20) return;
-
   const eligibility = LevelUpService.eligibility(actor);
   const hasPending = eligibility.hasDraft || Boolean(actor.getFlag(MODULE_ID, "levelUpHitPointRoll"));
-  const granted = Boolean(actor.getFlag(MODULE_ID, "levelUpGrant")?.available);
-  const moduleControls = [{
-    action: "cbToggleLevelUpGrant",
-    label: granted ? "Revoke Level Up" : "Grant Level Up",
-    icon: granted ? "fa-solid fa-arrow-rotate-left" : "fa-solid fa-arrow-up",
-    visible: true,
-    disabled: hasPending,
-    onClick: async () => {
-      try {
-        if (hasPending) {
-          ui.notifications.warn("Finish or reset the pending Level Up before changing its GM grant.");
-          return;
+  const hasClass = actor.items.some(item => item.type === "class");
+  const belowLevelCap = LevelUpService.actorLevel(actor) < 20;
+  const moduleControls = [];
+
+  if (settings.levelUpMode === "milestone" && hasClass && belowLevelCap) {
+    const granted = Boolean(actor.getFlag(MODULE_ID, "levelUpGrant")?.available);
+    moduleControls.push({
+      action: "cbToggleLevelUpGrant",
+      label: granted ? "Revoke Level Up" : "Grant Level Up",
+      icon: granted ? "fa-solid fa-arrow-rotate-left" : "fa-solid fa-arrow-up",
+      visible: true,
+      disabled: hasPending,
+      onClick: async () => {
+        try {
+          if (hasPending) {
+            ui.notifications.warn("Finish or reset the pending Level Up before changing its GM grant.");
+            return;
+          }
+          if (actor.getFlag(MODULE_ID, "levelUpGrant")?.available) {
+            await LevelUpService.revoke(actor);
+            ui.notifications.info(`Level Up revoked for ${actor.name}.`);
+          } else {
+            await LevelUpService.grant(actor);
+            ui.notifications.info(`Level Up granted to ${actor.name}.`);
+          }
+          await app.render({ force: true });
+        } catch (error) {
+          console.error(`${MODULE_ID} | Grant Level Up failed.`, error);
+          ui.notifications.error(error.message);
         }
-        if (actor.getFlag(MODULE_ID, "levelUpGrant")?.available) {
-          await LevelUpService.revoke(actor);
-          ui.notifications.info(`Level Up revoked for ${actor.name}.`);
-        } else {
-          await LevelUpService.grant(actor);
-          ui.notifications.info(`Level Up granted to ${actor.name}.`);
-        }
-        await app.render({ force: true });
-      } catch (error) {
-        console.error(`${MODULE_ID} | Grant Level Up failed.`, error);
-        ui.notifications.error(error.message);
       }
-    }
-  }];
+    });
+  }
 
   if (hasPending) {
     moduleControls.push({
@@ -190,7 +193,7 @@ Hooks.on("getHeaderControlsApplicationV2", (app, controls) => {
     });
   }
 
-  controls.unshift(...moduleControls);
+  if (moduleControls.length) controls.unshift(...moduleControls);
 });
 
 async function confirmAction({ title, content, yes }) {
@@ -261,6 +264,7 @@ function injectCreationButton(actor, root) {
   const container = sheetProgressionContainer(root);
   if (!container) return;
   container.querySelector(".cb-level-up-sheet-button")?.remove();
+  container.classList.add("cb-start-slot-active");
   let button = container.querySelector(".cb-start-sheet-button");
   if (!button) {
     button = document.createElement("button");
@@ -282,6 +286,7 @@ function injectLevelUpButton(actor, root) {
   const container = sheetProgressionContainer(root);
   if (!container) return;
   container.querySelector(".cb-start-sheet-button")?.remove();
+  container.classList.remove("cb-start-slot-active");
 
   const eligibility = LevelUpService.eligibility(actor);
   let button = container.querySelector(".cb-level-up-sheet-button");

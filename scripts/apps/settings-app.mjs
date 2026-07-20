@@ -3,11 +3,13 @@ import { MODULE_ID, SOURCE_DEFINITIONS, defaultSettings } from "../constants.mjs
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
 export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(ApplicationV2) {
+  _settingsScrollTop = 0;
+
   static DEFAULT_OPTIONS = {
     id: "character-builder-settings",
     classes: ["character-builder", "settings-app"],
     tag: "form",
-    position: { width: 720, height: "auto" },
+    position: { width: 900, height: 820 },
     window: { title: "Character Builder Settings", resizable: true }
   };
 
@@ -35,6 +37,17 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
 
   _onRender() {
     const root = this.element;
+    const body = root.querySelector(".cb-settings-body");
+    if (body) {
+      body.scrollTop = this._settingsScrollTop;
+      body.addEventListener("scroll", () => {
+        this._settingsScrollTop = body.scrollTop;
+      }, { passive: true });
+    }
+    root.querySelector('[data-action="cancel"]')?.addEventListener("click", event => {
+      event.preventDefault();
+      this.close();
+    });
     root.querySelector('[data-action="save"]')?.addEventListener("click", event => this.#save(event));
     root.querySelectorAll('[data-action="move-source"]').forEach(button => {
       button.addEventListener("click", event => this.#moveSource(event));

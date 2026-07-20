@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.5";
-export const MODULE_BUILD = "community-beta-095-protected-creation-and-gm-progression";
+export const MODULE_VERSION = "0.9.5a";
+export const MODULE_BUILD = "community-beta-095a-conservative-maintenance";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
