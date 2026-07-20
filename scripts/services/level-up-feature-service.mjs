@@ -30,6 +30,13 @@ const LAND_SPELLS = Object.freeze({
   }
 });
 
+const LAND_RESISTANCES = Object.freeze({
+  arid: "fire",
+  polar: "cold",
+  temperate: "lightning",
+  tropical: "poison"
+});
+
 /**
  * Module-managed Level Up handlers for source features whose complete choice is
  * described in rules text rather than represented by a native Advancement.
@@ -48,7 +55,6 @@ export class LevelUpFeatureService {
     const spellSections = [];
     const targetSpellSections = [];
     const replacementSections = [];
-    const itemReplacementSections = [];
     const optionSections = [];
     let wildShape = this.#emptyWildShape();
     let land = this.#emptyLand();
@@ -57,15 +63,13 @@ export class LevelUpFeatureService {
       const discoveries = this.#feature(draft, "magical-discoveries");
       if (discoveries && oldClassLevel < 6 && newClassLevel >= 6) {
         const pool = await this.#spellListUnion(["cleric", "druid", "wizard"], registry);
-        const known = new Set(draft.items.filter(item => item.type === "spell").map(item => item.system?.identifier));
         spellSections.push(this.#spellSection({
           id: "magical-discoveries",
           title: "Magical Discoveries",
           note: "Choose two cantrips or leveled spells from the Cleric, Druid, or Wizard lists. Leveled spells must be available to this Bard level. These spells are always prepared and do not count against normal Bard prepared spells.",
           count: 2,
-          pool: pool.filter(option => Number(option.system?.level ?? 0) <= maximumSpellLevel && !known.has(option.identifier)),
+          pool: pool.filter(option => Number(option.system?.level ?? 0) <= maximumSpellLevel),
           selected: saved.spells?.["magical-discoveries"] ?? [],
-          disallowKnown: true,
           featureItemId: discoveries.id,
           category: "magical-discoveries",
           alwaysPrepared: true,
@@ -130,21 +134,18 @@ export class LevelUpFeatureService {
           special: "mystic-arcanum",
           sourceItem: "class:warlock"
         }, registry));
-      }
-      if (arcanumFeature && oldClassLevel >= 11) {
+      } else if (arcanumFeature && oldClassLevel >= 11) {
         const pool = await this.#classSpellPool("warlock", registry);
         replacementSections.push(this.#featureSpellReplacement({
           id: "mystic-arcanum",
           title: "Optional Mystic Arcanum Replacement",
-          note: "Replace at most one existing Mystic Arcanum. The new spell must have the same spell level as the selected Arcanum.",
+          note: "Replace at most one Mystic Arcanum. The new spell must have the same spell level as the selected Arcanum.",
           draft,
           pool: pool.filter(option => Number(option.system?.level ?? 0) >= 6),
           category: "mystic-arcanum",
           featureItemId: arcanumFeature.id,
           selected: saved.replacements?.["mystic-arcanum"] ?? null,
-          sameLevel: true,
-          sourceItem: "class:warlock",
-          ability: "cha"
+          sameLevel: true
         }));
       }
     }
@@ -195,18 +196,36 @@ export class LevelUpFeatureService {
       }
     }
 
-    if (identifier === "sorcerer" && oldClassLevel >= 2) {
-      const metamagic = await this.#nativeItemReplacementContext(draft, cls, registry, {
-        id: "metamagic",
-        advancementTitle: "Metamagic",
-        title: "Optional Metamagic Replacement",
-        note: "Replace at most one known Metamagic option with an option you do not know.",
-        selected: saved.itemReplacements?.metamagic ?? null
-      });
-      if (metamagic.available) itemReplacementSections.push(metamagic);
-    }
-
     if (identifier === "druid") {
+      const magician = this.primalOrderMagicianFeature(draft);
+      const magicianNeedsCantrip = magician && !this.#hasExactFeatureSpellOwner(draft, {
+        category: "primal-order-magician",
+        classItemId: cls.id,
+        featureItemId: magician.id
+      });
+      if (magician && ((oldClassLevel < 1 && newClassLevel >= 1) || magicianNeedsCantrip)) {
+        const pool = (await this.#classSpellPool("druid", registry))
+          .filter(option => Number(option.system?.level ?? 0) === 0);
+        spellSections.push(this.#spellSection({
+          id: "primal-order-magician",
+          title: magicianNeedsCantrip && oldClassLevel >= 1
+            ? "Repair Missing Primal Order: Magician Cantrip"
+            : "Primal Order: Magician",
+          note: magicianNeedsCantrip && oldClassLevel >= 1
+            ? "This Actor owns Primal Order: Magician but has no exact Magician-owned cantrip. Choose one Druid cantrip to repair that missing acquisition without changing other spell ownership."
+            : "Choose one additional Druid cantrip granted by Primal Order: Magician. This does not consume a normal Druid cantrip choice.",
+          count: 1,
+          pool,
+          selected: saved.spells?.["primal-order-magician"] ?? [],
+          featureItemId: magician.id,
+          category: "primal-order-magician",
+          prepared: 1,
+          alwaysPrepared: false,
+          sourceItem: "class:druid",
+          repair: magicianNeedsCantrip && oldClassLevel >= 1
+        }, registry));
+      }
+
       wildShape = await this.#wildShapeContext(draft, cls, registry, {
         oldClassLevel, newClassLevel,
         selected: saved.wildShapeForms ?? []
@@ -215,6 +234,9 @@ export class LevelUpFeatureService {
         oldClassLevel, newClassLevel,
         selected: saved.land ?? ""
       });
+      // Focused existing-Actor reconciliation is applied only to the Level Up
+      // Draft. The live Actor remains untouched until the protected commit.
+      if (land.current) await this.#activateNaturesWard(draft, land.current);
     }
 
     if (identifier === "ranger") {
@@ -260,19 +282,15 @@ export class LevelUpFeatureService {
       + (land.required && land.selected ? 1 : 0);
     const replacementsComplete = replacementSections.every(section =>
       Boolean(section.selectedRemoveId) === Boolean(section.selectedAddValue)
-    ) && itemReplacementSections.every(section =>
-      Boolean(section.selectedRemoveId) === Boolean(section.selectedAddUuid)
     );
     const complete = selected === required && replacementsComplete;
-    const hasChoices = required > 0 || replacementSections.some(section => section.available)
-      || itemReplacementSections.some(section => section.available);
+    const hasChoices = required > 0 || replacementSections.some(section => section.available);
     const hasAutomatic = Boolean(land.hasAutomatic);
 
     return {
       spellSections,
       targetSpellSections,
       replacementSections,
-      itemReplacementSections,
       optionSections,
       wildShape,
       land,
@@ -286,23 +304,23 @@ export class LevelUpFeatureService {
   }
 
   static async apply(draft, cls, registry, formData, context, state) {
-    const featureChoices = {
-      spells: {}, targets: {}, replacements: {}, itemReplacements: {},
-      options: {}, wildShapeForms: [], land: ""
-    };
+    const featureChoices = { spells: {}, targets: {}, replacements: {}, options: {}, wildShapeForms: [], land: "" };
     const createdItemIds = [];
     let deleted = 0;
 
     for (const section of context.spellSections) {
       const values = [...new Set(formData.getAll(`levelUp.featureSpell.${section.id}`).map(String))];
       this.#validateExact(values, section.count, section.options, section.title);
+      if (section.category === "primal-order-magician") {
+        const normalDruidCantrips = new Set(formData.getAll("levelUp.cantrips").map(String));
+        const duplicate = values.find(identifier => normalDruidCantrips.has(identifier));
+        if (duplicate) {
+          throw new Error("Primal Order: Magician must grant a different acquisition from the normal Druid cantrip selected during this Level Up.");
+        }
+      }
       featureChoices.spells[section.id] = values;
       for (const identifier of values) {
         const option = section.options.find(row => row.identifier === identifier);
-        if (section.disallowKnown && draft.items.some(item => item.type === "spell"
-          && item.system?.identifier === identifier)) {
-          throw new Error(`${option?.name ?? identifier} is already known and cannot be selected again for ${section.title}.`);
-        }
         const item = await this.#ensureFeatureSpell(draft, cls, section, option, state);
         if (item.created) createdItemIds.push(item.spell.id);
       }
@@ -342,13 +360,7 @@ export class LevelUpFeatureService {
       const remaining = await FeatureSpellOwnershipService.removeOwner(oldSpell, owner =>
         owner.category === section.category && (!section.featureItemId || owner.featureItemId === section.featureItemId)
       );
-      const nativeOrigin = String(oldSpell.getFlag("dnd5e", "advancementRoot")
-        ?? oldSpell.getFlag("dnd5e", "advancementOrigin") ?? "");
-      const exclusivelyOwned = !remaining.length && (
-        oldSpell.getFlag(MODULE_ID, "levelUpSpell")?.category === section.category
-        || (section.featureItemId && nativeOrigin.startsWith(`${section.featureItemId}.`))
-      );
-      if (exclusivelyOwned) {
+      if (!remaining.length && oldSpell.getFlag(MODULE_ID, "levelUpSpell")?.category === section.category) {
         await draft.deleteEmbeddedDocuments("Item", [oldSpell.id]);
         deleted++;
       }
@@ -364,50 +376,7 @@ export class LevelUpFeatureService {
       };
       const result = await this.#ensureFeatureSpell(draft, cls, replacementSection, option, state);
       if (result.created) createdItemIds.push(result.spell.id);
-      const nativeAdvancementId = section.featureItemId && nativeOrigin.startsWith(`${section.featureItemId}.`)
-        ? nativeOrigin.split(".")[1] ?? null
-        : null;
-      if (nativeAdvancementId) {
-        const feature = draft.items.get(section.featureItemId);
-        const source = feature?.toObject();
-        const advancement = source?.system?.advancement?.[nativeAdvancementId];
-        if (feature && advancement) {
-          const originalLevel = this.#findAdvancementItemLevel(advancement.value?.added ?? {}, removeId) ?? 0;
-          advancement.value ??= { added: {}, replaced: {} };
-          advancement.value.added ??= {};
-          advancement.value.replaced ??= {};
-          this.#deleteAdvancementItemId(advancement.value.added, removeId);
-          advancement.value.added[String(originalLevel)] ??= {};
-          advancement.value.added[String(originalLevel)][result.spell.id] = option.uuid;
-          advancement.value.replaced[String(state.targetClassLevel)] = {
-            level: originalLevel,
-            original: oldSpell.getFlag("dnd5e", "sourceId") ?? oldSpell._stats?.compendiumSource ?? null,
-            replacement: option.uuid
-          };
-          await result.spell.update({
-            "flags.dnd5e.advancementOrigin": `${feature.id}.${nativeAdvancementId}`,
-            "flags.dnd5e.advancementRoot": `${feature.id}.${nativeAdvancementId}`
-          });
-          await feature.update({ [`system.advancement.${nativeAdvancementId}.value`]: advancement.value });
-        }
-      }
       featureChoices.replacements[section.id] = { removeId, addIdentifier: addValue };
-    }
-
-    for (const section of context.itemReplacementSections ?? []) {
-      const removeId = String(formData.get(`levelUp.itemReplace.${section.id}.remove`) ?? "");
-      const addUuid = String(formData.get(`levelUp.itemReplace.${section.id}.add`) ?? "");
-      if (Boolean(removeId) !== Boolean(addUuid)) {
-        throw new Error(`Choose both sides of ${section.title}, or leave both blank.`);
-      }
-      if (!removeId) continue;
-      const existing = section.existing.find(row => row.id === removeId);
-      const option = section.options.find(row => row.uuid === addUuid);
-      if (!existing || !option) throw new Error(`${section.title} contains an ineligible option.`);
-      const result = await this.#applyNativeItemReplacement(draft, cls, section, existing, option, state);
-      createdItemIds.push(result.createdItemId);
-      deleted++;
-      featureChoices.itemReplacements[section.id] = { removeId, addUuid };
     }
 
     for (const section of context.optionSections) {
@@ -434,19 +403,21 @@ export class LevelUpFeatureService {
       this.#validateExact(values, context.wildShape.count, context.wildShape.options, "Known Wild Shape Forms", "uuid");
       const feature = draft.items.get(context.wildShape.featureItemId);
       if (!feature) throw new Error("Wild Shape feature Item is missing.");
-      const existing = feature.getFlag(MODULE_ID, "knownWildShapeForms") ?? [];
-      const additions = values.map(uuid => {
-        const row = context.wildShape.options.find(option => option.uuid === uuid);
-        return {
-          uuid: row.uuid, name: row.name, img: row.img, cr: row.cr, fly: row.fly,
-          sourceLabel: row.sourceLabel,
-          transactionId: state.transactionId,
-          acquiredAtCharacterLevel: Number(state.targetCharacterLevel),
-          acquiredAtClassLevel: Number(state.targetClassLevel)
-        };
-      });
-      await feature.setFlag(MODULE_ID, "knownWildShapeForms", [...existing, ...additions]);
+      const invalidUuids = new Set(context.wildShape.invalidUuids ?? []);
+      const existing = (feature.getFlag(MODULE_ID, "knownWildShapeForms") ?? [])
+        .filter(row => !invalidUuids.has(row.uuid));
+      const additions = values.map(uuid => context.wildShape.options.find(option => option.uuid === uuid));
+      await feature.setFlag(MODULE_ID, "knownWildShapeForms", [...existing, ...additions].map(row => ({
+        uuid: row.uuid, name: row.name, img: row.img, cr: row.cr, fly: row.fly,
+        sourceLabel: row.sourceLabel
+      })));
       featureChoices.wildShapeForms = values;
+      if (context.wildShape.repairCount) {
+        featureChoices.wildShapeRepair = {
+          removed: context.wildShape.invalidForms,
+          replacements: additions.map(row => ({ uuid: row.uuid, name: row.name, cr: row.cr }))
+        };
+      }
     }
 
     const selectedLand = context.land.required
@@ -457,23 +428,19 @@ export class LevelUpFeatureService {
     }
     if (context.land.featureItemId && selectedLand) {
       const feature = draft.items.get(context.land.featureItemId);
-      if (!feature) throw new Error("Circle of the Land Spells feature Item is missing.");
-      const existingLand = feature.getFlag(MODULE_ID, "circleLand");
-      if (context.land.required || !existingLand) {
-        await feature.setFlag(MODULE_ID, "circleLand", {
-          land: selectedLand,
-          label: this.#humanize(selectedLand),
-          classIdentifier: "druid",
-          classItemId: cls.id,
-          featureItemId: feature.id,
-          transactionId: state.transactionId,
-          configuredAtCharacterLevel: state.targetCharacterLevel,
-          configuredAtDruidLevel: state.targetClassLevel
-        });
-      }
+      await feature?.setFlag(MODULE_ID, "circleLand", {
+        land: selectedLand,
+        label: this.#humanize(selectedLand),
+        classIdentifier: "druid",
+        classItemId: cls.id,
+        featureItemId: feature.id,
+        transactionId: state.transactionId,
+        configuredAtDruidLevel: state.targetClassLevel
+      });
       const landCreated = await this.#applyLandSpells(draft, cls, registry, feature, selectedLand, state);
       createdItemIds.push(...landCreated);
-      featureChoices.land = context.land.required ? selectedLand : "";
+      await this.#activateNaturesWard(draft, selectedLand);
+      featureChoices.land = selectedLand;
     }
 
     return { createdItemIds: [...new Set(createdItemIds)], deleted, featureChoices };
@@ -481,6 +448,18 @@ export class LevelUpFeatureService {
 
   static magicalSecretsActive(draft, newClassLevel) {
     return Number(newClassLevel) >= 10 || Boolean(this.#feature(draft, "magical-secrets"));
+  }
+
+  static primalOrderMagicianFeature(draft) {
+    return draft.items.find(item => item.type === "feat" && (
+      item.system?.identifier === "magician"
+      || this.#slug(item.name) === "magician"
+      || String(item.getFlag("dnd5e", "sourceId") ?? item._stats?.compendiumSource ?? "").endsWith(".Item.phbPrimalOrderMa")
+    ));
+  }
+
+  static hasPrimalOrderMagician(draft) {
+    return Boolean(this.primalOrderMagicianFeature(draft));
   }
 
   static async magicalSecretsPool(registry) {
@@ -501,8 +480,8 @@ export class LevelUpFeatureService {
     if (classIdentifier === "fighter" && identifier === "eldritch-knight") {
       return { subclass, identifier, spellList: "wizard", ability: "int", sourceItem: "subclass:eldritch-knight" };
     }
-    if (classIdentifier === "rogue" && ["arcane-trickster", "trickster"].includes(identifier)) {
-      return { subclass, identifier: "arcane-trickster", spellList: "wizard", ability: "int", sourceItem: `subclass:${identifier}` };
+    if (classIdentifier === "rogue" && identifier === "arcane-trickster") {
+      return { subclass, identifier, spellList: "wizard", ability: "int", sourceItem: "subclass:arcane-trickster" };
     }
     return null;
   }
@@ -586,132 +565,6 @@ export class LevelUpFeatureService {
     };
   }
 
-  static async #nativeItemReplacementContext(draft, cls, registry, {
-    id, advancementTitle, title, note, selected
-  }) {
-    const advancement = Object.values(cls.toObject().system?.advancement ?? {}).find(entry =>
-      entry.type === "ItemChoice" && String(entry.title ?? "").trim().toLowerCase() === advancementTitle.toLowerCase()
-    );
-    if (!advancement) return { id, title, note, available: false, existing: [], options: [] };
-    const advancementId = advancement._id ?? advancement.id;
-    const root = `${cls.id}.${advancementId}`;
-    const recordedIds = new Set();
-    const walk = node => {
-      if (!node || typeof node !== "object") return;
-      if (Array.isArray(node)) return node.forEach(walk);
-      for (const [key, value] of Object.entries(node)) {
-        if (draft.items.get(key)) recordedIds.add(key);
-        walk(value);
-      }
-    };
-    walk(advancement.value?.added ?? {});
-    const existing = draft.items.filter(item => {
-      const origin = String(item.getFlag("dnd5e", "advancementRoot")
-        ?? item.getFlag("dnd5e", "advancementOrigin") ?? "");
-      return recordedIds.has(item.id) || origin === root;
-    }).map(item => ({
-      id: item.id,
-      name: item.name,
-      img: item.img,
-      identifier: item.system?.identifier ?? this.#slug(item.name)
-    }));
-    const known = new Set(existing.map(item => item.identifier));
-    const options = [];
-    for (const entry of advancement.configuration?.pool ?? []) {
-      const configuredUuid = typeof entry === "string" ? entry : entry?.uuid;
-      if (!configuredUuid) continue;
-      let option = registry.findOption(configuredUuid);
-      if (!option) {
-        const source = await fromUuid(configuredUuid);
-        if (!source) continue;
-        option = registry.preferredOption(source.type, source.system?.identifier ?? this.#slug(source.name));
-      }
-      if (!option || known.has(option.identifier)) continue;
-      options.push(option);
-    }
-    options.sort((a, b) => a.name.localeCompare(b.name, game.i18n.lang));
-    return {
-      id, title, note, advancementId, ownerItemId: cls.id,
-      available: existing.length > 0 && options.length > 0,
-      existing,
-      options,
-      selectedRemoveId: selected?.removeId ?? "",
-      selectedAddUuid: selected?.addUuid ?? ""
-    };
-  }
-
-  static async #applyNativeItemReplacement(draft, cls, section, existing, option, state) {
-    const oldItem = draft.items.get(existing.id);
-    if (!oldItem) throw new Error(`${existing.name} is no longer present.`);
-    const document = await fromUuid(option.uuid);
-    if (!document) throw new Error(`Unable to load ${option.name}.`);
-    const data = document.toObject();
-    delete data._id;
-    data.flags ??= {};
-    data.flags.dnd5e ??= {};
-    data.flags.dnd5e.sourceId = document.uuid;
-    data.flags.dnd5e.advancementOrigin = `${cls.id}.${section.advancementId}`;
-    data.flags.dnd5e.advancementRoot = `${cls.id}.${section.advancementId}`;
-    data.flags[MODULE_ID] ??= {};
-    data.flags[MODULE_ID].managedOptionReplacement = {
-      category: section.id,
-      replacedItemId: oldItem.id,
-      replacedIdentifier: oldItem.system?.identifier ?? this.#slug(oldItem.name),
-      sourceUuid: document.uuid,
-      classIdentifier: cls.system?.identifier,
-      classItemId: cls.id,
-      transactionId: state.transactionId,
-      acquiredAtCharacterLevel: state.targetCharacterLevel,
-      acquiredAtClassLevel: state.targetClassLevel
-    };
-
-    const source = cls.toObject();
-    const advancement = source.system?.advancement?.[section.advancementId];
-    if (!advancement) throw new Error(`${section.title} source Advancement is missing.`);
-    const originalLevel = this.#findAdvancementItemLevel(advancement.value?.added ?? {}, oldItem.id)
-      ?? Number(state.targetClassLevel);
-    await draft.deleteEmbeddedDocuments("Item", [oldItem.id]);
-    const [created] = await draft.createEmbeddedDocuments("Item", [data]);
-    advancement.value ??= { added: {}, replaced: {} };
-    advancement.value.added ??= {};
-    advancement.value.replaced ??= {};
-    this.#deleteAdvancementItemId(advancement.value.added, oldItem.id);
-    advancement.value.added[String(originalLevel)] ??= {};
-    advancement.value.added[String(originalLevel)][created.id] = document.uuid;
-    advancement.value.replaced[String(state.targetClassLevel)] = {
-      level: originalLevel,
-      original: oldItem.getFlag("dnd5e", "sourceId") ?? oldItem._stats?.compendiumSource ?? null,
-      replacement: document.uuid
-    };
-    await cls.update({ [`system.advancement.${section.advancementId}.value`]: advancement.value });
-    return { createdItemId: created.id };
-  }
-
-  static #findAdvancementItemLevel(node, itemId, level = null) {
-    if (!node || typeof node !== "object") return null;
-    if (Array.isArray(node)) {
-      for (const value of node) {
-        const found = this.#findAdvancementItemLevel(value, itemId, level);
-        if (found != null) return found;
-      }
-      return null;
-    }
-    for (const [key, value] of Object.entries(node)) {
-      const currentLevel = /^\d+$/.test(key) ? Number(key) : level;
-      if (key === itemId) return currentLevel;
-      const found = this.#findAdvancementItemLevel(value, itemId, currentLevel);
-      if (found != null) return found;
-    }
-    return null;
-  }
-
-  static #deleteAdvancementItemId(node, itemId) {
-    if (!node || typeof node !== "object") return;
-    if (Array.isArray(node)) return node.forEach(value => this.#deleteAdvancementItemId(value, itemId));
-    delete node[itemId];
-    for (const value of Object.values(node)) this.#deleteAdvancementItemId(value, itemId);
-  }
-
   static #optionSection(config) {
     return config;
   }
@@ -721,40 +574,117 @@ export class LevelUpFeatureService {
     if (!feature || newClassLevel < 2) return this.#emptyWildShape();
     const oldKnown = this.#scaleValue(cls, oldClassLevel, "known forms");
     const newKnown = this.#scaleValue(cls, newClassLevel, "known forms");
-    const count = Math.max(0, newKnown - oldKnown);
+    const growthCount = Math.max(0, newKnown - oldKnown);
+    const knownRows = foundry.utils.deepClone(feature.getFlag(MODULE_ID, "knownWildShapeForms") ?? []);
+    const invalidForms = [];
+    const validExisting = new Set();
+    for (const row of knownRows) {
+      const document = row?.uuid ? await fromUuid(row.uuid) : null;
+      const sourceCr = document ? this.#crNumber(foundry.utils.getProperty(document, "system.details.cr")) : null;
+      if (sourceCr === null) {
+        invalidForms.push({
+          uuid: row?.uuid ?? "",
+          name: row?.name ?? document?.name ?? "Unknown form",
+          reason: document ? "The source document has no explicit numeric CR." : "The source document can no longer be resolved."
+        });
+      } else if (row?.uuid) {
+        validExisting.add(row.uuid);
+      }
+    }
+    const repairCount = invalidForms.length;
+    const count = growthCount + repairCount;
     if (!count) return { ...this.#emptyWildShape(), featureItemId: feature.id };
     const maxCr = this.#crNumber(this.#scaleRawValue(cls, newClassLevel, "wild shape cr"));
-    const existing = new Set((feature.getFlag(MODULE_ID, "knownWildShapeForms") ?? []).map(row => row.uuid));
+    if (maxCr === null) throw new Error("Wild Shape Known Forms cannot be offered because the class Wild Shape CR scale is missing or non-numeric.");
     const options = (await this.#beastOptions()).filter(option =>
-      option.cr <= maxCr && (newClassLevel >= 8 || !option.fly) && !existing.has(option.uuid)
+      option.cr <= maxCr && (newClassLevel >= 8 || !option.fly) && !validExisting.has(option.uuid)
     ).map(option => ({ ...option, checked: selected.includes(option.uuid) }));
+    const repairText = repairCount
+      ? ` Replace ${repairCount} incompatible stored form${repairCount === 1 ? "" : "s"}: ${invalidForms.map(row => row.name).join(", ")}.`
+      : "";
+    const growthText = growthCount
+      ? ` Choose ${growthCount} newly learned form${growthCount === 1 ? "" : "s"}.`
+      : "";
     return {
       featureItemId: feature.id,
       count,
+      growthCount,
+      repairCount,
+      invalidForms,
+      invalidUuids: invalidForms.map(row => row.uuid).filter(Boolean),
       selectedCount: selected.length,
       maxCrLabel: this.#crLabel(maxCr),
       flyAllowed: newClassLevel >= 8,
       options,
       groups: this.#groupBySource(options),
-      note: `Choose ${count} new Beast form${count === 1 ? "" : "s"}. Maximum CR ${this.#crLabel(maxCr)}.${newClassLevel >= 8 ? " Flying forms are eligible." : " Flying forms are not eligible yet."}`
+      note: `${repairText}${growthText} Maximum CR ${this.#crLabel(maxCr)}.${newClassLevel >= 8 ? " Flying forms are eligible." : " Flying forms are not eligible yet."}`.trim()
     };
   }
 
-  static async #landContext(draft, _cls, _registry, { oldClassLevel, newClassLevel, selected }) {
+  static async #landContext(draft, _cls, registry, { oldClassLevel, newClassLevel, selected }) {
     const feature = this.#feature(draft, "circle-of-the-land-spells");
     if (!feature) return this.#emptyLand();
     const current = feature.getFlag(MODULE_ID, "circleLand")?.land ?? "";
     const required = oldClassLevel < 3 && newClassLevel >= 3 || !current;
     const resolved = selected || current;
+    const previews = [];
+    for (const value of Object.keys(LAND_SPELLS)) {
+      previews.push({
+        value,
+        label: this.#humanize(value),
+        selected: resolved === value,
+        levels: await this.#landProgressionCards(value, registry)
+      });
+    }
+    const unlockedLevels = [3, 5, 7, 9].filter(level => oldClassLevel < level && newClassLevel >= level);
+    const newSpells = resolved
+      ? previews.find(row => row.value === resolved)?.levels.filter(row => unlockedLevels.includes(row.level)) ?? []
+      : [];
     return {
       featureItemId: feature.id,
       required,
       current,
+      currentLabel: this.#humanize(current),
       selected: resolved,
-      options: Object.keys(LAND_SPELLS).map(value => ({ value, label: this.#humanize(value), selected: resolved === value })),
-      hasAutomatic: Boolean(resolved && [3, 5, 7, 9].some(level => oldClassLevel < level && newClassLevel >= level)),
+      selectedLabel: this.#humanize(resolved),
+      options: previews.map(({ value, label, selected }) => ({ value, label, selected })),
+      previews,
+      newSpells,
+      hasAutomatic: newSpells.some(row => row.spells.length),
       note: "Choose the land whose Circle Spells are always prepared. Later Long Rest changes belong to Runtime Character Management."
     };
+  }
+
+  static async #landProgressionCards(land, registry) {
+    const levels = [];
+    for (const [level, configuredUuids] of Object.entries(LAND_SPELLS[land] ?? {})) {
+      const spells = [];
+      for (const configuredUuid of configuredUuids) {
+        let uuid = configuredUuid;
+        if (!registry.isUuidAllowed(uuid)) {
+          const source = await fromUuid(configuredUuid);
+          const preferred = source?.system?.identifier ? registry.preferredOption("spell", source.system.identifier) : null;
+          if (!preferred) continue;
+          uuid = preferred.uuid;
+        }
+        const option = registry.findOption(uuid) ?? await this.#optionFromUuid(uuid, registry);
+        if (!option) continue;
+        spells.push({
+          uuid: option.uuid,
+          name: option.name,
+          img: option.img,
+          level: Number(option.system?.level ?? 0),
+          levelLabel: this.#levelLabel(option.system?.level),
+          sourceLabel: option.sourceLabel ?? option.source?.label ?? "Enabled Source"
+        });
+      }
+      levels.push({
+        level: Number(level),
+        label: `Druid Level ${level}`,
+        spells
+      });
+    }
+    return levels.sort((a, b) => a.level - b.level);
   }
 
   static async #applyLandSpells(draft, cls, registry, feature, land, state) {
@@ -785,6 +715,41 @@ export class LevelUpFeatureService {
     return created;
   }
 
+  static async #activateNaturesWard(draft, land) {
+    const expectedResistance = LAND_RESISTANCES[land];
+    if (!expectedResistance) throw new Error("Nature's Ward cannot be configured because the Circle of the Land selection is invalid.");
+    const feature = this.#feature(draft, "natures-ward");
+    if (!feature) return false;
+
+    const effects = feature.effects?.contents ?? [...(feature.effects ?? [])];
+    const landEffects = effects.filter(effect => /^Nature's Ward:/i.test(effect.name ?? ""));
+    const matching = landEffects.find(effect => {
+      const namedLand = String(effect.name ?? "").split(":").at(-1)?.trim().toLowerCase();
+      const changes = effect.system?.changes?.values ? [...effect.system.changes.values()] : (effect.system?.changes ?? []);
+      return namedLand === land || changes.some(change =>
+        change.key === "system.traits.dr.value" && String(change.value).toLowerCase() === expectedResistance
+      );
+    });
+    if (!matching) {
+      throw new Error(`Nature's Ward does not contain the official ${this.#humanize(land)} (${this.#humanize(expectedResistance)}) resistance effect.`);
+    }
+
+    const updates = landEffects.map(effect => ({
+      _id: effect.id,
+      disabled: effect.id !== matching.id
+    }));
+    if (updates.length) await feature.updateEmbeddedDocuments("ActiveEffect", updates, {
+      characterBuilderNatureWard: true
+    });
+    const active = (feature.effects?.contents ?? [...(feature.effects ?? [])]).filter(effect =>
+      /^Nature's Ward:/i.test(effect.name ?? "") && !effect.disabled
+    );
+    if (active.length !== 1 || active[0].id !== matching.id) {
+      throw new Error("Nature's Ward could not activate exactly one official land-resistance effect.");
+    }
+    return true;
+  }
+
   static async #ensureFeatureSpell(draft, cls, section, option, state) {
     if (!option) throw new Error(`${section.title} contains an unavailable spell.`);
     const owner = this.#ownerRecord(cls, section, state, option);
@@ -792,6 +757,8 @@ export class LevelUpFeatureService {
       && item.system?.identifier === option.identifier
       && (item.getFlag(MODULE_ID, "featureSpellOwners") ?? []).some(existing =>
         existing.category === owner.category
+        && existing.classItemId === owner.classItemId
+        && existing.subclassItemId === owner.subclassItemId
         && existing.featureItemId === owner.featureItemId
       ));
     let created = false;
@@ -849,60 +816,23 @@ export class LevelUpFeatureService {
       name: spell.name,
       system: { level: spell.system?.level }
     });
-    owner.alwaysPrepared = true;
-    owner.freeCastAtBaseLevel = true;
-    owner.requireSlot = false;
-    owner.noUpcastOnFreeCast = true;
     if (section.special === "signature-spells") {
       const feature = draft.items.get(section.featureItemId);
       const trackers = this.#signatureTrackers(feature);
       owner.signaturePosition = index + 1;
       owner.trackerActivityId = trackers[index]?.id ?? null;
       owner.trackerActivityName = trackers[index]?.name ?? null;
-      owner.nativeUseTracker = true;
     }
-    if (section.special === "spell-mastery") owner.unlimitedFreeCast = true;
+    if (section.special === "spell-mastery") {
+      owner.freeCastAtBaseLevel = true;
+      owner.unlimitedFreeCast = true;
+      owner.requireSlot = false;
+    }
     await FeatureSpellOwnershipService.addOwner(spell, owner, { prepared: 2 });
     const feature = draft.items.get(section.featureItemId);
     if (feature && ["spell-mastery", "signature-spells"].includes(section.special)) {
       await this.#applyNativeEnchantment(spell, feature, section.special);
-      await this.#storeManagedSpellTarget(feature, section, spell, owner, state, index);
     }
-  }
-
-  static async #storeManagedSpellTarget(feature, section, spell, owner, state, index) {
-    const current = foundry.utils.deepClone(feature.getFlag(MODULE_ID, "managedSpellTargets") ?? {});
-    current[section.id] ??= {
-      category: section.category,
-      classIdentifier: owner.classIdentifier,
-      classItemId: owner.classItemId,
-      subclassItemId: owner.subclassItemId ?? null,
-      featureItemId: feature.id,
-      transactionId: state.transactionId,
-      acquiredAtCharacterLevel: Number(state.targetCharacterLevel),
-      acquiredAtClassLevel: Number(state.targetClassLevel),
-      targets: []
-    };
-    const row = {
-      position: index + 1,
-      spellItemId: spell.id,
-      spellIdentifier: spell.system?.identifier ?? null,
-      spellName: spell.name,
-      spellLevel: Number(spell.system?.level ?? 0),
-      sourceUuid: owner.sourceUuid ?? null,
-      trackerActivityId: owner.trackerActivityId ?? null,
-      trackerActivityName: owner.trackerActivityName ?? null,
-      unlimitedFreeCast: Boolean(owner.unlimitedFreeCast),
-      freeCastAtBaseLevel: Boolean(owner.freeCastAtBaseLevel),
-      requireSlot: false,
-      noUpcastOnFreeCast: true
-    };
-    const targets = current[section.id].targets ?? [];
-    current[section.id].targets = [
-      ...targets.filter(target => Number(target.position) !== Number(row.position)),
-      row
-    ].sort((a, b) => Number(a.position) - Number(b.position));
-    await feature.setFlag(MODULE_ID, "managedSpellTargets", current);
   }
 
   static async #applyNativeEnchantment(spell, feature, special) {
@@ -918,8 +848,11 @@ export class LevelUpFeatureService {
     data.flags ??= {};
     data.flags.dnd5e ??= {};
     data.flags.dnd5e.enchantmentProfile = profileId;
+    const sourceActorId = feature.actor?.getFlag(MODULE_ID, "sourceActorId") ?? feature.actor?.id;
+    const liveFeatureUuid = sourceActorId ? `Actor.${sourceActorId}.Item.${feature.id}` : feature.uuid;
+    data.origin = liveFeatureUuid;
     data.flags.core ??= {};
-    data.flags.core.originText = `${feature.uuid}`;
+    data.flags.core.originText = liveFeatureUuid;
     data.flags[MODULE_ID] ??= {};
     data.flags[MODULE_ID].managedEnchantment = special;
     await spell.createEmbeddedDocuments("ActiveEffect", [data], {
@@ -946,12 +879,18 @@ export class LevelUpFeatureService {
   }
 
   static #ownerRecord(cls, section, state, option) {
+    const classOwnedCategories = new Set([
+      "spell-mastery", "signature-spell", "mystic-arcanum", "primal-order-magician"
+    ]);
+    const subclassItemId = classOwnedCategories.has(section.category)
+      ? null
+      : this.subclassCaster(cls.actor, cls.system?.identifier)?.subclass?.id ?? null;
     return {
       category: section.category,
       label: section.title,
       classIdentifier: cls.system?.identifier,
       classItemId: cls.id,
-      subclassItemId: this.#owningSubclassId(cls.actor, section.featureItemId, cls.system?.identifier),
+      subclassItemId,
       featureItemId: section.featureItemId ?? null,
       ownerItemId: section.featureItemId ?? cls.id,
       transactionId: state.transactionId,
@@ -962,20 +901,6 @@ export class LevelUpFeatureService {
       alwaysPrepared: Boolean(section.alwaysPrepared),
       requireSlot: section.special === "mystic-arcanum" ? false : null
     };
-  }
-
-  static #owningSubclassId(actor, featureItemId, classIdentifier) {
-    const feature = actor?.items?.get?.(featureItemId);
-    const origin = String(feature?.getFlag("dnd5e", "advancementRoot")
-      ?? feature?.getFlag("dnd5e", "advancementOrigin") ?? "");
-    const root = actor?.items?.get?.(origin.split(".")[0]);
-    if (root?.type === "subclass") return root.id;
-    const candidates = actor?.items?.filter?.(item => {
-      if (item.type !== "subclass") return false;
-      const parent = item.system?.classIdentifier ?? item.system?.class?.identifier ?? item.system?.class;
-      return !parent || parent === classIdentifier;
-    }) ?? [];
-    return candidates.length === 1 ? candidates[0].id : null;
   }
 
   static async #wizardSpellbookTargets(draft, cls, { level, actionOnly = false, pendingSpellOptions = [] }) {
@@ -1084,6 +1009,15 @@ export class LevelUpFeatureService {
     };
   }
 
+  static #hasExactFeatureSpellOwner(draft, { category, classItemId, featureItemId }) {
+    return draft.items.some(item => item.type === "spell"
+      && (item.getFlag(MODULE_ID, "featureSpellOwners") ?? []).some(owner =>
+        owner.category === category
+        && owner.classItemId === classItemId
+        && owner.featureItemId === featureItemId
+      ));
+  }
+
   static async #beastOptions() {
     const options = [];
     const sources = SourceRegistry.orderedSources();
@@ -1109,6 +1043,7 @@ export class LevelUpFeatureService {
             ?? foundry.utils.getProperty(entry, "system.details.type") ?? "";
           if (String(creatureType).toLowerCase() !== "beast") continue;
           const cr = this.#crNumber(foundry.utils.getProperty(entry, "system.details.cr"));
+          if (cr === null) continue;
           const fly = Number(foundry.utils.getProperty(entry, "system.attributes.movement.fly") ?? 0) > 0;
           options.push({
             uuid: `Compendium.${pack.collection}.Actor.${entry._id}`,
@@ -1187,13 +1122,22 @@ export class LevelUpFeatureService {
   }
 
   static #crNumber(value) {
-    if (typeof value === "number") return value;
-    const text = String(value ?? "0").trim();
+    if (value === null || value === undefined) return null;
+    if (typeof value === "number") return Number.isFinite(value) && value >= 0 ? value : null;
+    const text = String(value).trim();
+    if (!text) return null;
     if (text.includes("/")) {
-      const [a, b] = text.split("/").map(Number);
-      return b ? a / b : 0;
+      const parts = text.split("/");
+      if (parts.length !== 2) return null;
+      const numerator = Number(parts[0]);
+      const denominator = Number(parts[1]);
+      const result = numerator / denominator;
+      return Number.isFinite(numerator) && Number.isFinite(denominator) && denominator > 0 && result >= 0
+        ? result
+        : null;
     }
-    return Number(text) || 0;
+    const result = Number(text);
+    return Number.isFinite(result) && result >= 0 ? result : null;
   }
 
   static #crLabel(value) {
@@ -1229,10 +1173,14 @@ export class LevelUpFeatureService {
   }
 
   static #emptyWildShape() {
-    return { featureItemId: null, count: 0, selectedCount: 0, options: [], groups: [], note: "", maxCrLabel: "", flyAllowed: false };
+    return {
+      featureItemId: null, count: 0, growthCount: 0, repairCount: 0,
+      invalidForms: [], invalidUuids: [], selectedCount: 0,
+      options: [], groups: [], note: "", maxCrLabel: "", flyAllowed: false
+    };
   }
 
   static #emptyLand() {
-    return { featureItemId: null, required: false, current: "", selected: "", options: [], hasAutomatic: false, note: "" };
+    return { featureItemId: null, required: false, current: "", currentLabel: "", selected: "", selectedLabel: "", options: [], previews: [], newSpells: [], hasAutomatic: false, note: "" };
   }
 }

@@ -35,7 +35,9 @@ export class ItemGrantIntegrityService {
         const advancementLevel = Number(raw.level ?? 0);
         if (advancementLevel > currentLevel) continue;
 
-        const expected = this.#mandatoryEntries(raw.configuration ?? {});
+        const expected = this.#mandatoryEntries(raw.configuration ?? {}, {
+          owner, raw, advancementId
+        });
         if (!expected.length) continue;
         const advancement = owner.advancement?.byId?.[advancementId] ?? null;
         const origin = `${owner.id}.${advancementId}`;
@@ -215,7 +217,9 @@ export class ItemGrantIntegrityService {
       const rawAdvancements = owner.toObject().system?.advancement ?? {};
       for (const [advancementId, raw] of Object.entries(rawAdvancements)) {
         if (raw?.type !== "ItemGrant" || Number(raw.level ?? 0) > currentLevel) continue;
-        const expectedCounts = this.#countByUuid(this.#mandatoryEntries(raw.configuration ?? {}));
+        const expectedCounts = this.#countByUuid(this.#mandatoryEntries(raw.configuration ?? {}, {
+          owner, raw, advancementId
+        }));
         if (!expectedCounts.size) continue;
         const origin = `${owner.id}.${advancementId}`;
         const added = raw.value?.added ?? {};
@@ -259,11 +263,55 @@ export class ItemGrantIntegrityService {
     return context === "creation" ? `creation:${draft.id}` : `level-up:${draft.id}`;
   }
 
-  static #mandatoryEntries(configuration) {
+  static #mandatoryEntries(configuration, { owner = null, raw = null, advancementId = null } = {}) {
     const optionalGroup = Boolean(configuration.optional);
     return (configuration.items ?? [])
       .map(entry => typeof entry === "string" ? { uuid: entry, optional: false } : entry)
-      .filter(entry => entry?.uuid && (!optionalGroup || !entry.optional));
+      .filter(entry => entry?.uuid && (!optionalGroup || !entry.optional))
+      .filter(entry => !this.#isRedundantMalformedLocalGrant(entry.uuid, {
+        owner, raw, advancementId
+      }));
+  }
+
+  /**
+   * Some PHB 2024 documents contain a malformed local Item UUID and a second,
+   * canonical Compendium UUID for the exact same mandatory grant at the exact
+   * same level. Ignore only that provably redundant malformed entry. Global
+   * mandatory ItemGrant validation remains strict for every other case.
+   */
+  static #isRedundantMalformedLocalGrant(uuid, { owner, raw, advancementId } = {}) {
+    const match = /^Item\.([A-Za-z0-9]{16})$/.exec(String(uuid ?? ""));
+    if (!match || !owner || !raw) return false;
+    const itemId = match[1];
+    const level = Number(raw.level ?? 0);
+    const advancements = owner.toObject().system?.advancement ?? {};
+    for (const [otherId, other] of Object.entries(advancements)) {
+      if (otherId === advancementId || other?.type !== "ItemGrant" || Number(other.level ?? 0) !== level) continue;
+      const optionalGroup = Boolean(other.configuration?.optional);
+      for (const configured of other.configuration?.items ?? []) {
+        const row = typeof configured === "string" ? { uuid: configured, optional: false } : configured;
+        if (!row?.uuid || (optionalGroup && row.optional)) continue;
+        const canonical = String(row.uuid);
+        if (!canonical.startsWith("Compendium.") || !canonical.endsWith(`.Item.${itemId}`)) continue;
+        if (this.#canonicalUuidResolvable(canonical)) return true;
+      }
+    }
+    return false;
+  }
+
+  static #canonicalUuidResolvable(uuid) {
+    try {
+      if (typeof fromUuidSync === "function" && fromUuidSync(uuid)) return true;
+    } catch (_error) {
+      // Fall through to the already indexed Compendium lookup below.
+    }
+    const match = /^Compendium\.([^.]*(?:\.[^.]*)*)\.Item\.([A-Za-z0-9]{16})$/.exec(String(uuid ?? ""));
+    if (!match) return false;
+    const [, collection, itemId] = match;
+    const pack = game.packs.get(collection);
+    if (!pack) return false;
+    return Boolean(pack.index?.get?.(itemId)
+      ?? pack.index?.find?.(entry => entry?._id === itemId));
   }
 
   static #countByUuid(entries) {

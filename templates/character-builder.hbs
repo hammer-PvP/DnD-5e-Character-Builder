@@ -284,7 +284,7 @@
           <button type="button" class="cb-primary-confirm" data-action="save-spell-access"
                   {{#unless characterClass}}disabled{{else}}{{#if state.spellAccessSaved}}disabled{{/if}}{{/unless}}>
             <i class="fa-solid fa-circle-check"></i>
-            <span><strong>{{#if state.spellAccessSaved}}Confirmed{{else}}Confirm{{/if}}</strong><small>Spell Selection</small></span>
+            <span><strong>{{#if state.spellAccessSaved}}Confirmed{{else}}Confirm{{/if}}</strong><small>{{#if spellAccess.pactOfTheTome.active}}Spells & Book of Shadows{{else}}Spell Selection{{/if}}</small></span>
           </button>
           <button type="button" class="cb-primary-continue" data-action="continue" {{#unless state.spellAccessSaved}}disabled{{/unless}}>
             <span>Continue</span><i class="fa-solid fa-chevron-right"></i>
@@ -307,13 +307,43 @@
             <h4>{{label}}</h4>
             <div class="cb-spell-grid">
               {{#each items}}
-              <article class="cb-spell-option" data-search="{{search}}">
-                <label class="cb-spell-toggle" title="Select {{name}}">
-                  <input type="checkbox" name="spellAccess.cantrips" value="{{identifier}}" {{checked selected}}>
+              <article class="cb-spell-option {{#if disabled}}duplicate-disabled{{/if}}" data-search="{{search}}" data-spell-option title="{{disabledReason}}">
+                <label class="cb-spell-toggle" title="{{#if disabled}}{{disabledReason}}{{else}}Select {{name}}{{/if}}">
+                  <input type="checkbox" name="spellAccess.cantrips" value="{{identifier}}" data-spell-identifier="{{identifier}}" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{checked selected}} {{#if disabled}}disabled{{/if}}>
                 </label>
                 <button type="button" class="cb-spell-details" data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}} details">
                   <img src="{{img}}" alt="">
                   <span><strong>{{name}}</strong><small>{{sourceLabel}}</small></span>
+                </button>
+              </article>
+              {{/each}}
+            </div>
+          </section>
+          {{/each}}
+        </div>
+      </section>
+      {{/if}}
+
+
+      {{#if spellAccess.needsMagicianCantripChoice}}
+      <section class="cb-spell-section cb-feature-spell-section" data-spell-selection data-maximum="{{spellAccess.magicianCantripCount}}">
+        <div class="cb-inline-heading">
+          <div><h3>Primal Order: Magician</h3><p class="hint">Choose the extra Druid cantrip granted by Magician. This is stored as a separate feature-owned acquisition.</p></div>
+          <span data-selection-count>{{spellAccess.selectedMagicianCantripCount}} / {{spellAccess.magicianCantripCount}}</span>
+        </div>
+        <input type="search" placeholder="Search Magician Cantrips" data-filter-target="#cb-magician-cantrip-options">
+        <div id="cb-magician-cantrip-options" class="cb-spell-groups">
+          {{#each spellAccess.magicianCantripGroups}}
+          <section class="cb-source-group">
+            <h4>{{label}}</h4>
+            <div class="cb-spell-grid">
+              {{#each items}}
+              <article class="cb-spell-option {{#if disabled}}duplicate-disabled{{/if}}" data-search="{{search}}" data-spell-option title="{{disabledReason}}">
+                <label class="cb-spell-toggle" title="{{#if disabled}}{{disabledReason}}{{else}}Select {{name}}{{/if}}">
+                  <input type="checkbox" name="spellAccess.magicianCantrip" value="{{identifier}}" data-spell-identifier="{{identifier}}" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{checked selected}} {{#if disabled}}disabled{{/if}}>
+                </label>
+                <button type="button" class="cb-spell-details" data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}} details">
+                  <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{sourceLabel}}</small></span>
                 </button>
               </article>
               {{/each}}
@@ -337,9 +367,9 @@
             <h4>{{label}}</h4>
             <div class="cb-spell-grid">
               {{#each items}}
-              <article class="cb-spell-option" data-search="{{search}}">
-                <label class="cb-spell-toggle" title="Select {{name}}">
-                  <input type="checkbox" name="spellAccess.spells" value="{{identifier}}" {{checked selected}}>
+              <article class="cb-spell-option {{#if disabled}}duplicate-disabled{{/if}}" data-search="{{search}}" data-spell-option title="{{disabledReason}}">
+                <label class="cb-spell-toggle" title="{{#if disabled}}{{disabledReason}}{{else}}Select {{name}}{{/if}}">
+                  <input type="checkbox" name="spellAccess.spells" value="{{identifier}}" data-spell-identifier="{{identifier}}" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{checked selected}} {{#if disabled}}disabled{{/if}}>
                 </label>
                 <button type="button" class="cb-spell-details" data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}} details">
                   <img src="{{img}}" alt="">
@@ -351,6 +381,16 @@
           </section>
           {{/each}}
         </div>
+      </section>
+      {{/if}}
+
+      {{#if spellAccess.pactOfTheTome.active}}
+      <section class="cb-spell-section cb-pact-tome-section" data-pact-tome-selection>
+        {{> "modules/dnd5e-character-builder/templates/partials/pact-of-the-tome-selection.hbs"
+          pact=spellAccess.pactOfTheTome
+          fieldPrefix="spellAccess.pactOfTheTome"
+          idPrefix="cb-creation-pact-tome"
+          managed=false}}
       </section>
       {{/if}}
 

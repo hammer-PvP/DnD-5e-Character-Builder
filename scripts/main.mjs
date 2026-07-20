@@ -10,7 +10,11 @@ Hooks.once("init", async () => {
   if (!Handlebars.helpers.eq) Handlebars.registerHelper("eq", (a, b) => a === b);
   if (!Handlebars.helpers.gt) Handlebars.registerHelper("gt", (a, b) => Number(a) > Number(b));
   if (!Handlebars.helpers.add) Handlebars.registerHelper("add", (a, b) => Number(a) + Number(b));
-  await loadTemplates([`modules/${MODULE_ID}/templates/partials/source-preview.hbs`]);
+  if (!Handlebars.helpers.concat) Handlebars.registerHelper("concat", (...values) => values.slice(0, -1).join(""));
+  await loadTemplates([
+    `modules/${MODULE_ID}/templates/partials/source-preview.hbs`,
+    `modules/${MODULE_ID}/templates/partials/pact-of-the-tome-selection.hbs`
+  ]);
 
   game.settings.register(MODULE_ID, "settings", {
     scope: "world",
@@ -31,7 +35,7 @@ Hooks.once("init", async () => {
       "CB.Settings.Hint",
       "Configure content sources, Ability Score methods, the Starting Equipment Shop, Level Up availability, multiclassing, and Hit Point advancement."
     ),
-    icon: "fa-solid fa-person-rays",
+    icon: "fa-solid fa-arrow-up-right-dots",
     type: CharacterBuilderSettingsApp,
     restricted: true
   });
@@ -266,7 +270,7 @@ function injectLevelUpButton(actor, root) {
     ? "Resume Level Up"
     : `Level Up to Character Level ${eligibility.targetLevel}`;
   button.setAttribute("aria-label", button.dataset.tooltip);
-  button.innerHTML = '<i class="fa-solid fa-arrow-up" inert></i>';
+  button.innerHTML = '<i class="fa-solid fa-arrow-up-right-dots" inert></i>';
   button.addEventListener("click", event => {
     event.preventDefault();
     event.stopPropagation();

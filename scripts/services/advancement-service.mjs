@@ -43,7 +43,7 @@ export class AdvancementService {
     };
 
     const manager = Manager.forNewItem(draft, data, {
-      automaticApplication: false,
+      automaticApplication: true,
       showVisualizer: false
     });
 
@@ -212,10 +212,17 @@ export class AdvancementService {
       if (!advancement || !Object.keys(advancement).length) continue;
       let changed = false;
 
+      const redirectMap = new Map(redirects.map(row => [row.from, row.to]));
       const walk = value => {
         if (!value || typeof value !== "object") return;
         if (Array.isArray(value)) {
-          value.forEach(walk);
+          for (let index = 0; index < value.length; index++) {
+            const replacement = redirectMap.get(value[index]);
+            if (replacement) {
+              value[index] = replacement;
+              changed = true;
+            } else walk(value[index]);
+          }
           return;
         }
         for (const redirect of redirects) {
@@ -225,7 +232,13 @@ export class AdvancementService {
             changed = true;
           }
         }
-        Object.values(value).forEach(walk);
+        for (const [key, nested] of Object.entries(value)) {
+          const replacement = redirectMap.get(nested);
+          if (replacement) {
+            value[key] = replacement;
+            changed = true;
+          } else walk(nested);
+        }
       };
 
       walk(advancement);

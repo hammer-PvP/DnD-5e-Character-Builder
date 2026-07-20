@@ -7,6 +7,8 @@ import { ItemGrantIntegrityService } from "./item-grant-integrity-service.mjs";
 import { AdvancementChoiceAnnotationService } from "./advancement-choice-annotation-service.mjs";
 import { NativeAdvancementValidationService, StructuralLevelUpError } from "./native-advancement-validation-service.mjs";
 import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.mjs";
+import { ManagedAdvancementRegistry } from "./managed-advancement-registry.mjs";
+import { ItemChoiceReplacementIntegrityService } from "./item-choice-replacement-integrity-service.mjs";
 
 export class LevelUpAdvancementService {
   static async apply(draft, registry) {
@@ -33,7 +35,7 @@ export class LevelUpAdvancementService {
         data.system.levels = 1;
         this.#setHitPointValue(data, 1, hpValue);
         manager = Manager.forNewItem(draft, data, {
-          automaticApplication: false,
+          automaticApplication: true,
           showVisualizer: false
         });
         classIdentifier = data.system.identifier;
@@ -41,7 +43,7 @@ export class LevelUpAdvancementService {
         const classItem = draft.items.get(state.selectedClassId);
         if (!classItem) throw new Error("The selected Class no longer exists on the Level Up draft.");
         manager = Manager.forLevelChange(draft, classItem.id, 1, {
-          automaticApplication: false,
+          automaticApplication: true,
           showVisualizer: false
         });
         const cloneClass = manager.clone.items.get(classItem.id);
@@ -50,6 +52,10 @@ export class LevelUpAdvancementService {
         this.#setHitPointValue(source, state.targetClassLevel, hpValue);
         cloneClass.updateSource({ "system.advancement": source.system.advancement });
       }
+
+      // Reconcile any stale native ItemChoice replacement records on the
+      // manager clone before D&D5e instantiates or renders its flow.
+      await ItemChoiceReplacementIntegrityService.reconcile(manager.clone);
 
       // HP is resolved by the module so it can enforce the configured lock and
       // minimum-average policy. Warlock invocation choices are handled after
@@ -64,6 +70,7 @@ export class LevelUpAdvancementService {
       }
 
       await SourceResolver.enforceAllowedSources(draft, registry);
+      await ItemChoiceReplacementIntegrityService.reconcile(draft);
       await AdvancementService.dedupe(draft);
       const integrityResult = await ItemGrantIntegrityService.reconcile(draft, registry, {
         context: "levelUp",
@@ -74,7 +81,6 @@ export class LevelUpAdvancementService {
       await NativeAdvancementValidationService.validate(draft, {
         state,
         beforeItemIds,
-        beforeAbilities: rollbackSnapshot.system?.abilities ?? null,
         workflow: "Class Progression"
       });
       await AdvancementChoiceAnnotationService.refresh(draft, { state: LevelUpDraftManager.getState(draft) });
@@ -145,8 +151,7 @@ export class LevelUpAdvancementService {
       ?? "";
     const title = String(advancement?.title ?? source.title ?? "").trim().toLowerCase();
     if (String(type).toLowerCase().includes("hitpoints") || title === "hit points") return true;
-    if (classIdentifier === "warlock" && title === "eldritch invocations") return true;
-    return false;
+    return ManagedAdvancementRegistry.isManaged(advancement, { classIdentifier });
   }
 
   static #runManager(manager) {

@@ -56,6 +56,10 @@ export class LevelUpService {
       result.reason = "Level Up is available only for Player Character Actors.";
       return result;
     }
+    if (actor.getFlag?.(MODULE_ID, "commitSafetyLock")) {
+      result.reason = "Character Builder is locked for this Actor because a previous Level Up rollback could not be verified. A GM must restore or inspect the Actor before continuing.";
+      return result;
+    }
     if (!actor.isOwner) {
       result.reason = "You do not own this Actor.";
       return result;
@@ -116,6 +120,15 @@ export class LevelUpService {
   }
 
   static multiclassPrerequisite(actor, newClassIdentifier) {
+    const settings = this.settings();
+    if (!settings.enforceMulticlassRequirements) {
+      return {
+        qualified: true,
+        checks: [],
+        enforced: false,
+        message: "Multiclass prerequisites are disabled by the GM."
+      };
+    }
     const checks = [];
     const originalClass = this.originalClass(actor);
     const identifiers = [originalClass?.system?.identifier, newClassIdentifier].filter(Boolean);
@@ -135,6 +148,7 @@ export class LevelUpService {
     return {
       qualified: failed.length === 0,
       checks,
+      enforced: true,
       message: failed.length
         ? `Multiclass prerequisites are not met: ${failed.map(check => `${check.identifier} requires ${check.requirements} 13`).join("; ")}.`
         : "Multiclass prerequisites are met."

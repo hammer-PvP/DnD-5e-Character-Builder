@@ -1970,3 +1970,226 @@
   grid-column: 2;
   margin: 2px 0 0;
 }
+
+/* 0.9.4b — protected Commit Level Up transaction */
+.cb-level-up-shell.cb-commit-modal-open {
+  position: relative;
+  overflow: hidden;
+}
+.cb-commit-transaction-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 500;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: rgba(5, 9, 14, .82);
+  backdrop-filter: blur(3px);
+}
+.cb-commit-transaction-dialog {
+  width: min(560px, 100%);
+  max-height: calc(100% - 24px);
+  overflow: auto;
+  border: 1px solid rgba(118, 182, 211, .62);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(27, 38, 50, .99), rgba(16, 23, 31, .99));
+  box-shadow: 0 22px 70px rgba(0, 0, 0, .62);
+  color: var(--color-text-light-primary, #f2f3f4);
+  outline: none;
+}
+.cb-commit-transaction-dialog > header,
+.cb-commit-transaction-dialog > footer {
+  padding: 18px 22px;
+}
+.cb-commit-transaction-dialog > header {
+  border-bottom: 1px solid rgba(255, 255, 255, .1);
+}
+.cb-commit-transaction-dialog > header h2 { margin: 3px 0 0; }
+.cb-commit-transaction-dialog > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  border-top: 1px solid rgba(255, 255, 255, .1);
+}
+.cb-commit-confirmation-copy,
+.cb-commit-progress-copy {
+  padding: 26px 28px;
+  text-align: center;
+}
+.cb-commit-confirmation-copy > i {
+  margin-bottom: 10px;
+  font-size: 42px;
+  color: #8bc7df;
+}
+.cb-commit-confirmation-copy p,
+.cb-commit-progress-copy p { line-height: 1.45; }
+.cb-commit-state-icon {
+  display: block;
+  margin: 0 auto 14px;
+  font-size: 44px;
+}
+.cb-commit-state-icon.working { color: #8bc7df; animation: cb-commit-pulse 1.2s ease-in-out infinite; }
+.cb-commit-state-icon.success { color: #7fd09a; }
+.cb-commit-state-icon.error { color: #e1b45e; }
+.cb-commit-state-icon.critical { color: #e36b6b; }
+.cb-commit-progress-copy > strong { display: block; font-size: 18px; }
+.cb-commit-progress-track {
+  height: 14px;
+  margin: 20px 0 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, .2);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .34);
+}
+.cb-commit-progress-track > span {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #4384a1, #78bed9);
+  transition: width .24s ease;
+}
+.cb-commit-error-detail {
+  padding: 9px 11px;
+  border: 1px solid rgba(227, 107, 107, .45);
+  border-radius: 6px;
+  background: rgba(140, 40, 40, .18);
+  font-size: 11px;
+  text-align: left;
+}
+@keyframes cb-commit-pulse {
+  0%, 100% { transform: scale(1); opacity: .76; }
+  50% { transform: scale(1.08); opacity: 1; }
+}
+
+/* 0.9.4b — deterministic Advancement summaries and Circle of the Land preview */
+.character-builder .cb-land-preview-empty {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-height: 76px;
+  margin-top: 0.75rem;
+  padding: 0.85rem 1rem;
+  border: 1px dashed var(--color-border-light-primary, #8a7a5a);
+  border-radius: 6px;
+  opacity: 0.82;
+}
+.character-builder .cb-land-preview,
+.character-builder .cb-land-new-spells {
+  margin-top: 0.85rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.18);
+}
+.character-builder .cb-land-preview > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.55rem;
+}
+.character-builder .cb-land-level {
+  margin: 0.45rem 0;
+  border: 1px solid rgba(0, 0, 0, 0.16);
+  border-radius: 5px;
+  overflow: hidden;
+}
+.character-builder .cb-land-level > summary {
+  cursor: pointer;
+  padding: 0.55rem 0.7rem;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.045);
+}
+.character-builder .cb-land-level .cb-choice-grid,
+.character-builder .cb-land-level-summary .cb-choice-grid {
+  padding: 0.65rem;
+}
+.character-builder .cb-land-level-summary > strong {
+  display: block;
+  margin: 0.65rem 0 0.2rem;
+}
+.character-builder .cb-eligibility-badge {
+  font-style: normal;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.character-builder .cb-compact-item-list button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid rgba(0, 0, 0, 0.16);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.035);
+  text-align: left;
+}
+.character-builder .cb-compact-item-list button img {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  object-fit: cover;
+  border: 0;
+}
+.character-builder .cb-spell-option,
+.character-builder .cb-spell-choice-card {
+  cursor: pointer;
+}
+.character-builder .cb-spell-option input,
+.character-builder .cb-spell-choice-card input {
+  cursor: pointer;
+}
+
+/* 0.9.4c — reusable disabled spell presentation and Pact of the Tome */
+.character-builder .cb-spell-option.duplicate-disabled,
+.character-builder .cb-spell-option[data-disabled="true"],
+.character-builder .cb-spell-choice-card.duplicate-disabled {
+  opacity: .42;
+  filter: grayscale(1) saturate(0);
+  border-color: rgba(255,255,255,.055);
+  background: rgba(255,255,255,.018);
+}
+.character-builder .cb-spell-option.duplicate-disabled:hover,
+.character-builder .cb-spell-choice-card.duplicate-disabled:hover {
+  background: rgba(255,255,255,.025);
+}
+.character-builder .cb-spell-option.duplicate-disabled .cb-spell-toggle,
+.character-builder .cb-spell-choice-card.duplicate-disabled > input {
+  cursor: not-allowed;
+}
+.character-builder .cb-spell-option.duplicate-disabled .cb-spell-details,
+.character-builder .cb-spell-choice-card.duplicate-disabled .cb-spell-choice-preview {
+  cursor: help;
+}
+.character-builder .cb-pact-tome-section {
+  border-color: rgba(209,176,107,.48);
+  background: linear-gradient(180deg, rgba(209,176,107,.055), rgba(20,15,11,.08));
+}
+.character-builder .cb-pact-tome-heading {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(209,176,107,.24);
+}
+.character-builder .cb-pact-tome-heading img {
+  width: 50px;
+  height: 50px;
+  object-fit: cover;
+  border: 1px solid var(--cb-border);
+  border-radius: 5px;
+}
+.character-builder .cb-pact-tome-heading h3,
+.character-builder .cb-pact-tome-heading p { margin: 0; }
+.character-builder .cb-pact-tome-heading h3 { color: var(--cb-gold); }
+.character-builder .cb-pact-tome-heading p { margin-top: 4px; opacity: .78; }
+.character-builder .cb-pact-tome-list { margin-top: 14px; }
+.character-builder .cb-pact-tome-list > input[type="search"] { width: 100%; margin: 8px 0; }
+.character-builder .cb-pact-tome-list .cb-spell-groups { max-height: 320px; }
+
+/* 0.9.4c — standard Character Builder commit mark */
+.character-builder .cb-commit-confirmation-copy > .cb-commit-confirm-icon {
+  color: #62b979;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}

@@ -1,28 +1,5 @@
 import { MODULE_ID } from "../constants.mjs";
 
-const TITLE_FEATURE_BY_NORMALIZED = Object.freeze({
-  shadowyfigments: "shadow-arts"
-});
-
-const SPELL_FEATURE_BY_IDENTIFIER = Object.freeze({
-  "divine-smite": "paladins-smite",
-  "find-steed": "faithful-steed",
-  "hunters-mark": "favored-enemy",
-  "power-word-heal": "words-of-creation",
-  "power-word-kill": "words-of-creation",
-  "counterspell": "spell-breaker",
-  "dispel-magic": "spell-breaker",
-  "summon-beast": "phantasmal-creatures",
-  "summon-fey": "phantasmal-creatures",
-  "beast-sense": "animal-speaker",
-  "speak-with-animals": "animal-speaker",
-  "commune-with-nature": "nature-speaker",
-  "elementalism": "manipulate-elements",
-  "telekinesis": "telekinetic-master",
-  "guidance": "star-map",
-  "guiding-bolt": "star-map"
-});
-
 /**
  * Adds acquisition ownership metadata to spells created by native ItemGrant
  * Advancements. The native D&D5e document remains responsible for preparation,
@@ -37,11 +14,10 @@ export class FeatureSpellOwnershipService {
       const spell = draft.items.get(row.itemId);
       if (!spell || spell.type !== "spell") continue;
       const owner = draft.items.get(row.ownerItemId);
-      const feature = this.#featureForTitle(draft, row.advancementTitle, owner, spell);
+      const feature = this.#featureForTitle(draft, row.advancementTitle, owner);
       const ownerRecord = {
-        category: feature?.system?.identifier
-          ?? this.#slug(feature?.name || row.advancementTitle || "automatic-feature-spell"),
-        label: feature?.name || row.advancementTitle || "Automatic Feature Spell",
+        category: this.#slug(row.advancementTitle || feature?.name || "automatic-feature-spell"),
+        label: row.advancementTitle || feature?.name || "Automatic Feature Spell",
         classIdentifier: this.#classIdentifier(owner, draft),
         classItemId: this.#classItemId(owner, draft),
         subclassItemId: owner?.type === "subclass" ? owner.id : null,
@@ -52,7 +28,6 @@ export class FeatureSpellOwnershipService {
         acquiredAtCharacterLevel: Number(state?.targetCharacterLevel ?? 0),
         acquiredAtClassLevel: Number(state?.targetClassLevel ?? row.level ?? 0),
         sourceUuid: spell.getFlag("dnd5e", "sourceId") ?? spell._stats?.compendiumSource ?? null,
-        spellLevel: Number(spell.system?.level ?? 0),
         alwaysPrepared: Number(spell.system?.prepared ?? 0) === 2,
         nativeGrant: true
       };
@@ -163,22 +138,8 @@ export class FeatureSpellOwnershipService {
 
   static #mergeOwner(existing, record) {
     const key = this.#ownerKey(record);
-    const prior = existing.find(owner => this.#ownerKey(owner) === key) ?? null;
     const rows = existing.filter(owner => this.#ownerKey(owner) !== key);
-    const merged = foundry.utils.deepClone(record);
-    if (prior) {
-      // Reconciliation can revisit earlier grants on later Level Ups. Keep the
-      // original acquisition context rather than making an old spell appear to
-      // have been gained again in the current transaction.
-      for (const field of [
-        "transactionId", "acquiredAtCharacterLevel", "acquiredAtClassLevel",
-        "previousPrepared", "signaturePosition", "trackerActivityId",
-        "trackerActivityName"
-      ]) {
-        if (prior[field] != null) merged[field] = foundry.utils.deepClone(prior[field]);
-      }
-    }
-    rows.push(merged);
+    rows.push(foundry.utils.deepClone(record));
     return rows;
   }
 
@@ -186,50 +147,12 @@ export class FeatureSpellOwnershipService {
     return [owner.category, owner.featureItemId, owner.ownerItemId, owner.advancementId].join(":");
   }
 
-  static #featureForTitle(draft, title, owner, spell = null) {
-    const mappedIdentifier = SPELL_FEATURE_BY_IDENTIFIER[String(spell?.system?.identifier ?? "")];
-    if (mappedIdentifier) {
-      const mapped = draft.items.find(item => item.type === "feat"
-        && item.system?.identifier === mappedIdentifier);
-      if (mapped) return mapped;
-    }
-
+  static #featureForTitle(draft, title, owner) {
     const normalized = this.#normalize(title);
-    const titleMappedIdentifier = TITLE_FEATURE_BY_NORMALIZED[normalized];
-    if (titleMappedIdentifier) {
-      const mapped = draft.items.find(item => item.type === "feat"
-        && item.system?.identifier === titleMappedIdentifier);
-      if (mapped) return mapped;
-    }
-    if (!normalized) {
-      if (owner?.type === "feat") return owner;
-      if (owner?.type === "subclass") {
-        // Some later spell-list rows omit their title (notably Gloom Stalker
-        // levels 13 and 17). Resolve the single spell-list feature already
-        // granted by that subclass rather than losing ownership attribution.
-        const linkedSpellLists = draft.items.filter(item => {
-          if (item.type !== "feat" || !/-spells$/.test(String(item.system?.identifier ?? ""))) return false;
-          const root = String(item.getFlag("dnd5e", "advancementRoot")
-            ?? item.getFlag("dnd5e", "advancementOrigin") ?? "");
-          return root.startsWith(`${owner.id}.`);
-        });
-        if (linkedSpellLists.length === 1) return linkedSpellLists[0];
-      }
-      return null;
-    }
-    let candidates = draft.items.filter(item => item.type === "feat" && (
+    if (!normalized) return owner?.type === "feat" ? owner : null;
+    const candidates = draft.items.filter(item => item.type === "feat" && (
       this.#normalize(item.name) === normalized || this.#normalize(item.system?.identifier) === normalized
     ));
-    if (!candidates.length) {
-      // Titles such as "Star Map: Guidance" name the owning feature followed
-      // by the individual granted spell.
-      candidates = draft.items.filter(item => {
-        if (item.type !== "feat") return false;
-        const name = this.#normalize(item.name);
-        const identifier = this.#normalize(item.system?.identifier);
-        return (name && normalized.startsWith(name)) || (identifier && normalized.startsWith(identifier));
-      });
-    }
     if (candidates.length === 1) return candidates[0];
     const linked = candidates.find(item => {
       const root = String(item.getFlag("dnd5e", "advancementRoot") ?? item.getFlag("dnd5e", "advancementOrigin") ?? "");

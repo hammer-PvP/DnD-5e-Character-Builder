@@ -7,6 +7,7 @@ import { LevelUpAdvancementService } from "../services/level-up-advancement-serv
 import { LevelUpRulesService } from "../services/level-up-rules-service.mjs";
 import { LevelUpCommitService } from "../services/level-up-commit-service.mjs";
 import { AdvancementChoiceAnnotationService } from "../services/advancement-choice-annotation-service.mjs";
+import { MetadataReconciliationService } from "../services/metadata-reconciliation-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -17,6 +18,10 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     this.draft = null;
     this.registry = new SourceRegistry();
     this.busy = false;
+    this.commitDialog = null;
+    this.commitInProgress = false;
+    this.commitTransactionToken = null;
+    this.metadataReconciled = false;
   }
 
   static DEFAULT_OPTIONS = {
@@ -36,6 +41,10 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   async _prepareContext() {
+    if (!this.metadataReconciled) {
+      await MetadataReconciliationService.reconcile(this.actor);
+      this.metadataReconciled = true;
+    }
     const eligibility = LevelUpService.eligibility(this.actor);
     if (!eligibility.ready) throw new Error(eligibility.reason || "Level Up is not available for this Actor.");
     this.draft ??= await LevelUpDraftManager.getOrCreate(this.actor);
@@ -110,6 +119,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       classes,
       multiclassGroups,
       multiclassAvailable: settings.allowMulticlassing && multiclassGroups.some(group => group.items.length),
+      multiclassRequirementsEnforced: settings.enforceMulticlassRequirements,
       hpRollLocked,
       hpMethods: hpMethodAvailability.map(method => ({
         ...method,
@@ -122,6 +132,8 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       steps,
       isGM: game.user.isGM,
       busy: this.busy,
+      commitDialog: this.commitDialog,
+      commitInProgress: this.commitInProgress,
       sourceOrder: SourceRegistry.orderedSources().map(source => source.label).join(" → ")
     };
   }
@@ -132,30 +144,61 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       element.addEventListener("click", event => this.#onAction(event));
     });
     root.querySelectorAll('[name^="levelUp.invocation."], [name^="levelUp.replaceInvocation."]').forEach(input => {
-      input.addEventListener("change", event => {
-        this.#clearReplacementDownstream(event.currentTarget);
+      input.addEventListener("change", () => {
+        this.#clearInvalidInvocationDependents(input);
         this.#refreshInvocationSelectionState();
+        this.#refreshPactOfTheTomeVisibility();
         this.#refreshSpellSelectionState();
       });
     });
-    root.querySelectorAll("[data-spell-selection-control]").forEach(input => {
+    root.querySelectorAll("[data-spell-selection-control], [data-managed-selection-control]").forEach(input => {
       input.addEventListener("change", () => this.#refreshSpellSelectionState());
     });
-    root.querySelectorAll('[name^="levelUp.replaceSpell."], [name^="levelUp.replaceCantrip."], [name^="levelUp.featureReplace."], [name^="levelUp.itemReplace."], [name^="levelUp.featureOption."], [name="levelUp.land"], [name="levelUp.wildShapeForms"], [name^="levelUp.featureSpell."], [name^="levelUp.featureTarget."]').forEach(input => {
-      input.addEventListener("change", event => {
-        this.#clearReplacementDownstream(event.currentTarget);
+    root.querySelectorAll("[data-filter-target]").forEach(input => {
+      input.addEventListener("input", event => this.#filterSpellOptions(event));
+    });
+    root.querySelectorAll('[name^="levelUp.replaceSpell."], [name^="levelUp.replaceCantrip."], [name^="levelUp.featureReplace."], [name^="levelUp.featureOption."], [name="levelUp.land"], [name="levelUp.wildShapeForms"], [name^="levelUp.featureSpell."], [name^="levelUp.featureTarget."]').forEach(input => {
+      input.addEventListener("change", () => {
+        if (input.matches("[data-land-select]")) this.#refreshLandPreview(input.value);
         this.#refreshSpellSelectionState();
       });
     });
+    this.#bindSpellCardDetails(root);
     this.#refreshInvocationSelectionState();
+    this.#refreshPactOfTheTomeVisibility();
     this.#refreshSpellSelectionState();
+  }
+
+  #filterSpellOptions(event) {
+    const input = event.currentTarget;
+    const target = this.element.querySelector(input.dataset.filterTarget);
+    if (!target) return;
+    const query = input.value.trim().toLowerCase();
+    for (const card of target.querySelectorAll("[data-spell-option]")) {
+      const search = String(card.dataset.search ?? card.textContent ?? "").toLowerCase();
+      card.hidden = Boolean(query && !search.includes(query));
+    }
+    for (const group of target.querySelectorAll(".cb-source-group")) {
+      group.hidden = ![...group.querySelectorAll("[data-spell-option]")].some(card => !card.hidden);
+    }
+  }
+
+  #bindSpellCardDetails(root) {
+    for (const card of root.querySelectorAll(".cb-spell-option, .cb-spell-choice-card")) {
+      card.addEventListener("click", event => {
+        if (event.target.closest("input, label, select, option, a, button")) return;
+        const details = card.querySelector('[data-action="open-document"]');
+        if (details && !details.disabled) details.click();
+      });
+    }
   }
 
   async #onAction(event) {
     event.preventDefault();
-    if (this.busy) return;
     const target = event.currentTarget;
     const action = target.dataset.action;
+    const modalActions = new Set(["confirm-commit", "cancel-commit", "restart-after-failed-commit", "close-critical-commit"]);
+    if (this.busy && !modalActions.has(action)) return;
     try {
       switch (action) {
         case "select-class":
@@ -185,6 +228,27 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
           break;
         case "commit":
           await this.#commit();
+          break;
+        case "confirm-commit":
+          await this.#executeCommit();
+          break;
+        case "cancel-commit":
+          if (!this.commitInProgress) {
+            this.commitDialog = null;
+            this.render({ force: true });
+          }
+          break;
+        case "restart-after-failed-commit":
+          if (!this.commitInProgress) {
+            this.commitDialog = null;
+            await this.#restartClassSelection({ skipConfirmation: true });
+          }
+          break;
+        case "close-critical-commit":
+          if (!this.commitInProgress) {
+            this.commitDialog = null;
+            await this.close();
+          }
           break;
         case "open-document": {
           const uuid = target.dataset.uuid;
@@ -312,8 +376,29 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   async #saveAdditionalRules() {
-    this.busy = true;
     const formData = new FormData(this.element);
+    const removeCantripId = String(formData.get("levelUp.replaceCantrip.remove") ?? "");
+    if (removeCantripId) {
+      const cantrip = this.draft.items.get(removeCantripId);
+      const augments = cantrip?.getFlag(MODULE_ID, "eldritchInvocationAugments") ?? [];
+      if (augments.length) {
+        const names = augments.map(row => foundry.utils.escapeHTML(row.name ?? row.identifier ?? "Eldritch Invocation"));
+        const minimumLevels = augments.length;
+        const confirmed = await this.#confirm({
+          title: "Replace an Augmented Cantrip?",
+          yes: "Replace Anyway",
+          content: `<div class="cb-structural-error">
+            <p><strong>${foundry.utils.escapeHTML(cantrip.name)} is currently augmented by ${augments.length} Invocation${augments.length === 1 ? "" : "s"}:</strong></p>
+            <ul>${names.map(name => `<li>${name}</li>`).join("")}</ul>
+            <p>The Invocations will remain known but provide no benefit. Their targets will not transfer automatically, and relearning ${foundry.utils.escapeHTML(cantrip.name)} will not reconnect them.</p>
+            <p>Under the normal replacement sequence, restoring all targets may require at least <strong>${minimumLevels} future Warlock level${minimumLevels === 1 ? "" : "s"}</strong>.</p>
+            <p><strong>I understand that these Invocations may remain inactive for multiple Warlock levels.</strong></p>
+          </div>`
+        });
+        if (!confirmed) return;
+      }
+    }
+    this.busy = true;
     await LevelUpRulesService.apply(this.actor, this.draft, this.registry, formData);
     this.busy = false;
     ui.notifications.info("Level Up spell and feature choices saved on the draft.");
@@ -321,24 +406,125 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   async #commit() {
-    const confirmed = await this.#confirm({
+    if (this.commitInProgress) {
+      this.#focusCommitDialog();
+      return;
+    }
+    const state = LevelUpDraftManager.getState(this.draft);
+    // A repeated click before confirmation intentionally replaces the pending
+    // confirmation with a fresh singleton state. It can never touch an active
+    // commit because commitInProgress is set synchronously on confirmation.
+    this.commitDialog = {
+      open: true,
+      mode: "confirmation",
       title: "Commit Level Up",
-      content: `<p>Apply character level ${foundry.utils.escapeHTML(String(LevelUpDraftManager.getState(this.draft).targetCharacterLevel))} to <strong>${foundry.utils.escapeHTML(this.actor.name)}</strong>?</p><p>This is the only step that changes the live Actor.</p>`,
-      yes: "Commit Level Up"
-    });
-    if (!confirmed) return;
-    this.busy = true;
+      targetLevel: state.targetCharacterLevel,
+      actorName: this.actor.name,
+      percent: 0,
+      stage: "Ready to Commit",
+      detail: "The live Actor has not been changed yet."
+    };
     this.render({ force: true });
-    const result = await LevelUpCommitService.commit(this.actor, this.draft);
-    ui.notifications.info(`${this.actor.name} reached level ${result.history.targetCharacterLevel}.`);
-    this.draft = null;
-    await this.close();
-    this.actor.sheet?.render(false);
   }
 
-  async #restartClassSelection() {
+  async #executeCommit() {
+    if (this.commitInProgress) {
+      this.#focusCommitDialog();
+      return;
+    }
+    // Guard before the first await.
+    this.commitInProgress = true;
+    this.busy = true;
+    this.commitTransactionToken = foundry.utils.randomID?.(24) ?? crypto.randomUUID();
+    this.commitDialog = {
+      ...(this.commitDialog ?? {}),
+      open: true,
+      mode: "progress",
+      title: "Applying Level Up",
+      percent: 1,
+      stage: "Starting",
+      detail: "Preparing the protected Level Up transaction."
+    };
+    this.render({ force: true });
+
+    try {
+      const result = await LevelUpCommitService.commit(this.actor, this.draft, {
+        transactionToken: this.commitTransactionToken,
+        onProgress: payload => this.#updateCommitProgress(payload)
+      });
+      this.commitDialog = {
+        ...this.commitDialog,
+        mode: "success",
+        title: "Level Up Complete",
+        percent: 100,
+        stage: "Complete",
+        detail: `${this.actor.name} reached character level ${result.history.targetCharacterLevel}.`
+      };
+      this.render({ force: true });
+      ui.notifications.info(`${this.actor.name} reached level ${result.history.targetCharacterLevel}.`);
+      await new Promise(resolve => setTimeout(resolve, 700));
+      this.draft = null;
+      this.commitInProgress = false;
+      this.busy = false;
+      this.commitTransactionToken = null;
+      this.commitDialog = null;
+      await super.close();
+      this.actor.sheet?.render(false);
+    } catch (error) {
+      console.error(`${MODULE_ID} | Protected Level Up commit failed.`, error);
+      this.commitInProgress = false;
+      this.busy = false;
+      this.commitTransactionToken = null;
+      const critical = Boolean(error?.criticalRollback);
+      this.commitDialog = {
+        ...(this.commitDialog ?? {}),
+        open: true,
+        mode: critical ? "critical" : "error",
+        title: critical ? "Critical Rollback Failure" : "Level Up Not Applied",
+        percent: 100,
+        stage: critical ? "GM Intervention Required" : "Actor Restored",
+        detail: critical
+          ? "The Actor could not be verified after rollback. Character Builder changes are locked for this Actor until a GM restores or inspects it."
+          : "The Level Up failed and the original Actor was restored. Restart and redo this Level Up.",
+        error: error.message
+      };
+      this.render({ force: true });
+      ui.notifications.error(error.message, { permanent: true });
+    }
+  }
+
+  #updateCommitProgress(payload) {
+    if (!this.commitDialog) return;
+    this.commitDialog = {
+      ...this.commitDialog,
+      percent: Math.max(0, Math.min(100, Number(payload.percent ?? this.commitDialog.percent ?? 0))),
+      stage: payload.stage ?? this.commitDialog.stage,
+      detail: payload.detail ?? this.commitDialog.detail
+    };
+    const root = this.element;
+    const fill = root?.querySelector?.("[data-commit-progress-fill]");
+    const value = root?.querySelector?.("[data-commit-progress-value]");
+    const stage = root?.querySelector?.("[data-commit-progress-stage]");
+    const detail = root?.querySelector?.("[data-commit-progress-detail]");
+    if (fill) fill.style.width = `${this.commitDialog.percent}%`;
+    if (value) value.textContent = `${Math.round(this.commitDialog.percent)}%`;
+    if (stage) stage.textContent = this.commitDialog.stage;
+    if (detail) detail.textContent = this.commitDialog.detail;
+  }
+
+  #focusCommitDialog() {
+    const dialog = this.element?.querySelector?.(".cb-commit-transaction-dialog");
+    dialog?.focus?.();
+    dialog?.animate?.([
+      { transform: "scale(1)" },
+      { transform: "scale(1.015)" },
+      { transform: "scale(1)" }
+    ], { duration: 180 });
+  }
+
+  async #restartClassSelection({ skipConfirmation = false } = {}) {
     const lock = HitPointAdvancementService.lockedRoll(this.actor);
-    const confirmed = await this.#confirm({
+    const confirmed = skipConfirmation || await this.#confirm({
       title: "Restart Class Selection",
       content: lock
         ? `<p>Discard the current Class, multiclass, and all later draft choices?</p><p><strong>The locked Hit Die result (${foundry.utils.escapeHTML(String(lock.result?.raw ?? "—"))} on ${foundry.utils.escapeHTML(lock.result?.denomination ?? lock.denomination ?? "Hit Die")}) will be preserved.</strong> You may reuse that number when it fits the newly selected Class Hit Die, or choose Average.</p>`
@@ -354,6 +540,15 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       ? "Class selection restarted. The locked Hit Die result was preserved."
       : "Class selection restarted.");
     this.render({ force: true });
+  }
+
+  async close(options = {}) {
+    if (this.commitInProgress) {
+      this.#focusCommitDialog();
+      ui.notifications.warn("The Level Up commit is in progress and cannot be closed.");
+      return this;
+    }
+    return super.close(options);
   }
 
   #reviewContext(state) {
@@ -464,25 +659,43 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     return rows;
   }
 
-  #clearReplacementDownstream(input) {
-    if (!(input instanceof HTMLSelectElement) || !String(input.name ?? "").endsWith(".remove")) return;
-    const name = String(input.name);
-    let add = null;
-    let target = null;
-    if (name === "levelUp.replaceInvocation.remove") {
-      const section = input.closest("[data-invocation-replacement]");
-      add = section?.querySelector('[name="levelUp.replaceInvocation.add"]');
-      target = section?.querySelector('[name="levelUp.replaceInvocation.target"]');
-    } else if (name === "levelUp.replaceSpell.remove") {
-      add = this.element.querySelector('[name="levelUp.replaceSpell.add"]');
-    } else if (name === "levelUp.replaceCantrip.remove") {
-      add = this.element.querySelector('[name="levelUp.replaceCantrip.add"]');
-    } else {
-      const section = input.closest("[data-feature-replacement]");
-      add = section?.querySelector("[data-feature-replace-add]");
+  #refreshLandPreview(selectedLand) {
+    const section = this.element.querySelector("[data-land-selection]");
+    if (!section) return;
+    const value = String(selectedLand ?? "");
+    const empty = section.querySelector("[data-land-preview-empty]");
+    if (empty) empty.hidden = Boolean(value);
+    for (const preview of section.querySelectorAll("[data-land-preview]")) {
+      preview.hidden = preview.dataset.landPreview !== value;
     }
-    if (add) add.value = "";
-    if (target) target.value = "";
+  }
+
+  #clearInvalidInvocationDependents(changedInput) {
+    const replacement = changedInput.closest("[data-invocation-replacement]");
+    if (replacement) {
+      const remove = replacement.querySelector('[name="levelUp.replaceInvocation.remove"]');
+      const add = replacement.querySelector('[name="levelUp.replaceInvocation.add"]');
+      const target = replacement.querySelector('[name="levelUp.replaceInvocation.target"]');
+      if (changedInput === remove && !remove?.value) {
+        if (add) add.value = "";
+        if (target) target.value = "";
+      }
+      if (changedInput === add) {
+        const requiresTarget = add.selectedOptions?.[0]?.dataset?.targetCantrip === "true";
+        if (!add.value || !requiresTarget) {
+          if (target) target.value = "";
+        }
+      }
+    }
+
+    const slot = changedInput.closest("[data-invocation-slot]");
+    if (slot && changedInput.matches("select[data-invocation-select]")) {
+      const target = slot.querySelector("[data-invocation-target-row] select");
+      const requiresTarget = changedInput.selectedOptions?.[0]?.dataset?.targetCantrip === "true";
+      if (!changedInput.value || !requiresTarget) {
+        if (target) target.value = "";
+      }
+    }
   }
 
   #refreshInvocationSelectionState() {
@@ -630,6 +843,27 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     }
   }
 
+  #refreshPactOfTheTomeVisibility() {
+    const section = this.element?.querySelector?.("[data-pact-tome-level-up]");
+    if (!section) return;
+    const tomeIdentifier = "pact-of-the-tome";
+    const selectedInvocationOptions = [
+      ...this.element.querySelectorAll('select[data-invocation-select]'),
+      ...this.element.querySelectorAll('select[name="levelUp.replaceInvocation.add"]')
+    ].map(select => select.selectedOptions?.[0]).filter(Boolean);
+    const acquiring = selectedInvocationOptions.some(option => option.dataset.identifier === tomeIdentifier);
+    const remove = this.element.querySelector('select[name="levelUp.replaceInvocation.remove"]')?.selectedOptions?.[0];
+    const add = this.element.querySelector('select[name="levelUp.replaceInvocation.add"]')?.selectedOptions?.[0];
+    const removing = remove?.dataset.identifier === tomeIdentifier && add?.dataset.identifier !== tomeIdentifier;
+    const needsInitial = section.dataset.needsInitial === "true";
+    const visible = acquiring || (needsInitial && !removing);
+    section.hidden = !visible;
+    for (const input of section.querySelectorAll('input[type="checkbox"]')) {
+      if (!visible) input.checked = false;
+      input.disabled = !visible || input.dataset.baseDisabled === "true";
+    }
+  }
+
   #refreshSpellSelectionState() {
     const root = this.element;
     const selectionRoot = root.querySelector("[data-spell-selection-root]");
@@ -637,12 +871,14 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
     this.#refreshInvocationTargetEligibility();
 
-    const controls = [...selectionRoot.querySelectorAll("input[type=checkbox][data-spell-identifier]")];
+    const allSpellControls = [...selectionRoot.querySelectorAll("input[type=checkbox][data-spell-identifier]")];
+    const controls = allSpellControls.filter(control => !control.matches("[data-managed-selection-control]"));
     const replacement = selectionRoot.querySelector('[name="levelUp.replaceSpell.add"]');
     const replacementRemove = selectionRoot.querySelector('[name="levelUp.replaceSpell.remove"]');
     const selectedControls = controls.filter(control => control.checked);
+    const allSelectedControls = allSpellControls.filter(control => control.checked);
     const selectedByIdentifier = new Map();
-    for (const control of selectedControls) {
+    for (const control of allSelectedControls) {
       const identifier = control.dataset.spellIdentifier;
       const rows = selectedByIdentifier.get(identifier) ?? [];
       rows.push(control);
@@ -651,7 +887,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const replacementIdentifier = String(replacement?.value ?? "");
     let conflict = false;
 
-    for (const control of controls) {
+    for (const control of allSpellControls) {
       const identifier = control.dataset.spellIdentifier;
       const selectedElsewhere = (selectedByIdentifier.get(identifier) ?? []).some(row => row !== control);
       const selectedAsReplacement = Boolean(replacementIdentifier && replacementIdentifier === identifier);
@@ -691,33 +927,6 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       everySectionComplete &&= complete;
     }
 
-    const managedSpellControls = [...selectionRoot.querySelectorAll("input[type=checkbox][data-managed-spell-identifier]")];
-    const managedSelectedByIdentifier = new Map();
-    for (const control of managedSpellControls.filter(control => control.checked)) {
-      const identifier = control.dataset.managedSpellIdentifier;
-      const rows = managedSelectedByIdentifier.get(identifier) ?? [];
-      rows.push(control);
-      managedSelectedByIdentifier.set(identifier, rows);
-    }
-    for (const control of managedSpellControls) {
-      const identifier = control.dataset.managedSpellIdentifier;
-      const selectedAsBase = selectedByIdentifier.has(identifier);
-      const duplicateManaged = (managedSelectedByIdentifier.get(identifier) ?? []).some(row => row !== control);
-      const duplicate = selectedAsBase || duplicateManaged || replacementIdentifier === identifier;
-      if (!control.checked) control.disabled = duplicate;
-      if (control.checked && duplicate) conflict = true;
-      const card = control.closest("[data-spell-option]");
-      card?.classList.toggle("duplicate-disabled", !control.checked && duplicate);
-      if (card && duplicate) card.title = "Already selected or known through another spell choice.";
-      else if (card) card.removeAttribute("title");
-    }
-    for (const control of controls) {
-      const duplicateManaged = managedSelectedByIdentifier.has(control.dataset.spellIdentifier);
-      if (!control.checked && duplicateManaged) control.disabled = true;
-      if (control.checked && duplicateManaged) conflict = true;
-      control.closest("[data-spell-option]")?.classList.toggle("duplicate-disabled", !control.checked && duplicateManaged);
-    }
-
     const pendingSpellIdentifiers = new Set(selectedControls.map(control => control.dataset.spellIdentifier).filter(Boolean));
     for (const control of selectionRoot.querySelectorAll('[data-managed-target-identifier][data-pending="true"]')) {
       const eligible = pendingSpellIdentifiers.has(control.dataset.managedTargetIdentifier);
@@ -730,15 +939,21 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
     let managedSectionsComplete = true;
     for (const section of selectionRoot.querySelectorAll("[data-managed-selection-section]")) {
+      const hidden = section.closest("[hidden]") !== null;
       const expected = Number(section.dataset.required ?? 0);
       const controls = [...section.querySelectorAll("input[type=checkbox][data-managed-selection-control]")];
       const selected = controls.filter(control => control.checked).length;
       section.querySelectorAll("[data-managed-selection-count]").forEach(node => {
         node.textContent = `${selected} / ${expected}`;
       });
-      const complete = selected === expected;
-      section.classList.toggle("complete", complete);
-      section.classList.toggle("invalid", selected > expected);
+      for (const control of controls) {
+        const baseDisabled = control.dataset.baseDisabled === "true";
+        const duplicateDisabled = control.closest("[data-spell-option]")?.classList.contains("duplicate-disabled") && !control.checked;
+        control.disabled = hidden || baseDisabled || duplicateDisabled || (!control.checked && selected >= expected);
+      }
+      const complete = hidden || selected === expected;
+      section.classList.toggle("complete", !hidden && complete);
+      section.classList.toggle("invalid", !hidden && selected > expected);
       managedSectionsComplete &&= complete;
     }
 
@@ -837,33 +1052,44 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
   async #handleStructuralLevelUpError(error) {
     const choice = foundry.utils.escapeHTML(error.choiceName ?? "The selected option");
     const reason = foundry.utils.escapeHTML(error.reason ?? error.message ?? "The native Advancement result is inconsistent.");
+    const returnToChoices = error.returnStep === "choices";
+    const returnLabel = returnToChoices ? "Return to Spells & Features" : "Return to Class Progression";
     const content = `<div class="cb-structural-error">
       <p><strong>${choice} cannot be applied safely.</strong></p>
       <p>${reason}</p>
-      <p>The native Advancement process is no longer in a safe state, so this pending Level Up must be restarted.</p>
-      <p><strong>Your live character has not been changed.</strong> The locked Hit Die result and GM Level Up grant will be preserved.</p>
+      <p>The invalid choice was reverted to the pre-choice Draft snapshot. Return to the appropriate Character Builder step and choose a valid option.</p>
+      <p><strong>Your live character has not been changed.</strong> The selected Class and locked Hit Die result are preserved.</p>
     </div>`;
     const DialogV2 = foundry.applications.api.DialogV2;
     if (DialogV2?.wait) {
       await DialogV2.wait({
-        window: { title: error.title ?? "Level Up Must Be Restarted", modal: true },
+        window: { title: error.title ?? "Native Choice Must Be Reopened", modal: true },
         content,
-        buttons: [{ action: "restart", label: "Restart Level Up", icon: "fa-solid fa-rotate-left", default: true }],
-        close: () => "restart"
+        buttons: [{ action: "return", label: returnLabel, icon: "fa-solid fa-rotate-left", default: true }],
+        close: () => "return"
       });
     } else {
       await new Promise(resolve => {
         new Dialog({
-          title: error.title ?? "Level Up Must Be Restarted",
+          title: error.title ?? "Native Choice Must Be Reopened",
           content,
-          buttons: { restart: { label: "Restart Level Up", callback: resolve } },
-          default: "restart",
+          buttons: { reopen: { label: returnLabel, callback: resolve } },
+          default: "reopen",
           close: resolve
         }).render(true);
       });
     }
-    this.draft = await LevelUpDraftManager.restartClassSelection(this.actor);
-    ui.notifications.warn("The pending Level Up was restarted safely. Choose the Class and complete the Level Up again.", { permanent: true });
+    await LevelUpDraftManager.setState(this.draft, {
+      nativeRunning: false,
+      nativeComplete: returnToChoices,
+      additionalChoices: {},
+      additionalComplete: false,
+      commitReady: false,
+      step: returnToChoices ? "choices" : "advancements"
+    });
+    ui.notifications.warn(returnToChoices
+      ? "The invalid choice was reverted. Return to Spells & Features and choose again."
+      : "The invalid native choice was reverted. Reopen Class Progression and choose again.", { permanent: true });
     this.render({ force: true });
   }
 

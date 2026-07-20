@@ -42,7 +42,9 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     root.querySelectorAll('[name^="hpMethod."]').forEach(input => {
       input.addEventListener("change", () => this.#refreshHpDefaults());
     });
+    root.querySelector('[name="allowMulticlassing"]')?.addEventListener("change", () => this.#refreshMulticlassRequirements());
     this.#refreshHpDefaults();
+    this.#refreshMulticlassRequirements();
   }
 
   async #save(event) {
@@ -84,6 +86,7 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       shopBonusGold,
       levelUpMode: String(form.querySelector('[name="levelUpMode"]')?.value ?? "milestone"),
       allowMulticlassing: form.querySelector('[name="allowMulticlassing"]')?.checked ?? false,
+      enforceMulticlassRequirements: form.querySelector('[name="enforceMulticlassRequirements"]')?.checked ?? true,
       hitPointAdvancement: {
         methods: hpMethods,
         defaultMethod,
@@ -108,6 +111,14 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     await game.settings.set(MODULE_ID, "settings", settings);
     ui.notifications.info("Character Builder settings saved.");
     this.close();
+  }
+
+  #refreshMulticlassRequirements() {
+    const allow = this.element?.querySelector?.('[name="allowMulticlassing"]');
+    const enforce = this.element?.querySelector?.('[name="enforceMulticlassRequirements"]');
+    if (!allow || !enforce) return;
+    enforce.disabled = !allow.checked;
+    enforce.closest("label")?.classList.toggle("disabled", !allow.checked);
   }
 
   #refreshHpDefaults() {

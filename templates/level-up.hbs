@@ -1,4 +1,55 @@
-<div class="cb-level-up-shell">
+<div class="cb-level-up-shell {{#if commitDialog.open}}cb-commit-modal-open{{/if}}">
+  {{#if commitDialog.open}}
+  <div class="cb-commit-transaction-backdrop" aria-hidden="false">
+    <section class="cb-commit-transaction-dialog {{commitDialog.mode}}" role="dialog" aria-modal="true" aria-labelledby="cb-commit-title" tabindex="-1">
+      <header>
+        <span class="cb-kicker">Protected Transaction</span>
+        <h2 id="cb-commit-title">{{commitDialog.title}}</h2>
+      </header>
+
+      {{#if (eq commitDialog.mode "confirmation")}}
+      <div class="cb-commit-confirmation-copy">
+        <i class="fa-solid fa-arrow-up-right-dots cb-commit-confirm-icon" aria-hidden="true"></i>
+        <p>Apply character level <strong>{{commitDialog.targetLevel}}</strong> to <strong>{{commitDialog.actorName}}</strong>?</p>
+        <p>The live Actor changes only after confirmation. Once the protected commit starts, it cannot be cancelled, restarted, or replaced by another click.</p>
+      </div>
+      <footer>
+        <button type="button" data-action="cancel-commit"><i class="fa-solid fa-xmark"></i> Return to Level Up</button>
+        <button type="button" class="cb-primary-confirm" data-action="confirm-commit"><i class="fa-solid fa-check"></i> Commit Level Up</button>
+      </footer>
+      {{else}}
+      <div class="cb-commit-progress-copy">
+        {{#if (eq commitDialog.mode "success")}}
+        <i class="fa-solid fa-circle-check cb-commit-state-icon success" aria-hidden="true"></i>
+        {{else if (eq commitDialog.mode "error")}}
+        <i class="fa-solid fa-rotate-left cb-commit-state-icon error" aria-hidden="true"></i>
+        {{else if (eq commitDialog.mode "critical")}}
+        <i class="fa-solid fa-triangle-exclamation cb-commit-state-icon critical" aria-hidden="true"></i>
+        {{else}}
+        <i class="fa-solid fa-gears cb-commit-state-icon working" aria-hidden="true"></i>
+        {{/if}}
+        <strong data-commit-progress-stage>{{commitDialog.stage}}</strong>
+        <p data-commit-progress-detail>{{commitDialog.detail}}</p>
+        {{#if commitDialog.error}}<p class="cb-commit-error-detail">{{commitDialog.error}}</p>{{/if}}
+        <div class="cb-commit-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{commitDialog.percent}}">
+          <span data-commit-progress-fill style="width: {{commitDialog.percent}}%"></span>
+        </div>
+        <small data-commit-progress-value>{{commitDialog.percent}}%</small>
+      </div>
+      {{#if (eq commitDialog.mode "error")}}
+      <footer>
+        <button type="button" class="cb-primary-confirm" data-action="restart-after-failed-commit"><i class="fa-solid fa-rotate-left"></i> Restart Level Up</button>
+      </footer>
+      {{/if}}
+      {{#if (eq commitDialog.mode "critical")}}
+      <footer>
+        <button type="button" class="cb-danger-button" data-action="close-critical-commit"><i class="fa-solid fa-lock"></i> Close Character Builder</button>
+      </footer>
+      {{/if}}
+      {{/if}}
+    </section>
+  </div>
+  {{/if}}
   <aside class="cb-level-up-sidebar">
     <header class="cb-level-up-actor">
       <img src="{{actor.img}}" alt="{{actor.name}}">
@@ -69,6 +120,7 @@
           <div>
             <h2>Add Multiclass</h2>
             <p>A new Class uses its multiclass-specific proficiency grants. It does not receive initial-Class Saving Throws, Starting Equipment, or unrestricted initial proficiencies.</p>
+            {{#unless multiclassRequirementsEnforced}}<p class="cb-notice"><i class="fa-solid fa-unlock"></i> Official Multiclass ability-score requirements are disabled by the GM.</p>{{/unless}}
           </div>
         </div>
         {{#each multiclassGroups}}
@@ -215,6 +267,33 @@
       </section>
       {{/if}}
 
+      {{#if rules.automaticAdvancementSummaryCount}}
+      <section class="cb-choice-section cb-automatic-grants">
+        <header class="cb-choice-section-header">
+          <div>
+            <h3>Native Progression Applied Automatically</h3>
+            <p>These deterministic D&D5e Advancements required no choice. Their results were applied to the Draft without displaying a Next-only native window.</p>
+          </div>
+          <strong>{{rules.automaticAdvancementSummaryCount}}</strong>
+        </header>
+        <div class="cb-automatic-grant-grid">
+          {{#each rules.automaticAdvancementSummaries}}
+          <article class="cb-automatic-grant-card">
+            <i class="{{icon}}" aria-hidden="true"></i>
+            <button type="button" class="cb-automatic-grant-preview" data-action="open-document" data-uuid="{{ownerUuid}}" aria-label="Open {{ownerName}} details">
+              <span>
+                <strong>{{title}}</strong>
+                <small>{{ownerName}} · {{type}}</small>
+              </span>
+              <i class="fa-solid fa-arrow-up-right-from-square"></i>
+            </button>
+            <p class="hint">{{detail}}</p>
+          </article>
+          {{/each}}
+        </div>
+      </section>
+      {{/if}}
+
       {{#if rules.cantripCount}}
       <section class="cb-choice-section cb-spell-selection-section" data-spell-selection-section data-required="{{rules.cantripCount}}">
         <header class="cb-choice-section-header"><div><h3>Choose {{rules.cantripCount}} Cantrip{{#unless (eq rules.cantripCount 1)}}s{{/unless}}</h3><p>Cantrips are Spell Level 0.</p></div><strong data-selection-count>{{rules.selectedCantripCount}} / {{rules.cantripCount}}</strong></header>
@@ -230,7 +309,7 @@
               {{#each items}}
               <article class="cb-choice-card cb-spell-choice-card {{#if disabled}}duplicate-disabled{{/if}}" data-spell-option title="{{disabledReason}}">
                 <input type="checkbox" name="levelUp.cantrips" value="{{identifier}}" data-spell-selection-control data-spell-identifier="{{identifier}}" data-selection-channel="cantrip" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{checked checked}} {{#if disabled}}disabled{{/if}}>
-                <button type="button" class="cb-spell-choice-preview" data-action="open-document" data-uuid="{{uuid}}" aria-label="Open {{name}} details"><img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}}</small></span></button>
+                <button type="button" class="cb-spell-choice-preview" data-action="open-document" data-uuid="{{uuid}}" aria-label="Open {{name}} details"><img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}}{{#if eligibilityBadge}} · <em class="cb-eligibility-badge">{{eligibilityBadge}}</em>{{/if}}</small></span></button>
               </article>
               {{/each}}
             </div>
@@ -256,7 +335,7 @@
               {{#each items}}
               <article class="cb-choice-card cb-spell-choice-card {{#if disabled}}duplicate-disabled{{/if}}" data-spell-option title="{{disabledReason}}">
                 <input type="checkbox" name="levelUp.spells" value="{{identifier}}" data-spell-selection-control data-spell-identifier="{{identifier}}" data-selection-channel="class-spell" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{checked checked}} {{#if disabled}}disabled{{/if}}>
-                <button type="button" class="cb-spell-choice-preview" data-action="open-document" data-uuid="{{uuid}}" aria-label="Open {{name}} details"><img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}}</small></span></button>
+                <button type="button" class="cb-spell-choice-preview" data-action="open-document" data-uuid="{{uuid}}" aria-label="Open {{name}} details"><img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}}{{#if eligibilityBadge}} · <em class="cb-eligibility-badge">{{eligibilityBadge}}</em>{{/if}}</small></span></button>
               </article>
               {{/each}}
             </div>
@@ -276,7 +355,7 @@
           {{#each rules.automaticGroups}}
           <h4 class="cb-source-heading">{{label}}</h4>
           <div class="cb-compact-item-list">
-            {{#each items}}<span><img src="{{img}}" alt="">{{name}} <small>{{levelLabel}}</small></span>{{/each}}
+            {{#each items}}<button type="button" data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}} details"><img src="{{img}}" alt=""><span>{{name}} <small>{{levelLabel}}</small></span></button>{{/each}}
           </div>
           {{/each}}
         </details>
@@ -298,7 +377,7 @@
               {{#each items}}
               <article class="cb-choice-card cb-spell-choice-card {{#if disabled}}duplicate-disabled{{/if}}" data-spell-option title="{{disabledReason}}">
                 <input type="checkbox" name="levelUp.savantSpells" value="{{identifier}}" data-spell-selection-control data-spell-identifier="{{identifier}}" data-selection-channel="savant" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{checked checked}} {{#if disabled}}disabled{{/if}}>
-                <button type="button" class="cb-spell-choice-preview" data-action="open-document" data-uuid="{{uuid}}" aria-label="Open {{name}} details"><img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}}</small></span></button>
+                <button type="button" class="cb-spell-choice-preview" data-action="open-document" data-uuid="{{uuid}}" aria-label="Open {{name}} details"><img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}}{{#if eligibilityBadge}} · <em class="cb-eligibility-badge">{{eligibilityBadge}}</em>{{/if}}</small></span></button>
               </article>
               {{/each}}
             </div>
@@ -323,7 +402,7 @@
           <label>With
             <select name="levelUp.replaceSpell.add">
               <option value="">No replacement</option>
-              {{#each rules.replacement.options}}<option value="{{identifier}}" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{#if disabled}}disabled{{/if}} {{#if (eq ../rules.replacement.addIdentifier identifier)}}selected{{/if}}>{{name}} — {{levelLabel}}{{#if disabled}} — already selected{{/if}}</option>{{/each}}
+              {{#each rules.replacement.options}}<option value="{{identifier}}" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{#if disabled}}disabled{{/if}} {{#if (eq ../rules.replacement.addIdentifier identifier)}}selected{{/if}}>{{name}} — {{levelLabel}}{{#if disabled}} — {{disabledReason}}{{/if}}</option>{{/each}}
             </select>
           </label>
         </div>
@@ -344,7 +423,7 @@
           <label>With
             <select name="levelUp.replaceCantrip.add" data-optional-pair-add>
               <option value="">No replacement</option>
-              {{#each rules.cantripReplacement.options}}<option value="{{identifier}}" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{#if disabled}}disabled{{/if}} {{#if (eq ../rules.cantripReplacement.addIdentifier identifier)}}selected{{/if}}>{{name}}{{#if disabled}} — already selected{{/if}}</option>{{/each}}
+              {{#each rules.cantripReplacement.options}}<option value="{{identifier}}" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{#if disabled}}disabled{{/if}} {{#if (eq ../rules.cantripReplacement.addIdentifier identifier)}}selected{{/if}}>{{name}}{{#if disabled}} — {{disabledReason}}{{/if}}</option>{{/each}}
             </select>
           </label>
         </div>
@@ -412,29 +491,6 @@
       {{/if}}
       {{/each}}
 
-      {{#each rules.features.itemReplacementSections}}
-      {{#if available}}
-      <section class="cb-choice-section" data-feature-replacement data-same-level="false">
-        <h3>{{title}}</h3><p>{{note}}</p>
-        <div class="cb-replacement-row">
-          <label>Replace
-            <select name="levelUp.itemReplace.{{id}}.remove" data-feature-replace-remove>
-              <option value="">No replacement</option>
-              {{#each existing}}<option value="{{id}}" {{#if (eq ../selectedRemoveId id)}}selected{{/if}}>{{name}}</option>{{/each}}
-            </select>
-          </label>
-          <i class="fa-solid fa-arrow-right"></i>
-          <label>With
-            <select name="levelUp.itemReplace.{{id}}.add" data-feature-replace-add>
-              <option value="">No replacement</option>
-              {{#each options}}<option value="{{uuid}}" data-base-label="{{name}}" {{#if (eq ../selectedAddUuid uuid)}}selected{{/if}}>{{name}}</option>{{/each}}
-            </select>
-          </label>
-        </div>
-      </section>
-      {{/if}}
-      {{/each}}
-
       {{#each rules.features.optionSections}}
       <section class="cb-choice-section cb-managed-select-section" data-managed-select-section>
         <h3>{{title}}</h3><p>{{note}}</p>
@@ -466,18 +522,71 @@
 
       {{#if rules.features.land.featureItemId}}
         {{#if rules.features.land.required}}
-        <section class="cb-choice-section cb-managed-select-section" data-managed-select-section>
+        <section class="cb-choice-section cb-managed-select-section cb-land-selection" data-managed-select-section data-land-selection>
           <h3>Circle of the Land</h3><p>{{rules.features.land.note}}</p>
           <label>Land
-            <select name="levelUp.land" data-managed-required-select required>
+            <select name="levelUp.land" data-managed-required-select data-land-select required>
               <option value="">Choose a land</option>
               {{#each rules.features.land.options}}<option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>{{/each}}
             </select>
           </label>
+          <div class="cb-land-preview-empty" data-land-preview-empty {{#if rules.features.land.selected}}hidden{{/if}}>
+            <i class="fa-solid fa-leaf"></i><span>Select a Land to preview its complete Circle Spell progression.</span>
+          </div>
+          {{#each rules.features.land.previews}}
+          <div class="cb-land-preview" data-land-preview="{{value}}" {{#unless selected}}hidden{{/unless}}>
+            <header><strong>{{label}} Circle Spells</strong><small>Complete subclass progression</small></header>
+            {{#each levels}}
+            <details class="cb-land-level" open>
+              <summary>{{label}}</summary>
+              <div class="cb-choice-grid">
+                {{#each spells}}
+                <button type="button" class="cb-automatic-grant-preview" data-action="open-document" data-uuid="{{uuid}}" aria-label="Open {{name}} details">
+                  <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}} · {{sourceLabel}}</small></span><i class="fa-solid fa-arrow-up-right-from-square"></i>
+                </button>
+                {{/each}}
+              </div>
+            </details>
+            {{/each}}
+          </div>
+          {{/each}}
         </section>
         {{else}}
-        <section class="cb-choice-section"><h3>Circle of the Land</h3><p>Current land: <strong>{{rules.features.land.current}}</strong>. Newly unlocked Circle Spells will be applied automatically.</p></section>
+        {{#if rules.features.land.hasAutomatic}}
+        <section class="cb-choice-section cb-land-summary">
+          <h3>Circle of the Land</h3>
+          <p>Current land: <strong>{{rules.features.land.currentLabel}}</strong>.</p>
+          <div class="cb-land-new-spells">
+            <h4>Unlocked This Level</h4>
+            {{#each rules.features.land.newSpells}}
+            <div class="cb-land-level-summary"><strong>{{label}}</strong>
+              <div class="cb-choice-grid">
+                {{#each spells}}
+                <button type="button" class="cb-automatic-grant-preview" data-action="open-document" data-uuid="{{uuid}}" aria-label="Open {{name}} details">
+                  <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}} · {{sourceLabel}}</small></span><i class="fa-solid fa-arrow-up-right-from-square"></i>
+                </button>
+                {{/each}}
+              </div>
+            </div>
+            {{/each}}
+          </div>
+        </section>
         {{/if}}
+        {{/if}}
+      {{/if}}
+
+      {{#if rules.pactOfTheTome.active}}
+      <section class="cb-choice-section cb-pact-tome-section"
+        data-pact-tome-level-up
+        data-existing-tome-invocation="{{rules.pactOfTheTome.existingInvocationItemId}}"
+        data-needs-initial="{{#if rules.pactOfTheTome.needsInitialConfiguration}}true{{else}}false{{/if}}"
+        {{#unless rules.pactOfTheTome.visible}}hidden{{/unless}}>
+        {{> "modules/dnd5e-character-builder/templates/partials/pact-of-the-tome-selection.hbs"
+          pact=rules.pactOfTheTome
+          fieldPrefix="levelUp.pactOfTheTome"
+          idPrefix="cb-level-up-pact-tome"
+          managed=true}}
+      </section>
       {{/if}}
 
       {{#if rules.invocations.count}}
@@ -541,7 +650,7 @@
           <label>Replace
             <select name="levelUp.replaceInvocation.remove">
               <option value="">No replacement</option>
-              {{#each rules.invocations.replacement.existing}}<option value="{{id}}" {{#if blocked}}disabled{{/if}} {{#if (eq ../rules.invocations.replacement.selectedRemoveId id)}}selected{{/if}}>{{name}}{{#if blocked}} — {{disabledReason}}{{/if}}</option>{{/each}}
+              {{#each rules.invocations.replacement.existing}}<option value="{{id}}" data-identifier="{{identifier}}" {{#if blocked}}disabled{{/if}} {{#if (eq ../rules.invocations.replacement.selectedRemoveId id)}}selected{{/if}}>{{name}}{{#if blocked}} — {{disabledReason}}{{/if}}</option>{{/each}}
             </select>
           </label>
           <i class="fa-solid fa-arrow-right"></i>

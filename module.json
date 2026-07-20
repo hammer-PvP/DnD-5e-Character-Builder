@@ -1,8 +1,8 @@
 {
   "id": "dnd5e-character-builder",
   "title": "Character Builder",
-  "description": "Private 0.9.4a Level Up test beta with managed PHB 2024 class-feature choices, native Advancement safety, and feature-owned spell metadata. Runtime Character Management is not included.",
-  "version": "0.9.4a",
+  "description": "D&D 2024 Character Creation and Level Up for Foundry VTT 14, with native Advancement integration, exact spell ownership, protected transactional commits, and PHB 2024 class progression support.",
+  "version": "0.9.4c",
   "authors": [
     {
       "name": "Raphael Andrade"
@@ -48,5 +48,8 @@
   "license": "LICENSE",
   "readme": "README.md",
   "url": "https://github.com/hammer-PvP/DnD-5e-Character-Builder",
-  "bugs": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/issues"
+  "manifest": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/latest/download/module.json",
+  "download": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/download/v0.9.4c/module.zip",
+  "bugs": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/issues",
+  "changelog": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/tag/v0.9.4c"
 }

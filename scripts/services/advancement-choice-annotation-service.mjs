@@ -1,9 +1,9 @@
 import { MODULE_ID } from "../constants.mjs";
 
 /**
- * Stores compact read-only badges only for choices made during Character Builder
- * Level Up transactions. Level 1 creation choices remain in their native sheet
- * locations and are deliberately not annotated.
+ * Stores compact read-only choice badges on the exact feature that owns each
+ * Character Builder selection. Creation and Level Up acquisitions retain
+ * independent contexts so later choices never overwrite earlier ones.
  */
 export class AdvancementChoiceAnnotationService {
   static FLAG = "advancementChoiceBadges";
@@ -28,9 +28,8 @@ export class AdvancementChoiceAnnotationService {
   }
 
   /**
-   * Rebuild legacy 0.9.2/0.9.3 badge data from Level Up history. This removes
-   * creation badges and moves choices such as Scholar Expertise from the Class
-   * document to the feature which presents that choice on the Actor sheet.
+   * Rebuild legacy badges from the authoritative creation Advancements and
+   * Level Up history, moving every choice to its exact presentation feature.
    */
   static async migrateActor(actor) {
     if (!actor || actor.type !== "character") return;
@@ -39,22 +38,30 @@ export class AdvancementChoiceAnnotationService {
     await actor.setFlag(MODULE_ID, this.SCHEMA_FLAG, this.SCHEMA_VERSION);
   }
 
+  static async refreshCreation(actor) {
+    const scope = this.#creationScope(actor);
+    if (!scope) return [];
+    return this.refresh(actor, { state: scope });
+  }
+
   static async refresh(actor, { state = null, rebuild = false } = {}) {
     if (!actor?.items) return [];
 
     const byItem = new Map(actor.items.map(item => [item.id, []]));
     if (!rebuild) {
+      const incomingContext = state?.context ?? "levelUp";
       for (const item of actor.items) {
-        const retained = this.getBadges(item).filter(badge =>
-          badge?.context === "levelUp"
-          && (!state?.transactionId || badge.transactionId !== state.transactionId)
-        );
+        const retained = this.getBadges(item).filter(badge => {
+          if (badge?.context !== incomingContext) return true;
+          if (state?.transactionId) return badge.transactionId !== state.transactionId;
+          return incomingContext !== "creation";
+        });
         byItem.set(item.id, retained);
       }
     }
 
     const scopes = rebuild
-      ? (actor.getFlag(MODULE_ID, "levelUpHistory") ?? [])
+      ? [this.#creationScope(actor), ...(actor.getFlag(MODULE_ID, "levelUpHistory") ?? [])].filter(Boolean)
       : (state ? [state] : []);
 
     for (const scope of scopes) {
@@ -88,6 +95,7 @@ export class AdvancementChoiceAnnotationService {
   }
 
   static #collectScope(actor, scope) {
+    const context = scope?.context ?? "levelUp";
     const selectedClassIdentifier = String(
       scope?.selectedClassIdentifier ?? scope?.classIdentifier ?? ""
     );
@@ -109,8 +117,8 @@ export class AdvancementChoiceAnnotationService {
           targetItemId: target.id,
           badge: {
             ...badge,
-            context: "levelUp",
-            transactionId: scope.transactionId ?? null,
+            context,
+            transactionId: scope.transactionId ?? (context === "creation" ? "character-creation" : null),
             characterLevel: Number(scope.targetCharacterLevel ?? 0),
             classIdentifier: selectedClassIdentifier,
             classLevel: targetClassLevel,
@@ -138,8 +146,8 @@ export class AdvancementChoiceAnnotationService {
             values: [spell.name],
             label: category,
             tooltip: this.#featureSpellTooltip(owner, spell),
-            context: "levelUp",
-            transactionId: scope.transactionId ?? owner.transactionId ?? null,
+            context,
+            transactionId: scope.transactionId ?? owner.transactionId ?? (context === "creation" ? "character-creation" : null),
             characterLevel: Number(scope.targetCharacterLevel ?? owner.acquiredAtCharacterLevel ?? 0),
             classIdentifier: selectedClassIdentifier,
             classLevel: targetClassLevel,
@@ -165,10 +173,10 @@ export class AdvancementChoiceAnnotationService {
             icon: "fa-solid fa-list-check",
             category: feature.name,
             values: [choice.label],
-            label: choice.label,
+            label: this.#bracketLabel(feature.name, [choice.label]),
             tooltip: `${feature.name}: ${choice.label}`,
-            context: "levelUp",
-            transactionId: scope.transactionId ?? choice.transactionId ?? null,
+            context,
+            transactionId: scope.transactionId ?? choice.transactionId ?? (context === "creation" ? "character-creation" : null),
             characterLevel: Number(scope.targetCharacterLevel ?? choice.acquiredAtCharacterLevel ?? 0),
             classIdentifier: selectedClassIdentifier,
             classLevel: targetClassLevel,
@@ -178,10 +186,45 @@ export class AdvancementChoiceAnnotationService {
         });
       }
 
-      const allForms = feature.getFlag(MODULE_ID, "knownWildShapeForms") ?? [];
-      const forms = scope?.transactionId
-        ? allForms.filter(row => row.transactionId === scope.transactionId)
-        : allForms;
+      const invocation = feature.getFlag(MODULE_ID, "invocationInstance");
+      if (invocation && (!scope?.transactionId || invocation.transactionId === scope.transactionId)
+        && (!invocation.classIdentifier || invocation.classIdentifier === selectedClassIdentifier)) {
+        const values = [];
+        if (invocation.targetCantripName) {
+          const targetExists = invocation.targetCantripItemId ? Boolean(actor.items.get(invocation.targetCantripItemId)) : true;
+          values.push(targetExists ? invocation.targetCantripName : `Missing Target: ${invocation.targetCantripName}`);
+        }
+        const pactCantrips = invocation.selectedCantrips ?? invocation.cantrips ?? [];
+        const pactRituals = invocation.selectedRituals ?? invocation.rituals ?? [];
+        if (Array.isArray(pactCantrips)) values.push(...pactCantrips.map(row => row?.name ?? row).filter(Boolean));
+        if (Array.isArray(pactRituals)) values.push(...pactRituals.map(row => row?.name ?? row).filter(Boolean));
+        if (values.length) {
+          rows.push({
+            targetItemId: feature.id,
+            badge: {
+              advancementId: invocation.advancementId ?? feature.id,
+              advancementType: "ManagedInvocationChoice",
+              advancementTitle: feature.name,
+              level: Number(invocation.acquiredAtWarlockLevel ?? targetClassLevel),
+              kind: "invocation-choice",
+              icon: "fa-solid fa-eye",
+              category: feature.name,
+              values: [...new Set(values)],
+              label: this.#bracketLabel(feature.name, [...new Set(values)]),
+              tooltip: `${feature.name}: ${[...new Set(values)].join(", ")}`,
+              context,
+              transactionId: scope.transactionId ?? invocation.transactionId ?? (context === "creation" ? "character-creation" : null),
+              characterLevel: Number(scope.targetCharacterLevel ?? invocation.acquiredAtCharacterLevel ?? 0),
+              classIdentifier: selectedClassIdentifier,
+              classLevel: targetClassLevel,
+              sourceItemId: invocation.classItemId ?? feature.id,
+              targetItemId: feature.id
+            }
+          });
+        }
+      }
+
+      const forms = feature.getFlag(MODULE_ID, "knownWildShapeForms") ?? [];
       if (forms.length && selectedClassIdentifier === "druid") {
         rows.push({
           targetItemId: feature.id,
@@ -189,16 +232,16 @@ export class AdvancementChoiceAnnotationService {
             advancementId: "known-wild-shape-forms",
             advancementType: "ManagedActorChoice",
             advancementTitle: "Known Forms",
-            level: Number(forms[0]?.acquiredAtClassLevel ?? targetClassLevel),
+            level: targetClassLevel,
             kind: "known-forms",
             icon: "fa-solid fa-paw",
             category: "Known Forms",
             values: forms.map(row => row.name),
-            label: `Known Forms: ${forms.map(row => row.name).join(", ")}`,
+            label: `Known Forms: ${forms.length}`,
             tooltip: `Known Wild Shape Forms: ${forms.map(row => row.name).join(", ")}`,
-            context: "levelUp",
-            transactionId: scope.transactionId ?? forms[0]?.transactionId ?? null,
-            characterLevel: Number(scope.targetCharacterLevel ?? forms[0]?.acquiredAtCharacterLevel ?? 0),
+            context,
+            transactionId: scope.transactionId ?? (context === "creation" ? "character-creation" : null),
+            characterLevel: Number(scope.targetCharacterLevel ?? 0),
             classIdentifier: "druid",
             classLevel: targetClassLevel,
             sourceItemId: feature.id,
@@ -208,8 +251,7 @@ export class AdvancementChoiceAnnotationService {
       }
 
       const land = feature.getFlag(MODULE_ID, "circleLand");
-      if (land && selectedClassIdentifier === "druid"
-        && (!scope?.transactionId || land.transactionId === scope.transactionId)) {
+      if (land && selectedClassIdentifier === "druid") {
         rows.push({
           targetItemId: feature.id,
           badge: {
@@ -223,8 +265,8 @@ export class AdvancementChoiceAnnotationService {
             values: [land.label],
             label: `Land: ${land.label}`,
             tooltip: `Circle of the Land: ${land.label}`,
-            context: "levelUp",
-            transactionId: scope.transactionId ?? land.transactionId ?? null,
+            context,
+            transactionId: scope.transactionId ?? land.transactionId ?? (context === "creation" ? "character-creation" : null),
             characterLevel: Number(scope.targetCharacterLevel ?? 0),
             classIdentifier: "druid",
             classLevel: targetClassLevel,
@@ -243,9 +285,8 @@ export class AdvancementChoiceAnnotationService {
     if (owner.category === "signature-spell") return owner.signaturePosition ? `Signature Spell ${owner.signaturePosition}` : "Signature Spell";
     if (owner.category === "mystic-arcanum") return `Mystic Arcanum · Level ${owner.spellLevel}`;
     if (owner.category === "magical-discoveries") return "Magical Discoveries";
-    if (owner.category === "magical-secrets") return "Magical Secrets";
-    if (owner.category === "wizard-savant") return owner.label ?? "Wizard Savant";
     if (owner.category === "circle-of-the-land-spells") return "Circle of the Land Spell";
+    if (owner.category === "primal-order-magician") return "Primal Order: Magician";
     return owner.label ?? this.#humanize(owner.category ?? "Feature Spell");
   }
 
@@ -253,9 +294,8 @@ export class AdvancementChoiceAnnotationService {
     if (category === "mystic-arcanum") return "fa-solid fa-eye";
     if (category === "spell-mastery") return "fa-solid fa-infinity";
     if (category === "signature-spell") return "fa-solid fa-signature";
-    if (category === "magical-secrets") return "fa-solid fa-book-sparkles";
-    if (category === "wizard-savant") return "fa-solid fa-graduation-cap";
     if (category === "circle-of-the-land-spells") return "fa-solid fa-leaf";
+    if (category === "primal-order-magician") return "fa-solid fa-wand-magic-sparkles";
     return "fa-solid fa-wand-magic-sparkles";
   }
 
@@ -363,10 +403,10 @@ export class AdvancementChoiceAnnotationService {
   }
 
   static #badge({ advancementId, advancement, kind, icon, category, values }) {
-    const allValues = [...new Set(values)].sort((a, b) => a.localeCompare(b, game.i18n.lang));
-    const visibleValues = allValues.slice(0, 3);
-    const remainder = allValues.length - visibleValues.length;
-    const compact = `${category}: ${visibleValues.join(", ")}${remainder > 0 ? ` +${remainder}` : ""}`;
+    let allValues = [...new Set(values)].sort((a, b) => a.localeCompare(b, game.i18n.lang));
+    if (String(advancement?.configuration?.mode ?? "") === "expertise" && category !== "Expertise") {
+      allValues = allValues.map(value => `Expertise: ${value}`);
+    }
     return {
       advancementId,
       advancementType: advancement.type,
@@ -376,14 +416,15 @@ export class AdvancementChoiceAnnotationService {
       icon,
       category,
       values: allValues,
-      label: compact,
+      label: this.#bracketLabel(category, allValues),
       tooltip: `${category}: ${allValues.join(", ")}`
     };
   }
 
   static #traitCategory(chosen, mode, title) {
-    if (mode === "expertise") return "Expertise";
-    if (mode === "mastery") return "Mastery";
+    const normalizedTitle = String(title ?? "").trim();
+    if (mode === "expertise") return normalizedTitle || "Expertise";
+    if (mode === "mastery") return /weapon mastery/i.test(normalizedTitle) ? "Weapon Mastery" : (normalizedTitle || "Mastery");
     if (mode === "upgrade") return "Proficiency";
     const roots = new Set(chosen.map(key => String(key).split(":")[0]));
     if (roots.size === 1) {
@@ -473,6 +514,31 @@ export class AdvancementChoiceAnnotationService {
       return Object.values(value);
     }
     return [];
+  }
+
+  static #creationScope(actor) {
+    const originalClassId = actor?.system?.details?.originalClass?.id
+      ?? actor?.system?.details?.originalClass
+      ?? null;
+    const cls = originalClassId ? actor.items.get(originalClassId) : actor.items.find(item => item.type === "class");
+    const identifier = cls?.system?.identifier;
+    if (!identifier) return null;
+    return {
+      context: "creation",
+      transactionId: "character-creation",
+      selectedClassId: cls.id,
+      selectedClassIdentifier: identifier,
+      targetClassLevel: 1,
+      targetCharacterLevel: 1
+    };
+  }
+
+  static #bracketLabel(category, values) {
+    const rows = [...new Set(values ?? [])].filter(Boolean);
+    if (!rows.length) return category;
+    const visible = rows.slice(0, 3);
+    const remainder = rows.length - visible.length;
+    return `${category} [${visible.join(", ")}${remainder > 0 ? ` +${remainder}` : ""}]`;
   }
 
   static #normalize(value) {

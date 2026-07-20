@@ -1,0 +1,77 @@
+<div class="cb-pact-tome-heading">
+  <img src="{{pact.invocationImg}}" alt="">
+  <div>
+    <h3>Pact of the Tome</h3>
+    <p>{{pact.note}}</p>
+  </div>
+</div>
+
+<section class="cb-pact-tome-list {{#if managed}}cb-managed-selection-section{{/if}}"
+  {{#if managed}}data-managed-selection-section data-required="{{pact.cantripCount}}"{{else}}data-spell-selection data-maximum="{{pact.cantripCount}}"{{/if}}>
+  <div class="cb-inline-heading">
+    <h4>Book of Shadows Cantrips</h4>
+    <span {{#if managed}}data-managed-selection-count{{else}}data-selection-count{{/if}}>{{pact.selectedCantripCount}} / {{pact.cantripCount}}</span>
+  </div>
+  <input type="search" placeholder="Search Pact of the Tome Cantrips" data-filter-target="#{{idPrefix}}-cantrips">
+  <div id="{{idPrefix}}-cantrips" class="cb-spell-groups">
+    {{#each pact.cantripGroups}}
+    <section class="cb-source-group">
+      <h5>{{label}}</h5>
+      <div class="{{#if ../managed}}cb-choice-grid{{else}}cb-spell-grid{{/if}}">
+        {{#each items}}
+        <article class="{{#if ../../managed}}cb-choice-card cb-spell-choice-card{{else}}cb-spell-option{{/if}} {{#if disabled}}duplicate-disabled{{/if}}"
+          data-search="{{search}}" data-spell-option title="{{disabledReason}}">
+          <label class="cb-spell-toggle" title="{{#if disabled}}{{disabledReason}}{{else}}Select {{name}}{{/if}}">
+            <input type="checkbox" name="{{concat ../../fieldPrefix '.cantrips'}}" value="{{identifier}}"
+              {{#if ../../managed}}data-managed-selection-control{{/if}}
+              data-spell-identifier="{{identifier}}"
+              data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}"
+              {{checked checked}} {{#if disabled}}disabled{{/if}}>
+          </label>
+          <button type="button" class="{{#if ../../managed}}cb-spell-choice-preview{{else}}cb-spell-details{{/if}}"
+            data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}} details">
+            <img src="{{img}}" alt="">
+            <span><strong>{{name}}</strong><small>{{#if disabled}}{{disabledReason}}{{else}}{{sourceLabel}}{{/if}}</small></span>
+          </button>
+        </article>
+        {{/each}}
+      </div>
+    </section>
+    {{/each}}
+  </div>
+</section>
+
+<section class="cb-pact-tome-list {{#if managed}}cb-managed-selection-section{{/if}}"
+  {{#if managed}}data-managed-selection-section data-required="{{pact.ritualCount}}"{{else}}data-spell-selection data-maximum="{{pact.ritualCount}}"{{/if}}>
+  <div class="cb-inline-heading">
+    <h4>Level 1 Ritual Spells</h4>
+    <span {{#if managed}}data-managed-selection-count{{else}}data-selection-count{{/if}}>{{pact.selectedRitualCount}} / {{pact.ritualCount}}</span>
+  </div>
+  <input type="search" placeholder="Search Level 1 Ritual Spells" data-filter-target="#{{idPrefix}}-rituals">
+  <div id="{{idPrefix}}-rituals" class="cb-spell-groups">
+    {{#each pact.ritualGroups}}
+    <section class="cb-source-group">
+      <h5>{{label}}</h5>
+      <div class="{{#if ../managed}}cb-choice-grid{{else}}cb-spell-grid{{/if}}">
+        {{#each items}}
+        <article class="{{#if ../../managed}}cb-choice-card cb-spell-choice-card{{else}}cb-spell-option{{/if}} {{#if disabled}}duplicate-disabled{{/if}}"
+          data-search="{{search}}" data-spell-option title="{{disabledReason}}">
+          <label class="cb-spell-toggle" title="{{#if disabled}}{{disabledReason}}{{else}}Select {{name}}{{/if}}">
+            <input type="checkbox" name="{{concat ../../fieldPrefix '.rituals'}}" value="{{identifier}}"
+              {{#if ../../managed}}data-managed-selection-control{{/if}}
+              data-spell-identifier="{{identifier}}"
+              data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}"
+              {{checked checked}} {{#if disabled}}disabled{{/if}}>
+          </label>
+          <button type="button" class="{{#if ../../managed}}cb-spell-choice-preview{{else}}cb-spell-details{{/if}}"
+            data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}} details">
+            <img src="{{img}}" alt="">
+            <span><strong>{{name}}</strong><small>{{#if disabled}}{{disabledReason}}{{else}}{{sourceLabel}}{{/if}}</small></span>
+          </button>
+        </article>
+        {{/each}}
+      </div>
+    </section>
+    {{/each}}
+  </div>
+</section>

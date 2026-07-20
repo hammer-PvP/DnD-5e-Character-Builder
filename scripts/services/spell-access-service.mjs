@@ -1,5 +1,6 @@
 import { MODULE_ID, SPELL_ACCESS_MODELS } from "../constants.mjs";
 import { DraftManager } from "./draft-manager.mjs";
+import { PactOfTheTomeService } from "./pact-of-the-tome-service.mjs";
 
 /**
  * Populates native Spell Items during creation. Preparation, slots, casting,
@@ -30,7 +31,10 @@ export class SpellAccessService {
     const pool = await this.#classSpellPool(identifier, registry);
     const classLevel = Number(cls.system.levels ?? 1);
     const maximumSpellLevel = this.#maximumSpellLevel(progression, classLevel);
-    const cantripCount = this.#scaleValue(cls, classLevel, { title: "cantrips known" });
+    const totalCantripCount = this.#scaleValue(cls, classLevel, { title: "cantrips known" });
+    const magicianFeature = identifier === "druid" ? this.#magicianFeature(draft) : null;
+    const magicianCantripCount = magicianFeature ? 1 : 0;
+    const cantripCount = Math.max(0, totalCantripCount - magicianCantripCount);
     const maxPrepared = this.#scaleValue(cls, classLevel, { identifier: "max-prepared" });
     const spellCount = model === "spellbook" ? (classLevel === 1 ? 6 : 2)
       : model === "limited" ? maxPrepared : 0;
@@ -42,6 +46,7 @@ export class SpellAccessService {
     });
 
     const selectedCantrips = new Set(saved.classIdentifier === identifier ? saved.cantrips ?? [] : []);
+    const selectedMagicianCantrips = new Set(saved.classIdentifier === identifier ? saved.magicianCantrip ?? [] : []);
     const selectedSpells = new Set(saved.classIdentifier === identifier ? saved.spells ?? [] : []);
     const decorate = (option, selected) => ({
       ...option,
@@ -50,10 +55,25 @@ export class SpellAccessService {
     });
 
     const cantripOptions = cantrips.map(option => decorate(option, selectedCantrips));
+    const magicianCantripOptions = cantrips.map(option => decorate(option, selectedMagicianCantrips));
     const spellOptions = leveled.map(option => decorate(option, selectedSpells));
     const automaticSpells = model === "fullList" ? spellOptions : [];
+    const pactOfTheTome = identifier === "warlock"
+      ? await PactOfTheTomeService.buildContext(draft, registry, {
+        mode: "acquisition",
+        selectedCantrips: saved.pactOfTheTomeCantrips ?? [],
+        selectedRituals: saved.pactOfTheTomeRituals ?? [],
+        pendingPreparedIdentifiers: [
+          ...(saved.cantrips ?? []),
+          ...(saved.spells ?? [])
+        ],
+        transactionId: `creation:${draft.id}`,
+        classItem: cls
+      })
+      : { active: false, complete: true, cantripGroups: [], ritualGroups: [] };
 
     return {
+      classLevel,
       className: cls.name,
       classIdentifier: identifier,
       progression,
@@ -65,17 +85,23 @@ export class SpellAccessService {
       }[model] ?? model,
       maximumSpellLevel,
       cantripCount,
+      magicianCantripCount,
+      magicianFeatureItemId: magicianFeature?.id ?? null,
       spellCount,
       selectedCantripCount: selectedCantrips.size,
+      selectedMagicianCantripCount: selectedMagicianCantrips.size,
       selectedSpellCount: selectedSpells.size,
       needsCantripChoice: cantripCount > 0,
+      needsMagicianCantripChoice: magicianCantripCount > 0,
       needsSpellChoice: ["limited", "spellbook"].includes(model) && spellCount > 0,
       cantripGroups: registry.groupOptions(cantripOptions),
+      magicianCantripGroups: registry.groupOptions(magicianCantripOptions),
       spellGroups: registry.groupOptions(spellOptions),
       automaticSpellGroups: registry.groupOptions(automaticSpells),
       automaticSpellCount: automaticSpells.length,
       saved: Boolean(state.spellAccessSaved && saved.classIdentifier === identifier),
       noSpellcasting: false,
+      pactOfTheTome,
       note: this.#modelNote(model, cls.name, spellCount)
     };
   }
@@ -102,12 +128,17 @@ export class SpellAccessService {
 
     const context = await this.buildContext(draft, registry);
     const selectedCantrips = [...new Set(formData.getAll("spellAccess.cantrips").map(String))];
+    const selectedMagicianCantrips = [...new Set(formData.getAll("spellAccess.magicianCantrip").map(String))];
     const selectedSpells = [...new Set(formData.getAll("spellAccess.spells").map(String))];
+    const selectedTomeCantrips = [...new Set(formData.getAll("spellAccess.pactOfTheTome.cantrips").map(String))];
+    const selectedTomeRituals = [...new Set(formData.getAll("spellAccess.pactOfTheTome.rituals").map(String))];
 
     const validCantrips = new Map(context.cantripGroups.flatMap(group => group.items).map(option => [option.identifier, option]));
+    const validMagicianCantrips = new Map((context.magicianCantripGroups ?? []).flatMap(group => group.items).map(option => [option.identifier, option]));
     const validSpells = new Map(context.spellGroups.flatMap(group => group.items).map(option => [option.identifier, option]));
 
     this.#validateSelections(selectedCantrips, context.cantripCount, validCantrips, "cantrip");
+    this.#validateSelections(selectedMagicianCantrips, context.magicianCantripCount ?? 0, validMagicianCantrips, "Primal Order: Magician cantrip");
     if (context.needsSpellChoice) {
       this.#validateSelections(selectedSpells, context.spellCount, validSpells, "spell");
     }
@@ -117,6 +148,13 @@ export class SpellAccessService {
       option: validCantrips.get(selected),
       prepared: 1,
       category: "cantrip"
+    });
+    for (const selected of selectedMagicianCantrips) documents.push({
+      option: validMagicianCantrips.get(selected),
+      prepared: 1,
+      category: "primal-order-magician",
+      featureItemId: context.magicianFeatureItemId,
+      featureLabel: "Primal Order: Magician"
     });
 
     if (model === "fullList") {
@@ -129,17 +167,8 @@ export class SpellAccessService {
       });
     }
 
-    // Native Advancements can grant a Class spell before the Builder populates
-    // the class-list access Items (for example Hunter's Mark from Favored Enemy).
-    // Preserve the native grant and do not create a second Builder-managed copy.
-    const nativeGrantedIdentifiers = new Set(draft.items
-      .filter(item => item.type === "spell" && !item.getFlag(MODULE_ID, "classSpellAccess"))
-      .map(item => item.system?.identifier)
-      .filter(Boolean));
-
     const createData = [];
     for (const entry of documents) {
-      if (nativeGrantedIdentifiers.has(entry.option.identifier)) continue;
       const document = await fromUuid(entry.option.uuid);
       if (!document) throw new Error(`Unable to load spell: ${entry.option.name}`);
       const data = document.toObject();
@@ -152,13 +181,32 @@ export class SpellAccessService {
       data.flags ??= {};
       data.flags.dnd5e ??= {};
       data.flags.dnd5e.sourceId = document.uuid;
+      const featureOwner = entry.featureItemId ? {
+        category: entry.category,
+        label: entry.featureLabel ?? entry.category,
+        classIdentifier: identifier,
+        classItemId: cls.id,
+        subclassItemId: null,
+        featureItemId: entry.featureItemId,
+        ownerItemId: entry.featureItemId,
+        transactionId: `creation:${draft.id}`,
+        acquiredAtCharacterLevel: 1,
+        acquiredAtClassLevel: context.classLevel,
+        sourceUuid: document.uuid,
+        spellLevel: Number(data.system.level ?? 0),
+        alwaysPrepared: false
+      } : null;
       data.flags[MODULE_ID] = {
         classSpellAccess: true,
         classIdentifier: identifier,
         classItemId: cls.id,
         accessModel: model,
         category: entry.category,
-        sourceLabel: entry.option.sourceLabel
+        sourceLabel: entry.option.sourceLabel,
+        ...(featureOwner ? {
+          featureGrantedSpell: true,
+          featureSpellOwners: [featureOwner]
+        } : {})
       };
       createData.push(data);
     }
@@ -170,19 +218,88 @@ export class SpellAccessService {
       .map(item => item.id);
     if (oldIds.length) await draft.deleteEmbeddedDocuments("Item", oldIds);
     if (createData.length) await draft.createEmbeddedDocuments("Item", createData);
+
+    let tomeResult = { active: false, createdItemIds: [], deletedItemIds: [] };
+    if (context.pactOfTheTome?.active) {
+      const tomeContext = await PactOfTheTomeService.buildContext(draft, registry, {
+        mode: "acquisition",
+        selectedCantrips: selectedTomeCantrips,
+        selectedRituals: selectedTomeRituals,
+        pendingPreparedIdentifiers: [...selectedCantrips, ...selectedSpells],
+        transactionId: `creation:${draft.id}`,
+        classItem: cls
+      });
+      if (!tomeContext.complete) {
+        throw new Error("Complete the Pact of the Tome Book of Shadows selections before confirming Spell Selection.");
+      }
+      tomeResult = await PactOfTheTomeService.apply(draft, registry, {
+        mode: "acquisition",
+        selectedCantrips: selectedTomeCantrips,
+        selectedRituals: selectedTomeRituals,
+        transactionId: `creation:${draft.id}`,
+        characterLevel: 1,
+        classLevel: context.classLevel,
+        classItem: cls
+      });
+    }
+
+    // Validate acquisition records rather than globally unique spell identifiers.
+    // A spell identifier may intentionally exist more than once when the same
+    // spell is acquired through independent channels (for example, a normal
+    // Druid cantrip and Primal Order: Magician).
+    const acquisitionKey = data => {
+      const flags = data?.flags?.[MODULE_ID] ?? {};
+      const owner = Array.isArray(flags.featureSpellOwners) ? flags.featureSpellOwners[0] ?? {} : {};
+      return [
+        String(data?.system?.identifier ?? ""),
+        String(flags.classItemId ?? ""),
+        String(flags.category ?? ""),
+        String(flags.accessModel ?? ""),
+        String(owner.category ?? ""),
+        String(owner.featureItemId ?? owner.ownerItemId ?? "")
+      ].join("::");
+    };
+    const countByKey = rows => rows.reduce((counts, row) => {
+      const key = acquisitionKey(row);
+      if (!key.startsWith("::")) counts.set(key, (counts.get(key) ?? 0) + 1);
+      return counts;
+    }, new Map());
+    const expectedAcquisitions = countByKey(createData);
+    const actualAcquisitions = countByKey(draft.items
+      .filter(item => item.type === "spell"
+        && item.getFlag(MODULE_ID, "classSpellAccess")
+        && item.getFlag(MODULE_ID, "classItemId") === cls.id)
+      .map(item => item.toObject()));
+    const missingAcquisitions = [];
+    for (const [key, expected] of expectedAcquisitions) {
+      const actual = actualAcquisitions.get(key) ?? 0;
+      if (actual < expected) missingAcquisitions.push({ key, missing: expected - actual });
+    }
+    if (missingAcquisitions.length) {
+      const details = missingAcquisitions.map(({ key, missing }) => {
+        const [spell, , category, , ownerCategory] = key.split("::");
+        return `${spell} (${ownerCategory || category || "class"}) ×${missing}`;
+      }).join(", ");
+      throw new Error(`Character Creation did not create the exact Class-owned spell acquisition(s): ${details}.`);
+    }
     await DraftManager.setBuildState(draft, {
       spellAccess: {
         classIdentifier: identifier,
         cantrips: selectedCantrips,
-        spells: model === "fullList" ? [...validSpells.keys()] : selectedSpells
+        magicianCantrip: selectedMagicianCantrips,
+        spells: model === "fullList" ? [...validSpells.keys()] : selectedSpells,
+        pactOfTheTomeCantrips: selectedTomeCantrips,
+        pactOfTheTomeRituals: selectedTomeRituals
       },
       spellAccessSaved: true
     });
 
-    return { created: createData.length };
+    return { created: createData.length + (tomeResult.createdItemIds?.length ?? 0) };
   }
 
   static async invalidate(draft) {
+    const tome = PactOfTheTomeService.findInvocation(draft);
+    if (tome) await PactOfTheTomeService.cleanup(draft, tome.id);
     const ids = draft.items.filter(item => item.getFlag(MODULE_ID, "classSpellAccess")).map(item => item.id);
     if (ids.length) await draft.deleteEmbeddedDocuments("Item", ids);
     await DraftManager.setBuildState(draft, {
@@ -190,6 +307,14 @@ export class SpellAccessService {
       spellAccessSaved: false,
       equipmentSaved: false
     });
+  }
+
+  static #magicianFeature(draft) {
+    return draft.items.find(item => item.type === "feat" && (
+      String(item.system?.identifier ?? "").toLowerCase() === "magician"
+      || String(item.name ?? "").trim().toLowerCase() === "magician"
+      || String(item.getFlag("dnd5e", "sourceId") ?? item._stats?.compendiumSource ?? "").endsWith(".Item.phbPrimalOrderMa")
+    )) ?? null;
   }
 
   static #modelFor(cls) {
@@ -268,7 +393,10 @@ export class SpellAccessService {
     if (selected.length !== expected) {
       throw new Error(`Choose exactly ${expected} ${label}${expected === 1 ? "" : "s"}.`);
     }
-    const invalid = selected.find(identifier => !validOptions.has(identifier));
+    const invalid = selected.find(identifier => {
+      const option = validOptions.get(identifier);
+      return !option || option.disabled;
+    });
     if (invalid) throw new Error(`The selected ${label} is not available from the prioritized class list.`);
   }
 

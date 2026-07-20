@@ -13,6 +13,7 @@ import { ValidationService } from "../services/validation-service.mjs";
 import { SourceResolver } from "../services/source-resolver.mjs";
 import { CustomBackgroundService, CUSTOM_BACKGROUND_UUID } from "../services/custom-background-service.mjs";
 import { ItemGrantIntegrityService } from "../services/item-grant-integrity-service.mjs";
+import { AdvancementChoiceAnnotationService } from "../services/advancement-choice-annotation-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 const TextEditorImplementation = foundry.applications.ux.TextEditor.implementation;
@@ -330,17 +331,16 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       });
     });
 
-    root.querySelectorAll('input[name="spellAccess.cantrips"], input[name="spellAccess.spells"]').forEach(input => {
+    root.querySelectorAll('input[name^="spellAccess."][type="checkbox"]').forEach(input => {
       input.addEventListener("change", async () => {
-        this.#updateSpellCounters();
         await this.#storeVisibleSpellSelections();
-        const confirm = this.element.querySelector('[data-action="save-spell-access"]');
+        this.#updateSpellCounters();
         const proceed = this.element.querySelector('.spells-step [data-action="continue"]');
-        if (confirm) confirm.disabled = false;
         if (proceed) proceed.disabled = true;
       });
     });
     this.#updateSpellCounters();
+    this.#bindSpellCardDetails(root);
 
     root.querySelectorAll('[name^="equipment."]').forEach(input => {
       input.addEventListener("change", async () => {
@@ -352,6 +352,16 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     this.#refreshEquipmentVisibility();
     this.#restorePrimaryListScroll();
     this.#restoreStepScroll();
+  }
+
+  #bindSpellCardDetails(root) {
+    for (const card of root.querySelectorAll(".cb-spell-option, .cb-spell-choice-card")) {
+      card.addEventListener("click", event => {
+        if (event.target.closest("input, label, select, option, a, button")) return;
+        const details = card.querySelector('[data-action="open-document"]');
+        if (details && !details.disabled) details.click();
+      });
+    }
   }
 
   async #onAction(event) {
@@ -821,6 +831,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     try {
       await SourceResolver.enforceAllowedSources(this.draft, this.registry);
       await ItemGrantIntegrityService.reconcile(this.draft, this.registry, { context: "creation" });
+      await AdvancementChoiceAnnotationService.refreshCreation(this.draft);
       await AdvancementService.dedupe(this.draft);
       ItemGrantIntegrityService.validate(this.draft, { context: "creation" });
       await DraftManager.commit(this.actor, this.draft);
@@ -963,15 +974,40 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   }
 
   #updateSpellCounters() {
+    const all = [...this.element.querySelectorAll('[data-spell-selection] input[type="checkbox"][data-spell-identifier]')];
+    const selectedByIdentifier = new Map();
+    for (const input of all.filter(input => input.checked)) {
+      const identifier = input.dataset.spellIdentifier;
+      const rows = selectedByIdentifier.get(identifier) ?? [];
+      rows.push(input);
+      selectedByIdentifier.set(identifier, rows);
+    }
+
+    let allComplete = true;
     this.element.querySelectorAll("[data-spell-selection]").forEach(section => {
       const maximum = Number(section.dataset.maximum ?? 0);
       const inputs = [...section.querySelectorAll('input[type="checkbox"]')];
       const selected = inputs.filter(input => input.checked).length;
       section.querySelector("[data-selection-count]")?.replaceChildren(document.createTextNode(`${selected} / ${maximum}`));
-      for (const input of inputs) input.disabled = !input.checked && selected >= maximum;
-      section.classList.toggle("complete", selected === maximum);
+      for (const input of inputs) {
+        const baseDisabled = input.dataset.baseDisabled === "true";
+        const duplicate = !input.checked && (selectedByIdentifier.get(input.dataset.spellIdentifier) ?? []).length > 0;
+        const atMaximum = !input.checked && selected >= maximum;
+        input.disabled = baseDisabled || duplicate || atMaximum;
+        const card = input.closest("[data-spell-option], .cb-spell-option");
+        card?.classList.toggle("duplicate-disabled", baseDisabled || duplicate);
+        if (card && duplicate && !baseDisabled) card.title = "Already selected through another spell choice.";
+        else if (card && !baseDisabled) card.removeAttribute("title");
+      }
+      const complete = selected === maximum;
+      section.classList.toggle("complete", complete);
       section.classList.toggle("invalid", selected > maximum);
+      allComplete &&= complete;
     });
+    const confirm = this.element.querySelector('[data-action="save-spell-access"]');
+    const saved = Boolean(DraftManager.getBuildState(this.draft).spellAccessSaved);
+    if (confirm) confirm.disabled = saved || !allComplete;
+    return allComplete;
   }
 
 
@@ -983,7 +1019,10 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       spellAccess: {
         classIdentifier: cls.system.identifier,
         cantrips: [...new Set(form.getAll("spellAccess.cantrips").map(String))],
-        spells: [...new Set(form.getAll("spellAccess.spells").map(String))]
+        magicianCantrip: [...new Set(form.getAll("spellAccess.magicianCantrip").map(String))],
+        spells: [...new Set(form.getAll("spellAccess.spells").map(String))],
+        pactOfTheTomeCantrips: [...new Set(form.getAll("spellAccess.pactOfTheTome.cantrips").map(String))],
+        pactOfTheTomeRituals: [...new Set(form.getAll("spellAccess.pactOfTheTome.rituals").map(String))]
       },
       spellAccessSaved: false,
       equipmentSaved: false

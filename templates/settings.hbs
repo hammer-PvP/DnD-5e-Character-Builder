@@ -67,7 +67,10 @@
       </select>
       <p class="hint">XP unlocks Level Up when the Actor reaches the next character-level threshold. Milestone requires the GM to grant Level Up on each Actor sheet.</p>
     </div>
-    <label><input type="checkbox" name="allowMulticlassing" {{checked settings.allowMulticlassing}}> Allow players to add a new multiclass during Level Up.</label>
+    <label><input type="checkbox" name="allowMulticlassing" {{checked settings.allowMulticlassing}}> Enable Multiclass</label>
+    <p class="hint">Allow players to add a new Class during Level Up.</p>
+    <label><input type="checkbox" name="enforceMulticlassRequirements" {{checked settings.enforceMulticlassRequirements}}> Enforce Multiclass Requirements</label>
+    <p class="hint">Apply the official ability-score prerequisites when Multiclass is enabled. Disabling this option does not enable Multiclass by itself.</p>
   </fieldset>
 
   <fieldset>

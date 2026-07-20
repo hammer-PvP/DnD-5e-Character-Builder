@@ -6,6 +6,7 @@ import { ItemGrantIntegrityService } from "./item-grant-integrity-service.mjs";
 import { LevelUpFeatureService } from "./level-up-feature-service.mjs";
 import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.mjs";
 import { NativeAdvancementValidationService, StructuralLevelUpError } from "./native-advancement-validation-service.mjs";
+import { PactOfTheTomeService } from "./pact-of-the-tome-service.mjs";
 
 export class LevelUpRulesService {
   static async buildContext(sourceActor, draft, registry) {
@@ -35,8 +36,23 @@ export class LevelUpRulesService {
     const bardBaseSpellIdentifiers = identifier === "bard"
       ? new Set((await LevelUpFeatureService.bardBasePool(registry)).map(option => option.identifier))
       : new Set();
+    if (magicalSecretsActive) {
+      for (const option of leveledPool) {
+        option.magicalSecretsEligible = !bardBaseSpellIdentifiers.has(option.identifier);
+        option.eligibilityBadge = option.magicalSecretsEligible ? "Magical Secrets" : "";
+      }
+    }
     const existingSpells = draft.items.filter(item => item.type === "spell");
-    const existingIdentifiers = new Set(existingSpells.map(item => item.system?.identifier).filter(Boolean));
+    const existingIdentifiers = new Set(existingSpells
+      .filter(item => this.#isNormalClassSpell(item, cls))
+      .map(item => item.system?.identifier)
+      .filter(Boolean));
+    const unavailableChoiceInfo = new Map();
+    for (const spell of existingSpells) {
+      const spellIdentifier = String(spell.system?.identifier ?? "");
+      if (!spellIdentifier || this.#spellClassIdentifier(spell, draft) !== identifier) continue;
+      unavailableChoiceInfo.set(spellIdentifier, this.#spellUnavailableReason(draft, spell));
+    }
     const stateChoices = state.additionalChoices ?? {};
     const automaticItemGrants = foundry.utils.deepClone(
       state.itemGrantIntegrity?.items ?? state.itemGrantReconciliation?.items ?? []
@@ -44,6 +60,7 @@ export class LevelUpRulesService {
       ...row,
       badges: AdvancementChoiceAnnotationService.getBadges(draft.items.get(row.itemId))
     }));
+    const automaticAdvancementSummaries = this.#automaticAdvancementSummaries(draft, cls, newClassLevel);
     const selectedCantripSet = new Set(stateChoices.cantrips ?? []);
     const selectedSpellSet = new Set(stateChoices.spells ?? []);
     const selectedSavantSet = new Set(stateChoices.savantSpells ?? []);
@@ -56,12 +73,18 @@ export class LevelUpRulesService {
     const newCantrips = subclassCaster
       ? 0
       : this.#scaleValue(cls, newClassLevel, { title: "cantrips known" });
-    const cantripCount = subclassCaster
+    let cantripCount = subclassCaster
       ? LevelUpFeatureService.subclassCasterCantripCount(subclassCaster, oldClassLevel, newClassLevel)
       : Math.max(0, newCantrips - oldCantrips);
+    // Primal Order: Magician contributes one additional Druid cantrip through
+    // its own exact feature-owned acquisition. Do not count it as one of the
+    // normal class cantrip choices when multiclassing into Druid.
+    if (identifier === "druid" && oldClassLevel < 1 && newClassLevel >= 1
+      && LevelUpFeatureService.hasPrimalOrderMagician(draft)) {
+      cantripCount = Math.max(0, cantripCount - 1);
+    }
     const cantripOptions = cantripPool
-      .filter(option => !existingIdentifiers.has(option.identifier))
-      .map(option => this.#decorateSpellOption(option, selectedCantripSet));
+      .map(option => this.#decorateSpellOption(option, selectedCantripSet, new Set(), unavailableChoiceInfo));
 
     let spellCount = 0;
     let automaticSpells = [];
@@ -80,8 +103,12 @@ export class LevelUpRulesService {
     }
 
     const spellOptions = leveledPool
-      .filter(option => !existingIdentifiers.has(option.identifier))
-      .map(option => this.#decorateSpellOption(option, selectedSpellSet, new Set([...selectedSavantSet, ...replacementSet])));
+      .map(option => this.#decorateSpellOption(
+        option,
+        selectedSpellSet,
+        new Set([...selectedSavantSet, ...replacementSet]),
+        unavailableChoiceInfo
+      ));
 
     const savant = await this.#wizardSavantContext(draft, cls, spellPool, existingIdentifiers, {
       oldClassLevel,
@@ -102,14 +129,41 @@ export class LevelUpRulesService {
     const invocations = identifier === "warlock"
       ? await this.#invocationContext(draft, cls, registry, stateChoices, cantripOptions)
       : this.#emptyInvocationContext();
+    const tomeOption = invocations.options.find(option => option.identifier === PactOfTheTomeService.INVOCATION_IDENTIFIER) ?? null;
+    const currentTome = PactOfTheTomeService.findInvocation(draft);
+    const currentTomeSelection = currentTome ? PactOfTheTomeService.currentSelection(draft, currentTome.id) : null;
+    const tomeSelectedInState = Boolean(tomeOption && [
+      ...(stateChoices.invocationSelections ?? []).map(row => row.uuid),
+      stateChoices.invocationReplacement?.uuid
+    ].filter(Boolean).includes(tomeOption.uuid));
+    const tomeNeedsInitialConfiguration = Boolean(currentTome
+      && ((currentTomeSelection?.cantrips?.length ?? 0) !== PactOfTheTomeService.CANTRIP_COUNT
+        || (currentTomeSelection?.rituals?.length ?? 0) !== PactOfTheTomeService.RITUAL_COUNT));
+    const pactOfTheTome = identifier === "warlock" && (tomeOption || currentTome)
+      ? await PactOfTheTomeService.buildContext(draft, registry, {
+        mode: "acquisition",
+        forceActive: true,
+        invocationOption: tomeOption,
+        selectedCantrips: stateChoices.pactOfTheTome?.cantrips ?? [],
+        selectedRituals: stateChoices.pactOfTheTome?.rituals ?? [],
+        pendingPreparedIdentifiers: [...selectedCantripSet, ...selectedSpellSet],
+        transactionId: state.transactionId,
+        classItem: cls
+      })
+      : { active: false, complete: true, cantripGroups: [], ritualGroups: [] };
+    pactOfTheTome.visible = Boolean(tomeSelectedInState || tomeNeedsInitialConfiguration);
+    pactOfTheTome.selectedInState = tomeSelectedInState;
+    pactOfTheTome.needsInitialConfiguration = tomeNeedsInitialConfiguration;
+    pactOfTheTome.existingInvocationItemId = currentTome?.id ?? null;
 
     const replacement = model === "limited" && oldClassLevel > 0
-      ? this.#spellReplacementContext(draft, identifier, leveledPool, stateChoices, new Set([...selectedSpellSet, ...selectedSavantSet]))
+      ? this.#spellReplacementContext(draft, identifier, leveledPool, stateChoices, new Set([...selectedSpellSet, ...selectedSavantSet]), unavailableChoiceInfo)
       : { available: false, existing: [], options: [], removeId: "", addIdentifier: "" };
     const cantripReplacementClasses = new Set(["bard", "sorcerer", "warlock"]);
     const cantripReplacement = oldClassLevel > 0 && (cantripReplacementClasses.has(identifier) || subclassCaster)
       ? this.#cantripReplacementContext(draft, identifier, cantripPool, stateChoices, new Set(selectedCantripSet), {
-        excludedIdentifiers: subclassCaster?.identifier === "arcane-trickster" ? new Set(["mage-hand"]) : new Set()
+        excludedIdentifiers: subclassCaster?.identifier === "arcane-trickster" ? new Set(["mage-hand"]) : new Set(),
+        unavailableChoiceInfo
       })
       : { available: false, existing: [], options: [], removeId: "", addIdentifier: "" };
 
@@ -127,8 +181,10 @@ export class LevelUpRulesService {
     })));
 
     const hasChoices = cantripCount > 0 || spellCount > 0 || savant.count > 0 || invocations.count > 0
-      || replacement.available || cantripReplacement.available || invocations.replacement.available || features.hasChoices;
-    const hasAutomatic = automaticSpells.length > 0 || automaticItemGrants.length > 0 || features.hasAutomatic;
+      || replacement.available || cantripReplacement.available || invocations.replacement.available || features.hasChoices
+      || pactOfTheTome.visible;
+    const hasAutomatic = automaticSpells.length > 0 || automaticItemGrants.length > 0
+      || automaticAdvancementSummaries.length > 0 || features.hasAutomatic;
     const requiredSpellSelections = cantripCount + spellCount + savant.count;
     const selectedSpellSelections = selectedCantripSet.size + selectedSpellSet.size + selectedSavantSet.size;
     const duplicateSelectionCount = this.#duplicateCount([
@@ -139,6 +195,7 @@ export class LevelUpRulesService {
       ...(stateChoices.cantripReplacement?.addIdentifier ? [stateChoices.cantripReplacement.addIdentifier] : [])
     ]);
     const baseSelectionComplete = selectedSpellSelections === requiredSpellSelections && duplicateSelectionCount === 0;
+    const tomeSelectionComplete = !pactOfTheTome.visible || pactOfTheTome.complete;
     const spellReplacementComplete = Boolean(replacement.removeId) === Boolean(replacement.addIdentifier);
     const cantripReplacementComplete = Boolean(cantripReplacement.removeId) === Boolean(cantripReplacement.addIdentifier);
 
@@ -157,7 +214,7 @@ export class LevelUpRulesService {
       selectedSpellCount: (stateChoices.spells ?? []).length,
       requiredSpellSelections,
       selectedSpellSelections,
-      spellSelectionComplete: baseSelectionComplete && spellReplacementComplete && cantripReplacementComplete && features.complete,
+      spellSelectionComplete: baseSelectionComplete && spellReplacementComplete && cantripReplacementComplete && features.complete && tomeSelectionComplete,
       duplicateSelectionCount,
       cantripGroups: registry.groupOptions(cantripOptions),
       cantripLevelGroups: this.#groupSpellsByLevel(cantripOptions, registry),
@@ -167,8 +224,11 @@ export class LevelUpRulesService {
       automaticCount: automaticSpells.length,
       automaticItemGrants,
       automaticItemGrantCount: automaticItemGrants.length,
+      automaticAdvancementSummaries,
+      automaticAdvancementSummaryCount: automaticAdvancementSummaries.length,
       savant,
       invocations,
+      pactOfTheTome,
       replacement,
       cantripReplacement,
       features,
@@ -209,6 +269,8 @@ export class LevelUpRulesService {
     const selectedCantrips = [...new Set(formData.getAll("levelUp.cantrips").map(String))];
     const selectedSpells = [...new Set(formData.getAll("levelUp.spells").map(String))];
     const selectedSavant = [...new Set(formData.getAll("levelUp.savantSpells").map(String))];
+    const selectedTomeCantrips = [...new Set(formData.getAll("levelUp.pactOfTheTome.cantrips").map(String))];
+    const selectedTomeRituals = [...new Set(formData.getAll("levelUp.pactOfTheTome.rituals").map(String))];
     this.#validateExact(selectedCantrips, context.cantripCount, context.cantripGroups, "cantrip");
     this.#validateExact(selectedSpells, context.spellCount, context.spellGroups, "spell");
     this.#validateExact(selectedSavant, context.savant.count, context.savant.groups, `${context.savant.schoolName || "Savant"} spell`);
@@ -269,6 +331,17 @@ export class LevelUpRulesService {
     if (invocationBeingReplaced?.blocked) {
       throw new Error(`${invocationBeingReplaced.name} cannot be replaced because it is required by ${invocationBeingReplaced.dependents.join(", ")}.`);
     }
+    const tomeOption = context.invocations.options.find(option => option.identifier === PactOfTheTomeService.INVOCATION_IDENTIFIER) ?? null;
+    const tomeSelectedNow = Boolean(tomeOption && [
+      ...invocationSelections.map(row => row.uuid),
+      replaceInvocationUuid
+    ].filter(Boolean).includes(tomeOption.uuid));
+    const tomeExistingBefore = PactOfTheTomeService.findInvocation(draft);
+    const tomeSelectionBefore = tomeExistingBefore ? PactOfTheTomeService.currentSelection(draft, tomeExistingBefore.id) : null;
+    const tomeNeedsInitialConfiguration = Boolean(tomeExistingBefore
+      && ((tomeSelectionBefore?.cantrips?.length ?? 0) !== PactOfTheTomeService.CANTRIP_COUNT
+        || (tomeSelectionBefore?.rituals?.length ?? 0) !== PactOfTheTomeService.RITUAL_COUNT));
+
     if (replaceInvocationUuid) {
       const replacementSelection = { uuid: replaceInvocationUuid, targetIdentifier: replaceInvocationTarget };
       this.#validateInvocations(context.invocations, [replacementSelection], {
@@ -365,8 +438,8 @@ export class LevelUpRulesService {
     if (replaceInvocationId) {
       const original = draft.items.get(replaceInvocationId);
       const originalLevel = this.#findAdvancementItemLevel(cls, context.invocations.advancementId, replaceInvocationId);
-      await draft.deleteEmbeddedDocuments("Item", [replaceInvocationId]);
-      deleted++;
+      const cascadeDeleted = await this.#deleteInvocationCascade(draft, replaceInvocationId);
+      deleted += cascadeDeleted.length;
       const item = await this.#createInvocation(draft, cls, context.invocations, {
         uuid: replaceInvocationUuid,
         targetIdentifier: replaceInvocationTarget
@@ -387,6 +460,21 @@ export class LevelUpRulesService {
       createdInvocationIds,
       invocationReplacementRecord
     );
+
+    let tomeResult = { createdItemIds: [], deletedItemIds: [] };
+    if (tomeSelectedNow || tomeNeedsInitialConfiguration) {
+      tomeResult = await PactOfTheTomeService.apply(draft, registry, {
+        mode: "acquisition",
+        selectedCantrips: selectedTomeCantrips,
+        selectedRituals: selectedTomeRituals,
+        transactionId: state.transactionId,
+        characterLevel: state.targetCharacterLevel,
+        classLevel: state.targetClassLevel,
+        classItem: cls
+      });
+      createdInvocationIds.push(...(tomeResult.createdItemIds ?? []));
+      deleted += Number(tomeResult.deletedItemIds?.length ?? 0);
+    }
     await SourceResolver.enforceAllowedSources(draft, registry);
     await this.#refreshCantripAugments(draft);
     const integrityResult = await ItemGrantIntegrityService.reconcile(draft, registry, { context: "levelUp", state });
@@ -394,7 +482,6 @@ export class LevelUpRulesService {
     await NativeAdvancementValidationService.validate(draft, {
       state,
       beforeItemIds: new Set(rollbackSnapshot.items.map(item => item._id)),
-      beforeAbilities: rollbackSnapshot.system?.abilities ?? null,
       workflow: "Spells & Features"
     });
     await AdvancementChoiceAnnotationService.refresh(draft, { state: LevelUpDraftManager.getState(draft) });
@@ -407,6 +494,10 @@ export class LevelUpRulesService {
       spellReplacement: removeSpellId ? { removeId: removeSpellId, addIdentifier: addReplacementIdentifier } : null,
       cantripReplacement: removeCantripId ? { removeId: removeCantripId, addIdentifier: addCantripIdentifier } : null,
       features: featureResult.featureChoices,
+      pactOfTheTome: (tomeSelectedNow || tomeNeedsInitialConfiguration) ? {
+        cantrips: selectedTomeCantrips,
+        rituals: selectedTomeRituals
+      } : null,
       invocationReplacement: replaceInvocationId ? {
         removeId: replaceInvocationId,
         uuid: replaceInvocationUuid,
@@ -428,12 +519,16 @@ export class LevelUpRulesService {
       } catch (rollbackError) {
         console.error(`${MODULE_ID} | Additional Level Up rule rollback failed.`, rollbackError);
       }
-      if (error?.structuralLevelUp) throw error;
+      if (error?.structuralLevelUp) {
+        error.returnStep = "choices";
+        throw error;
+      }
       const message = String(error?.message ?? error ?? "");
       if (/must not have taken|prerequisite|not eligible|advancement was cancelled|cannot be selected/i.test(message)) {
         throw new StructuralLevelUpError("A native feature Advancement could not be applied safely.", {
           reason: message.replace(/^\[[^\]]+\]\s*/, "") || "The selected feature option is invalid.",
-          diagnostic: message
+          diagnostic: message,
+          returnStep: "choices"
         });
       }
       throw error;
@@ -508,7 +603,7 @@ export class LevelUpRulesService {
     switch (progression) {
       case "full": return Math.min(9, Math.ceil(level / 2));
       case "half": return Math.min(5, Math.max(1, Math.floor((level + 3) / 4)));
-      case "third": return Math.min(4, Math.max(1, Math.ceil(level / 6)));
+      case "third": return Math.min(4, Math.max(1, Math.floor((level + 2) / 3)));
       case "pact": return Math.min(5, Math.ceil(level / 2));
       default: return 0;
     }
@@ -572,6 +667,15 @@ export class LevelUpRulesService {
     const count = Number(row.count ?? 0) || 0;
     const allowReplacement = Boolean(row.replacement);
     const existing = draft.items.filter(item => this.#isInvocation(item));
+    for (const item of existing) {
+      if (item.getFlag(MODULE_ID, "invocationInstance")) continue;
+      await PactOfTheTomeService.ensureInvocationMetadata(draft, item, {
+        transactionId: item.getFlag(MODULE_ID, "creationTransactionId") ?? `creation:${draft.id}`,
+        characterLevel: Number(draft.system?.details?.level ?? state.targetCharacterLevel ?? 1),
+        classLevel: this.#findAdvancementItemLevel(cls, advancement._id, item.id),
+        classItem: cls
+      });
+    }
     const existingSourceUuids = new Set(existing.map(item =>
       item.getFlag("dnd5e", "sourceId") ?? item._stats?.compendiumSource
     ).filter(Boolean));
@@ -694,29 +798,7 @@ export class LevelUpRulesService {
         selectedRemoveId: stateChoices.invocationReplacement?.removeId ?? "",
         selectedUuid: stateChoices.invocationReplacement?.uuid ?? "",
         selectedTarget: stateChoices.invocationReplacement?.targetIdentifier ?? "",
-        existing: await Promise.all(existing.map(async item => {
-          const identifier = String(item.system?.identifier ?? this.#slug(item.name));
-          const remaining = new Set(existingIdentifiers);
-          remaining.delete(identifier);
-          const dependents = [];
-          for (const other of existing) {
-            if (other.id === item.id) continue;
-            const sourceUuid = other.getFlag("dnd5e", "sourceId") ?? other._stats?.compendiumSource;
-            const document = sourceUuid ? await fromUuid(sourceUuid) : other;
-            const prerequisites = this.#prerequisiteIdentifiers(document ?? other);
-            if (prerequisites.length && !prerequisites.some(id => remaining.has(id))) dependents.push(other.name);
-          }
-          return {
-            id: item.id,
-            name: item.name,
-            img: item.img,
-            identifier,
-            sourceUuid: item.getFlag("dnd5e", "sourceId") ?? item._stats?.compendiumSource ?? null,
-            blocked: dependents.length > 0,
-            disabledReason: dependents.length ? `Required by ${dependents.join(", ")}` : "",
-            dependents
-          };
-        })),
+        existing: await this.#invocationReplacementRows(existing),
         options: replacementOptions,
         levelGroups: this.#groupInvocationOptions(replacementOptions)
       },
@@ -724,6 +806,71 @@ export class LevelUpRulesService {
         ? `Choose ${count} Eldritch Invocation${count === 1 ? "" : "s"}. Unavailable options remain visible with their prerequisites.`
         : "This Warlock level allows an optional invocation replacement."
     };
+  }
+
+  static async #invocationReplacementRows(existing) {
+    const nodes = [];
+    for (const item of existing) {
+      const sourceUuid = item.getFlag("dnd5e", "sourceId") ?? item._stats?.compendiumSource ?? null;
+      const document = sourceUuid ? await fromUuid(sourceUuid) : item;
+      nodes.push({
+        item,
+        identifier: String(item.system?.identifier ?? document?.system?.identifier ?? this.#slug(item.name)),
+        prerequisites: this.#prerequisiteIdentifiers(document ?? item),
+        sourceUuid
+      });
+    }
+
+    const identifierCounts = new Map();
+    for (const node of nodes) identifierCounts.set(node.identifier, (identifierCounts.get(node.identifier) ?? 0) + 1);
+
+    return nodes.map(candidate => {
+      const counts = new Map(identifierCounts);
+      counts.set(candidate.identifier, Math.max(0, (counts.get(candidate.identifier) ?? 0) - 1));
+      const active = new Set([...counts.entries()].filter(([, count]) => count > 0).map(([identifier]) => identifier));
+      const invalidIds = new Set();
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const node of nodes) {
+          if (node.item.id === candidate.item.id || invalidIds.has(node.item.id)) continue;
+          if (!active.has(node.identifier)) continue;
+          if (!node.prerequisites.length || node.prerequisites.some(identifier => active.has(identifier))) continue;
+          invalidIds.add(node.item.id);
+          // Only remove the identifier from the active set when no other valid
+          // instance remains. This preserves repeatable invocation instances.
+          const otherValid = nodes.some(other => other.item.id !== candidate.item.id
+            && other.item.id !== node.item.id
+            && !invalidIds.has(other.item.id)
+            && other.identifier === node.identifier);
+          if (!otherValid) active.delete(node.identifier);
+          changed = true;
+        }
+      }
+      const dependents = nodes.filter(node => invalidIds.has(node.item.id)).map(node => node.item.name);
+      const instance = candidate.item.getFlag(MODULE_ID, "invocationInstance") ?? {};
+      const targetExists = instance.targetCantripItemId ? Boolean(candidate.item.actor?.items?.get(instance.targetCantripItemId)) : true;
+      const targetLabel = instance.targetCantripName
+        ? (targetExists ? instance.targetCantripName : `Missing Target: ${instance.targetCantripName}`)
+        : "";
+      return {
+        id: candidate.item.id,
+        name: targetLabel ? `${candidate.item.name} [${targetLabel}]` : candidate.item.name,
+        baseName: candidate.item.name,
+        img: candidate.item.img,
+        identifier: candidate.identifier,
+        sourceUuid: candidate.sourceUuid,
+        targetItemId: instance.targetCantripItemId ?? null,
+        targetIdentifier: instance.targetCantripIdentifier ?? null,
+        targetName: instance.targetCantripName ?? null,
+        instanceId: instance.instanceId ?? null,
+        advancementId: instance.advancementId ?? null,
+        transactionId: instance.transactionId ?? null,
+        blocked: dependents.length > 0,
+        disabledReason: dependents.length ? `Required by ${dependents.join(", ")}` : "",
+        dependents
+      };
+    });
   }
 
   static #groupInvocationOptions(options) {
@@ -827,19 +974,55 @@ export class LevelUpRulesService {
     return this.#spellClassIdentifier(owner, draft, seen);
   }
 
-  static #spellReplacementContext(draft, classIdentifier, leveledPool, stateChoices, blockedIdentifiers = new Set()) {
+  static #spellUnavailableReason(draft, spell) {
+    const owners = spell.getFlag(MODULE_ID, "featureSpellOwners") ?? [];
+    const owner = owners[0] ?? null;
+    if (owner) {
+      const subclass = owner.subclassItemId ? draft.items.get(owner.subclassItemId) : null;
+      const ownerLabel = subclass?.name ?? owner.label ?? "another Warlock feature";
+      return `Already granted by ${ownerLabel}${owner.alwaysPrepared ? " — Always Prepared" : ""}.`;
+    }
+    const sourceItem = String(spell.system?.sourceItem ?? "");
+    if (sourceItem.startsWith("subclass:")) {
+      const identifier = sourceItem.slice("subclass:".length);
+      const subclass = draft.items.find(item => item.type === "subclass" && item.system?.identifier === identifier);
+      return `Already granted by ${subclass?.name ?? "the selected Patron"} — Always Prepared.`;
+    }
+    if (spell.getFlag(MODULE_ID, "featureGrantedSpell")) return "Already granted by another Warlock feature.";
+    return "Already known through Pact Magic.";
+  }
+
+  static #isNormalClassSpell(item, cls) {
+    if (!item || item.type !== "spell" || !cls) return false;
+    if (item.getFlag(MODULE_ID, "featureGrantedSpell")) return false;
+    const owners = item.getFlag(MODULE_ID, "featureSpellOwners") ?? [];
+    if (owners.length) return false;
+    const classAccess = item.getFlag(MODULE_ID, "classSpellAccess");
+    if (classAccess && item.getFlag(MODULE_ID, "classItemId") === cls.id) return true;
+    const levelUp = item.getFlag(MODULE_ID, "levelUpSpell");
+    if (levelUp?.classItemId === cls.id && !levelUp.featureItemId) return true;
+    return String(item.system?.sourceItem ?? "") === `class:${cls.system?.identifier}`
+      && this.#spellClassIdentifier(item, cls.actor) === cls.system?.identifier;
+  }
+
+  static #spellReplacementContext(draft, classIdentifier, leveledPool, stateChoices, blockedIdentifiers = new Set(), unavailableChoiceInfo = new Map()) {
     const existing = draft.items
       .filter(item => item.type === "spell" && Number(item.system?.level ?? 0) > 0)
       .filter(item => this.#spellClassIdentifier(item, draft) === classIdentifier
         && !item.getFlag(MODULE_ID, "featureGrantedSpell"));
-    const known = new Set(draft.items.filter(item => item.type === "spell").map(item => item.system?.identifier));
+    const known = new Set(existing.map(item => item.system?.identifier).filter(Boolean));
     const selectedReplacement = stateChoices.spellReplacement?.addIdentifier ?? "";
-    const options = leveledPool.filter(option => !known.has(option.identifier)).map(option => ({
-      ...option,
-      levelLabel: this.#levelLabel(option.system?.level),
-      disabled: blockedIdentifiers.has(option.identifier) && selectedReplacement !== option.identifier,
-      disabledReason: blockedIdentifiers.has(option.identifier) ? "Already selected as a new spell during this Level Up." : ""
-    }));
+    const options = leveledPool.filter(option => !known.has(option.identifier)).map(option => {
+      const selectedElsewhere = blockedIdentifiers.has(option.identifier) && selectedReplacement !== option.identifier;
+      const unavailableReason = unavailableChoiceInfo.get(option.identifier) ?? "";
+      return {
+        ...option,
+        levelLabel: this.#levelLabel(option.system?.level),
+        displayName: option.magicalSecretsEligible ? `${option.name} — Magical Secrets` : option.name,
+        disabled: Boolean(selectedElsewhere || unavailableReason),
+        disabledReason: unavailableReason || (selectedElsewhere ? "Already selected as a new spell during this Level Up." : "")
+      };
+    });
     return {
       available: existing.length > 0 && options.length > 0,
       existing: existing.map(item => ({ id: item.id, name: item.name, img: item.img })),
@@ -849,20 +1032,24 @@ export class LevelUpRulesService {
     };
   }
 
-  static #cantripReplacementContext(draft, classIdentifier, cantripPool, stateChoices, blockedIdentifiers = new Set(), { excludedIdentifiers = new Set() } = {}) {
+  static #cantripReplacementContext(draft, classIdentifier, cantripPool, stateChoices, blockedIdentifiers = new Set(), { excludedIdentifiers = new Set(), unavailableChoiceInfo = new Map() } = {}) {
     const existing = draft.items
       .filter(item => item.type === "spell" && Number(item.system?.level ?? 0) === 0)
       .filter(item => this.#spellClassIdentifier(item, draft) === classIdentifier
         && !item.getFlag(MODULE_ID, "featureGrantedSpell")
         && !excludedIdentifiers.has(String(item.system?.identifier ?? "")));
-    const known = new Set(draft.items.filter(item => item.type === "spell").map(item => item.system?.identifier));
+    const known = new Set(existing.map(item => item.system?.identifier).filter(Boolean));
     const selectedReplacement = stateChoices.cantripReplacement?.addIdentifier ?? "";
-    const options = cantripPool.filter(option => !known.has(option.identifier)).map(option => ({
-      ...option,
-      levelLabel: "Cantrip",
-      disabled: blockedIdentifiers.has(option.identifier) && selectedReplacement !== option.identifier,
-      disabledReason: blockedIdentifiers.has(option.identifier) ? "Already selected as a new cantrip during this Level Up." : ""
-    }));
+    const options = cantripPool.filter(option => !known.has(option.identifier)).map(option => {
+      const selectedElsewhere = blockedIdentifiers.has(option.identifier) && selectedReplacement !== option.identifier;
+      const unavailableReason = unavailableChoiceInfo.get(option.identifier) ?? "";
+      return {
+        ...option,
+        levelLabel: "Cantrip",
+        disabled: Boolean(selectedElsewhere || unavailableReason),
+        disabledReason: unavailableReason || (selectedElsewhere ? "Already selected as a new cantrip during this Level Up." : "")
+      };
+    });
     return {
       available: existing.length > 0 && options.length > 0,
       existing: existing.map(item => ({ id: item.id, name: item.name, img: item.img })),
@@ -878,14 +1065,15 @@ export class LevelUpRulesService {
     ));
   }
 
-  static #decorateSpellOption(option, selected, blocked = new Set()) {
+  static #decorateSpellOption(option, selected, blocked = new Set(), unavailableChoiceInfo = new Map()) {
     const checked = selected.has(option.identifier);
-    const disabled = !checked && blocked.has(option.identifier);
+    const unavailableReason = unavailableChoiceInfo.get(option.identifier) ?? "";
+    const disabled = !checked && (blocked.has(option.identifier) || Boolean(unavailableReason));
     return {
       ...option,
       checked,
       disabled,
-      disabledReason: disabled ? "Already selected through another spell choice." : "",
+      disabledReason: unavailableReason || (disabled ? "Already selected through another spell choice." : ""),
       levelLabel: this.#levelLabel(option.system?.level),
       school: option.system?.school ?? ""
     };
@@ -907,6 +1095,54 @@ export class LevelUpRulesService {
         groups: registry.groupOptions(rows),
         count: rows.length
       }));
+  }
+
+  static #automaticAdvancementSummaries(draft, cls, targetClassLevel) {
+    const summaries = [];
+    const classIdentifier = cls.system?.identifier;
+    for (const owner of draft.items) {
+      if (!['class', 'subclass'].includes(owner.type)) continue;
+      if (owner.type === 'class' && owner.id !== cls.id) continue;
+      if (owner.type === 'subclass') {
+        const parent = owner.system?.classIdentifier ?? owner.system?.class?.identifier ?? owner.system?.class;
+        if (parent && parent !== classIdentifier) continue;
+      }
+      const advancements = owner.toObject().system?.advancement ?? {};
+      for (const advancement of Object.values(advancements)) {
+        if (Number(advancement?.level ?? 0) !== Number(targetClassLevel)) continue;
+        const type = String(advancement?.type ?? '');
+        if (type === 'ScaleValue') {
+          const rows = Object.entries(advancement.configuration?.scale ?? {})
+            .map(([minimum, row]) => [Number(minimum), row?.value])
+            .filter(([minimum]) => minimum <= Number(targetClassLevel))
+            .sort((a, b) => a[0] - b[0]);
+          const value = rows.at(-1)?.[1];
+          summaries.push({
+            ownerName: owner.name,
+            ownerUuid: owner.uuid,
+            title: advancement.title || advancement.configuration?.identifier || 'Scale Increase',
+            type: 'Scale Value',
+            detail: value == null ? 'Updated by the native D&D5e Advancement.' : `New value: ${value}`,
+            icon: 'fa-solid fa-arrow-trend-up'
+          });
+          continue;
+        }
+        if (type === 'Trait') {
+          const choices = advancement.configuration?.choices ?? [];
+          const grants = advancement.configuration?.grants ?? [];
+          if (choices.length || !grants.length) continue;
+          summaries.push({
+            ownerName: owner.name,
+            ownerUuid: owner.uuid,
+            title: advancement.title || 'Proficiency or Trait Grant',
+            type: 'Trait Grant',
+            detail: grants.map(grant => this.#humanize(String(grant).split(':').at(-1))).join(', '),
+            icon: 'fa-solid fa-list-check'
+          });
+        }
+      }
+    }
+    return summaries;
   }
 
   static #duplicateCount(values) {
@@ -938,7 +1174,7 @@ export class LevelUpRulesService {
     if (selected.length !== expected) {
       throw new Error(`Choose exactly ${expected} ${label}${expected === 1 ? "" : "s"}.`);
     }
-    const valid = new Set((groups ?? []).flatMap(group => group.items).map(item => item.identifier));
+    const valid = new Set((groups ?? []).flatMap(group => group.items).filter(item => !item.disabled || item.checked).map(item => item.identifier));
     const invalid = selected.find(identifier => !valid.has(identifier));
     if (invalid) throw new Error(`A selected ${label} is not available from the enabled prioritized source list.`);
   }
@@ -991,7 +1227,10 @@ export class LevelUpRulesService {
   }
 
   static async #createSpells(draft, cls, entries, state) {
-    const existing = new Set(draft.items.filter(item => item.type === "spell").map(item => item.system?.identifier).filter(Boolean));
+    const existing = new Set(draft.items
+      .filter(item => item.type === "spell" && this.#isNormalClassSpell(item, cls))
+      .map(item => item.system?.identifier)
+      .filter(Boolean));
     const createData = [];
     for (const entry of entries) {
       if (!entry.option || existing.has(entry.option.identifier)) continue;
@@ -1007,16 +1246,13 @@ export class LevelUpRulesService {
       data.flags ??= {};
       data.flags.dnd5e ??= {};
       data.flags.dnd5e.sourceId = document.uuid;
-      const featureOwner = entry.featureItemId
-        ? this.#featureSpellOwnerRecord(draft, cls, entry, state, document)
-        : null;
       data.flags[MODULE_ID] = {
         ...(data.flags[MODULE_ID] ?? {}),
         levelUpSpell: {
           transactionId: state.transactionId,
           classIdentifier: cls.system?.identifier,
           classItemId: cls.id,
-          subclassItemId: entry.subclassItemId ?? featureOwner?.subclassItemId ?? null,
+          subclassItemId: entry.subclassItemId ?? null,
           accessModel: entry.accessModel ?? null,
           acquiredAtCharacterLevel: state.targetCharacterLevel,
           acquiredAtClassLevel: state.targetClassLevel,
@@ -1024,14 +1260,18 @@ export class LevelUpRulesService {
           featureItemId: entry.featureItemId ?? null,
           sourceUuid: document.uuid
         },
-        ...(featureOwner ? {
-          featureAcquisition: foundry.utils.deepClone(featureOwner),
-          featureSpellOwners: [featureOwner],
-          // Savant spells are bonus spellbook acquisitions owned by the feature.
-          // Magical Secrets only expands the Bard's normal prepared-spell pool,
-          // so those spells remain eligible for ordinary Bard replacement.
-          featureGrantedSpell: entry.category === "wizard-savant",
-          featureAccessOnly: entry.category === "magical-secrets"
+        ...(entry.featureItemId ? {
+          featureAcquisition: {
+            category: entry.category,
+            featureItemId: entry.featureItemId,
+            classIdentifier: cls.system?.identifier,
+            classItemId: cls.id,
+            subclassItemId: entry.subclassItemId ?? null,
+            transactionId: state.transactionId,
+            acquiredAtCharacterLevel: state.targetCharacterLevel,
+            acquiredAtClassLevel: state.targetClassLevel,
+            sourceUuid: document.uuid
+          }
         } : {})
       };
       createData.push(data);
@@ -1040,32 +1280,6 @@ export class LevelUpRulesService {
     if (!createData.length) return [];
     const created = await draft.createEmbeddedDocuments("Item", createData);
     return created.map(item => item.id);
-  }
-
-
-  static #featureSpellOwnerRecord(draft, cls, entry, state, document) {
-    const feature = draft.items.get(entry.featureItemId);
-    const origin = String(feature?.getFlag("dnd5e", "advancementRoot")
-      ?? feature?.getFlag("dnd5e", "advancementOrigin") ?? "");
-    const root = draft.items.get(origin.split(".")[0]);
-    const subclassItemId = entry.subclassItemId
-      ?? (root?.type === "subclass" ? root.id : null);
-    return {
-      category: entry.category,
-      label: feature?.name ?? this.#humanizeIdentifier(entry.category),
-      classIdentifier: cls.system?.identifier,
-      classItemId: cls.id,
-      subclassItemId,
-      featureItemId: entry.featureItemId,
-      ownerItemId: entry.featureItemId,
-      transactionId: state.transactionId,
-      acquiredAtCharacterLevel: Number(state.targetCharacterLevel),
-      acquiredAtClassLevel: Number(state.targetClassLevel),
-      sourceUuid: document.uuid,
-      spellLevel: Number(document.system?.level ?? 0),
-      alwaysPrepared: false,
-      featureAccessOnly: entry.category === "magical-secrets"
-    };
   }
 
   static async #createInvocation(draft, cls, context, selection, state, registry) {
@@ -1083,7 +1297,7 @@ export class LevelUpRulesService {
     delete data._id;
     const Manager = globalThis.dnd5e?.applications?.advancement?.AdvancementManager;
     if (!Manager) throw new Error("D&D5e AdvancementManager is unavailable.");
-    const manager = Manager.forNewItem(draft, data, { automaticApplication: false, showVisualizer: false });
+    const manager = Manager.forNewItem(draft, data, { automaticApplication: true, showVisualizer: false });
     if (manager.steps.length) {
       const result = await this.#runManager(manager);
       if (!result.completed) throw new Error(`${option.name} Advancement was cancelled.`);
@@ -1107,6 +1321,9 @@ export class LevelUpRulesService {
       [`flags.${MODULE_ID}.invocationInstance`]: {
         instanceId: foundry.utils.randomID(),
         transactionId: state.transactionId,
+        classIdentifier: cls.system?.identifier ?? "warlock",
+        classItemId: cls.id,
+        advancementId: context.advancementId,
         sourceUuid: document.uuid,
         identifier: document.system?.identifier ?? option.identifier,
         acquiredAtCharacterLevel: state.targetCharacterLevel,
@@ -1118,6 +1335,53 @@ export class LevelUpRulesService {
       }
     });
     return item;
+  }
+
+  static async #deleteInvocationCascade(draft, invocationId) {
+    const owner = draft.items.get(invocationId);
+    if (!owner) return [];
+    const beforeIds = new Set(draft.items.map(item => item.id));
+
+    // Character Builder-owned Tome documents are not native Advancement
+    // contents, so remove them explicitly before deleting the Invocation.
+    await PactOfTheTomeService.cleanup(draft, invocationId);
+
+    // Delete only the root Invocation with deleteContents. D&D5e owns cached
+    // spell and nested Advancement cleanup. Passing those cached IDs in the
+    // same delete request caused the EmbeddedCollection double-removal crash
+    // seen when replacing creation-time Armor of Shadows.
+    if (draft.items.get(invocationId)) {
+      await draft.deleteEmbeddedDocuments("Item", [invocationId], {
+        deleteContents: true,
+        characterBuilderInvocationCascade: true
+      });
+    }
+
+    // Defensive cleanup for non-native or legacy dependents that survived the
+    // root deletion. This pass runs only after D&D5e has finished its own
+    // deleteContents work and never includes an already removed cached Item.
+    const leftovers = draft.items.filter(item => {
+      const origin = String(item.getFlag("dnd5e", "advancementOrigin") ?? "");
+      const root = String(item.getFlag("dnd5e", "advancementRoot") ?? "");
+      const cachedFor = String(item.getFlag("dnd5e", "cachedFor") ?? "");
+      const featureOwner = item.getFlag(MODULE_ID, "featureAcquisition")?.featureItemId
+        ?? item.getFlag(MODULE_ID, "featureGrantedSpell")?.featureItemId
+        ?? item.getFlag(MODULE_ID, "pactOfTheTomeSelection")?.invocationItemId
+        ?? item.getFlag(MODULE_ID, "pactOfTheTomeBook")?.invocationItemId
+        ?? null;
+      return origin.startsWith(`${invocationId}.`)
+        || root.startsWith(`${invocationId}.`)
+        || cachedFor.includes(`.Item.${invocationId}.`)
+        || featureOwner === invocationId;
+    }).map(item => item.id);
+    if (leftovers.length) {
+      await draft.deleteEmbeddedDocuments("Item", leftovers, {
+        deleteContents: false,
+        characterBuilderInvocationCascade: true
+      });
+    }
+
+    return [...beforeIds].filter(id => !draft.items.get(id));
   }
 
   static async #writeInvocationAdvancementValue(cls, advancementId, targetLevel, itemIds, replacementRecord = null) {
@@ -1348,7 +1612,7 @@ export class LevelUpRulesService {
       replacement: { available: false, existing: [], options: [] },
       cantripReplacement: { available: false, existing: [], options: [] },
       features: {
-        spellSections: [], targetSpellSections: [], replacementSections: [], itemReplacementSections: [], optionSections: [],
+        spellSections: [], targetSpellSections: [], replacementSections: [], optionSections: [],
         wildShape: { count: 0, options: [], groups: [] },
         land: { required: false, options: [], hasAutomatic: false },
         required: 0, selected: 0, complete: true, hasChoices: false, hasAutomatic: false, noWork: true
@@ -1362,6 +1626,12 @@ export class LevelUpRulesService {
       cantripScaling: { characterLevel: 0, threshold: 1, note: "" },
       note
     };
+  }
+
+  static #humanize(value) {
+    return String(value ?? "").replace(/([a-z])([A-Z])/g, "$1 $2")
+      .split(/[-_]/g).filter(Boolean)
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
   }
 
   static #slug(value) {

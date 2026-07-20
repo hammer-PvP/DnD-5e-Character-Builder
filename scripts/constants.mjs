@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.4a";
-export const MODULE_BUILD = "private-beta-094a-level-up-class-feature-audit";
+export const MODULE_VERSION = "0.9.4c";
+export const MODULE_BUILD = "community-beta-094c-warlock-stabilization";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -110,6 +110,7 @@ export function defaultSettings() {
     rollSets: 2,
     levelUpMode: "milestone",
     allowMulticlassing: true,
+    enforceMulticlassRequirements: true,
     hitPointAdvancement: {
       methods: {
         roll: true,
