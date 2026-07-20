@@ -8,6 +8,7 @@ import { LevelUpRulesService } from "../services/level-up-rules-service.mjs";
 import { LevelUpCommitService } from "../services/level-up-commit-service.mjs";
 import { AdvancementChoiceAnnotationService } from "../services/advancement-choice-annotation-service.mjs";
 import { MetadataReconciliationService } from "../services/metadata-reconciliation-service.mjs";
+import { WarlockProjectedCantripService } from "../services/warlock-projected-cantrip-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -160,6 +161,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     root.querySelectorAll('[name^="levelUp.replaceSpell."], [name^="levelUp.replaceCantrip."], [name^="levelUp.replaceMetamagic."], [name^="levelUp.featureReplace."], [name^="levelUp.featureOption."], [name="levelUp.land"], [name="levelUp.wildShapeForms"], [name^="levelUp.featureSpell."], [name^="levelUp.featureTarget."]').forEach(input => {
       input.addEventListener("change", () => {
         if (input.matches("[data-land-select]")) this.#refreshLandPreview(input.value);
+        this.#clearInvalidCantripReplacementDependents(input);
         this.#refreshSpellSelectionState();
       });
     });
@@ -670,6 +672,15 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     }
   }
 
+  #clearInvalidCantripReplacementDependents(changedInput) {
+    if (!changedInput.matches('[name^="levelUp.replaceCantrip."]')) return;
+    const section = changedInput.closest("[data-optional-pair]");
+    if (!section) return;
+    const remove = section.querySelector('[name="levelUp.replaceCantrip.remove"]');
+    const add = section.querySelector('[name="levelUp.replaceCantrip.add"]');
+    if (changedInput === remove && !remove?.value && add) add.value = "";
+  }
+
   #clearInvalidInvocationDependents(changedInput) {
     const replacement = changedInput.closest("[data-invocation-replacement]");
     if (replacement) {
@@ -818,6 +829,49 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     }
   }
 
+  #refreshCantripReplacementProjection() {
+    const root = this.element;
+    const addSelect = root.querySelector('[name="levelUp.replaceCantrip.add"]');
+    if (!addSelect) return;
+    const removeInvocationId = String(root.querySelector('[name="levelUp.replaceInvocation.remove"]')?.value ?? "");
+    const removeCantripId = String(root.querySelector('[name="levelUp.replaceCantrip.remove"]')?.value ?? "");
+    const selectedCantrips = new Set(
+      [...root.querySelectorAll('input[name="levelUp.cantrips"][data-spell-identifier]:checked')]
+        .map(input => input.dataset.spellIdentifier)
+        .filter(Boolean)
+    );
+    const current = addSelect.value;
+    let currentValid = !current;
+    for (const option of [...addSelect.options].slice(1)) {
+      const identifier = option.value;
+      const staticDisabled = option.dataset.staticDisabled === "true";
+      const projectableOwnership = option.dataset.projectableOwnership === "true";
+      const acquisitions = WarlockProjectedCantripService.parseAcquisitions(option.dataset.acquisitionBindings ?? "");
+      const projectedAvailable = WarlockProjectedCantripService.replacementAvailable({
+        acquisitions: projectableOwnership ? acquisitions : [],
+        staticDisabled
+      }, {
+        removeInvocationId,
+        removeCantripId
+      });
+      const duplicateSelection = selectedCantrips.has(identifier);
+      const eligible = projectedAvailable && !duplicateSelection;
+      const baseLabel = option.dataset.baseLabel ?? option.textContent;
+      let reason = "";
+      if (duplicateSelection) reason = "Already selected as a new cantrip during this Level Up.";
+      else if (!projectedAvailable) {
+        reason = option.dataset.disabledReason
+          || (projectableOwnership
+            ? "Already known through an acquisition that survives this Level Up."
+            : "This cantrip is not eligible for replacement.");
+      }
+      option.disabled = !eligible;
+      option.textContent = reason ? `${baseLabel} — ${reason}` : baseLabel;
+      if (identifier === current && eligible) currentValid = true;
+    }
+    if (current && !currentValid) addSelect.value = "";
+  }
+
   #refreshInvocationTargetEligibility() {
     const root = this.element;
     const checkedPendingCantrips = new Set(
@@ -825,54 +879,36 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
         .map(input => input.dataset.spellIdentifier)
         .filter(Boolean)
     );
+    const replacementCantrip = String(root.querySelector('[name="levelUp.replaceCantrip.add"]')?.value ?? "");
+    if (replacementCantrip) checkedPendingCantrips.add(replacementCantrip);
     const removeInvocationId = String(root.querySelector('[name="levelUp.replaceInvocation.remove"]')?.value ?? "");
     const removeCantripId = String(root.querySelector('[name="levelUp.replaceCantrip.remove"]')?.value ?? "");
 
     for (const select of root.querySelectorAll("[data-invocation-target-select]")) {
       const current = select.value;
       for (const option of [...select.options].slice(1)) {
-        const pending = option.dataset.pending === "true";
         const identifier = option.dataset.cantripIdentifier ?? option.value;
-        const survives = pending || this.#invocationTargetOptionSurvives(option, {
+        const pendingSelectable = option.dataset.pendingSelectable === "true";
+        const pendingSelected = checkedPendingCantrips.has(identifier);
+        const hasExisting = option.dataset.hasExistingAcquisition === "true";
+        const acquisitions = WarlockProjectedCantripService.parseAcquisitions(option.dataset.acquisitionBindings ?? "");
+        const existingSurvives = hasExisting && WarlockProjectedCantripService.hasSurvivingAcquisition(acquisitions, {
           removeInvocationId,
           removeCantripId
         });
-        const eligible = survives && (!pending || checkedPendingCantrips.has(identifier));
+        const visible = existingSurvives || pendingSelectable;
+        const eligible = existingSurvives || (pendingSelectable && pendingSelected);
         const baseLabel = option.dataset.baseLabel ?? option.textContent;
-        option.hidden = !survives;
-        option.style.display = survives ? "" : "none";
+        option.hidden = !visible;
+        option.style.display = visible ? "" : "none";
         option.disabled = !eligible;
-        option.textContent = pending
-          ? `${baseLabel} — ${eligible ? "selected during this Level Up" : "choose this cantrip above first"}`
+        option.textContent = pendingSelectable && !existingSurvives
+          ? `${baseLabel} — ${pendingSelected ? "selected during this Level Up" : "choose this cantrip above first"}`
           : baseLabel;
       }
       const selected = [...select.options].find(option => option.value === current);
       if (current && (selected?.disabled || selected?.hidden)) select.value = "";
     }
-  }
-
-  #invocationTargetOptionSurvives(option, {
-    removeInvocationId = "",
-    removeCantripId = ""
-  } = {}) {
-    if (!removeInvocationId && !removeCantripId) return true;
-    const bindings = String(option.dataset.acquisitionBindings ?? "")
-      .split("|")
-      .filter(Boolean)
-      .map(binding => {
-        const [itemId = "", providerIds = ""] = binding.split(":", 2);
-        return {
-          itemId,
-          providerItemIds: new Set(providerIds.split(",").filter(Boolean))
-        };
-      });
-    // Legacy or source-native acquisitions without explicit ownership remain
-    // visible. The server performs the same conservative validation again.
-    if (!bindings.length) return true;
-    return bindings.some(binding => {
-      if (removeCantripId && binding.itemId === removeCantripId) return false;
-      return !removeInvocationId || !binding.providerItemIds.has(removeInvocationId);
-    });
   }
 
   #refreshPactOfTheTomeVisibility() {
@@ -901,6 +937,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const selectionRoot = root.querySelector("[data-spell-selection-root]");
     if (!selectionRoot) return;
 
+    this.#refreshCantripReplacementProjection();
     this.#refreshInvocationTargetEligibility();
     const metamagicComplete = this.#refreshMetamagicSelectionState(selectionRoot);
 
@@ -1143,7 +1180,23 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
     addIdentifier = String(add?.selectedOptions?.[0]?.dataset.identifier ?? "");
     conflict = Boolean(addIdentifier && selectedIdentifiers.has(addIdentifier));
-    const pairComplete = !replacementSection || Boolean(remove?.value) === Boolean(add?.value);
+
+    const details = replacementSection?.querySelector("[data-metamagic-replacement-details]") ?? null;
+    const removeColumn = details?.querySelector("[data-metamagic-remove-detail-column]") ?? null;
+    const addColumn = details?.querySelector("[data-metamagic-add-detail-column]") ?? null;
+    const removeValue = String(remove?.value ?? "");
+    const addValue = String(add?.value ?? "");
+    for (const card of details?.querySelectorAll("[data-metamagic-remove-detail]") ?? []) {
+      card.hidden = card.dataset.detailKey !== removeValue;
+    }
+    for (const card of details?.querySelectorAll("[data-metamagic-add-detail]") ?? []) {
+      card.hidden = card.dataset.detailKey !== addValue;
+    }
+    if (removeColumn) removeColumn.hidden = !removeValue;
+    if (addColumn) addColumn.hidden = !addValue;
+    if (details) details.hidden = !removeValue && !addValue;
+
+    const pairComplete = !replacementSection || Boolean(removeValue) === Boolean(addValue);
     replacementSection?.classList.toggle("invalid", !pairComplete || conflict);
     return pairComplete && !conflict;
   }

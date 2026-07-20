@@ -424,7 +424,15 @@
           <label>With
             <select name="levelUp.replaceCantrip.add" data-optional-pair-add>
               <option value="">No replacement</option>
-              {{#each rules.cantripReplacement.options}}<option value="{{identifier}}" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{#if disabled}}disabled{{/if}} {{#if (eq ../rules.cantripReplacement.addIdentifier identifier)}}selected{{/if}}>{{name}}{{#if disabled}} — {{disabledReason}}{{/if}}</option>{{/each}}
+              {{#each rules.cantripReplacement.options}}<option value="{{identifier}}"
+                data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}"
+                data-static-disabled="{{#if staticDisabled}}true{{else}}false{{/if}}"
+                data-projectable-ownership="{{#if projectableOwnership}}true{{else}}false{{/if}}"
+                data-acquisition-bindings="{{acquisitionBindingsString}}"
+                data-base-label="{{displayLabel}}"
+                data-disabled-reason="{{disabledReason}}"
+                {{#if disabled}}disabled{{/if}}
+                {{#if (eq ../rules.cantripReplacement.addIdentifier identifier)}}selected{{/if}}>{{name}}{{#if disabled}} — {{disabledReason}}{{/if}}</option>{{/each}}
             </select>
           </label>
         </div>
@@ -508,6 +516,42 @@
               {{/each}}
             </select>
           </label>
+        </div>
+
+        <div class="cb-metamagic-replacement-details" data-metamagic-replacement-details hidden>
+          <div class="cb-metamagic-replacement-detail-column" data-metamagic-remove-detail-column hidden>
+            <h4>Metamagic Being Replaced</h4>
+            {{#each rules.metamagic.replacement.existing}}
+            <article class="cb-spell-choice-card cb-metamagic-replacement-detail-card"
+              data-metamagic-remove-detail
+              data-detail-key="{{id}}"
+              hidden>
+              <button type="button" class="cb-metamagic-replacement-detail-header" data-action="open-document" data-uuid="{{uuid}}" aria-label="Open {{name}} source details">
+                <img src="{{img}}" alt="">
+                <span><strong>{{name}}</strong><small>Metamagic · {{sourceLabel}}</small></span>
+                <i class="fa-solid fa-arrow-up-right-from-square"></i>
+              </button>
+              <div class="cb-metamagic-replacement-detail-description">{{{description}}}</div>
+            </article>
+            {{/each}}
+          </div>
+
+          <div class="cb-metamagic-replacement-detail-column" data-metamagic-add-detail-column hidden>
+            <h4>Replacement Metamagic</h4>
+            {{#each rules.metamagic.replacement.options}}
+            <article class="cb-spell-choice-card cb-metamagic-replacement-detail-card"
+              data-metamagic-add-detail
+              data-detail-key="{{uuid}}"
+              hidden>
+              <button type="button" class="cb-metamagic-replacement-detail-header" data-action="open-document" data-uuid="{{uuid}}" aria-label="Open {{name}} source details">
+                <img src="{{img}}" alt="">
+                <span><strong>{{name}}</strong><small>Metamagic · {{sourceLabel}}</small></span>
+                <i class="fa-solid fa-arrow-up-right-from-square"></i>
+              </button>
+              <div class="cb-metamagic-replacement-detail-description">{{{description}}}</div>
+            </article>
+            {{/each}}
+          </div>
         </div>
       </section>
       {{/if}}
@@ -710,6 +754,10 @@
                 <option value="{{identifier}}"
                   data-cantrip-identifier="{{identifier}}"
                   data-pending="{{pending}}"
+                  data-pending-selectable="{{pendingSelectable}}"
+                  data-pending-selected="{{pendingSelected}}"
+                  data-pending-channels="{{pendingChannelsString}}"
+                  data-has-existing-acquisition="{{hasExistingAcquisition}}"
                   data-acquisition-bindings="{{acquisitionBindingsString}}"
                   data-base-label="{{name}}"
                   {{#unless eligible}}disabled{{/unless}}
@@ -770,6 +818,10 @@
               <option value="{{identifier}}"
                 data-cantrip-identifier="{{identifier}}"
                 data-pending="{{pending}}"
+                data-pending-selectable="{{pendingSelectable}}"
+                data-pending-selected="{{pendingSelected}}"
+                data-pending-channels="{{pendingChannelsString}}"
+                data-has-existing-acquisition="{{hasExistingAcquisition}}"
                 data-acquisition-bindings="{{acquisitionBindingsString}}"
                 data-base-label="{{name}}"
                 {{#unless eligible}}disabled{{/unless}}

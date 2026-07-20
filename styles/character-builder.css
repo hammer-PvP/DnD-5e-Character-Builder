@@ -2585,3 +2585,95 @@
 .character-builder .cb-metamagic-card {
   cursor: pointer;
 }
+
+/* 0.9.5e — Sorcerer Metamagic replacement detail cards */
+.character-builder .cb-metamagic-replacement-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+  align-items: start;
+}
+.character-builder .cb-metamagic-replacement-details[hidden],
+.character-builder .cb-metamagic-replacement-detail-column[hidden],
+.character-builder .cb-metamagic-replacement-detail-card[hidden] {
+  display: none;
+}
+.character-builder .cb-metamagic-replacement-detail-column {
+  min-width: 0;
+}
+.character-builder .cb-metamagic-replacement-detail-column > h4 {
+  margin: 0 0 8px;
+  color: var(--color-text-light-highlight, #f0f0e0);
+  font-size: .9rem;
+  letter-spacing: .02em;
+}
+.character-builder .cb-metamagic-replacement-detail-card {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+}
+.character-builder .cb-metamagic-replacement-detail-header {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 10px;
+  border: 0;
+  border-bottom: 1px solid rgba(255,255,255,.12);
+  border-radius: 0;
+  background: rgba(255,255,255,.025);
+  color: inherit;
+  text-align: left;
+}
+.character-builder .cb-metamagic-replacement-detail-header:hover,
+.character-builder .cb-metamagic-replacement-detail-header:focus-visible {
+  background: rgba(211,177,91,.1);
+  box-shadow: inset 0 0 0 1px rgba(211,177,91,.28);
+}
+.character-builder .cb-metamagic-replacement-detail-header img {
+  width: 52px;
+  height: 52px;
+  object-fit: cover;
+  border: 1px solid rgba(211,177,91,.45);
+  border-radius: 4px;
+}
+.character-builder .cb-metamagic-replacement-detail-header span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 3px;
+}
+.character-builder .cb-metamagic-replacement-detail-header strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.character-builder .cb-metamagic-replacement-detail-header small {
+  opacity: .78;
+}
+.character-builder .cb-metamagic-replacement-detail-header > i {
+  opacity: .72;
+}
+.character-builder .cb-metamagic-replacement-detail-description {
+  padding: 10px 12px 12px;
+  line-height: 1.42;
+}
+.character-builder .cb-metamagic-replacement-detail-description > :first-child {
+  margin-top: 0;
+}
+.character-builder .cb-metamagic-replacement-detail-description > :last-child {
+  margin-bottom: 0;
+}
+.character-builder .cb-metamagic-replacement-detail-description blockquote {
+  margin: 0 0 8px;
+}
+@media (max-width: 760px) {
+  .character-builder .cb-metamagic-replacement-details {
+    grid-template-columns: 1fr;
+  }
+}
+

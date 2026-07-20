@@ -48,14 +48,20 @@ export class MetamagicService {
       return (sourceUuid && poolUuids.has(String(sourceUuid))) || poolIdentifiers.has(identifier);
     });
 
-    const existing = existingItems.map(item => ({
-      id: item.id,
-      name: item.name,
-      img: item.img,
-      identifier: String(item.system?.identifier ?? this.#slug(item.name)),
-      uuid: String(item.getFlag("dnd5e", "sourceId") ?? item._stats?.compendiumSource ?? ""),
-      acquiredLevel: this.#findAdvancementItemLevel(advancement, item.id, targetLevel)
-    })).sort((a, b) => a.name.localeCompare(b.name, game.i18n.lang));
+    const existing = (await Promise.all(existingItems.map(async item => {
+      const sourceUuid = String(item.getFlag("dnd5e", "sourceId") ?? item._stats?.compendiumSource ?? "");
+      const source = sourceUuid ? registry.sourceForUuid(sourceUuid) : null;
+      return {
+        id: item.id,
+        name: item.name,
+        img: item.img,
+        identifier: String(item.system?.identifier ?? this.#slug(item.name)),
+        uuid: sourceUuid || item.uuid,
+        sourceLabel: source?.sourceLabel ?? source?.label ?? item.system?.source?.book ?? "Owned Metamagic",
+        description: await this.#enrichDescription(item),
+        acquiredLevel: this.#findAdvancementItemLevel(advancement, item.id, targetLevel)
+      };
+    }))).sort((a, b) => a.name.localeCompare(b.name, game.i18n.lang));
 
     const knownIdentifiers = new Set(existing.map(item => item.identifier));
     const knownUuids = new Set(existing.map(item => item.uuid).filter(Boolean));
@@ -266,10 +272,27 @@ export class MetamagicService {
         sourceId: preferred?.sourceId ?? registry.sourceForUuid(uuid)?.sourceId ?? "unknown",
         sourceLabel: preferred?.sourceLabel ?? registry.sourceForUuid(uuid)?.sourceLabel ?? "Source",
         sourceRank: preferred?.sourceRank ?? registry.sourceRankForUuid(uuid),
-        detailMeta: `Metamagic • ${preferred?.sourceLabel ?? registry.sourceForUuid(uuid)?.sourceLabel ?? "Enabled Source"}`
+        detailMeta: `Metamagic • ${preferred?.sourceLabel ?? registry.sourceForUuid(uuid)?.sourceLabel ?? "Enabled Source"}`,
+        description: await this.#enrichDescription(preferredDocument)
       });
     }
     return [...options.values()].sort((a, b) => a.name.localeCompare(b.name, game.i18n.lang));
+  }
+
+
+  static async #enrichDescription(document) {
+    const raw = String(document?.system?.description?.value ?? "");
+    if (!raw) return "<p>No description is available from the selected source.</p>";
+    try {
+      return await TextEditorImplementation.enrichHTML(raw, {
+        async: true,
+        relativeTo: document,
+        secrets: Boolean(document?.isOwner)
+      });
+    } catch (error) {
+      console.warn(`${MODULE_ID} | Failed to enrich Metamagic description.`, error);
+      return raw;
+    }
   }
 
   static async #createOption(draft, cls, context, option, state, registry) {

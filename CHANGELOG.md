@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.9.5e Community Beta — Metamagic Replacement Detail Cards
+
+### Replacement Preview
+
+- Adds two source-native detail cards below Optional Metamagic Replacement.
+- Shows the official image, name, source, and enriched description for the Metamagic being removed and the Metamagic being added.
+- Updates each card immediately when its corresponding dropdown changes.
+- Shows only the removal card while `Replace` is selected and `With` is still empty.
+- Removes the complete detail area when `No replacement` is selected.
+- Keeps each card linked to the official source document without changing checkbox or replacement state.
+
+### Scope Preservation
+
+- No Metamagic acquisition, replacement, duplicate validation, Advancement values, rollback, Warlock behavior, native Advancement, other class rules, commits, Settings, or GM tools changed.
+
+## 0.9.51 Community Beta — Warlock Invocation Target Rebind Hotfix
+
+### Invocation Target Rebinding
+
+- Re-resolves every newly created cantrip-targeting Eldritch Invocation after same-Level-Up Invocation cleanup completes.
+- Applies the same final embedded cantrip Item binding to both new Invocation selections and the optional Invocation replacement.
+- Prefers the newly created Pact Magic cantrip from the current transaction over an older Tome-owned Item with the same identifier.
+- Rebuilds reciprocal `eldritchInvocationAugments` only after every target uses the surviving embedded Item ID.
+- Throws and rolls back the Draft if a newly created Invocation cannot resolve a surviving eligible cantrip.
+
+### Scope Preservation
+
+- No projected ownership rules, Pact of the Tome cleanup, Sorcerer Metamagic, native Advancement, other classes, protected commits, Settings, or GM progression behavior changed.
+
+## 0.9.5d Community Beta — Warlock Projected Cantrip State
+
+### Projected Ownership
+
+- Allows a Tome-owned Warlock cantrip scheduled for removal to be reacquired as a normal cantrip in the same Level Up.
+- Adds pending Optional Cantrip Replacement choices to cantrip-targeting Eldritch Invocation target lists.
+- Resolves the replacement Invocation target to the newly created embedded cantrip Item after the old provider is removed.
+- Keeps redundant choices blocked whenever any independent acquisition survives.
+- Clears invalid dependent targets when an upstream provider or cantrip replacement changes.
+- Repeats the projected ownership and target-survival checks in the rules service before applying the Draft.
+
+### Scope Preservation
+
+- No Sorcerer Metamagic, native Advancement, other class, protected commit, Settings, or GM progression behavior changed.
+
 ## 0.9.5c Community Beta — Custom Sorcerer Metamagic
 
 ### Custom Selection and Replacement

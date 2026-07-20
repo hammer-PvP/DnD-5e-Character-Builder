@@ -9,6 +9,7 @@ import { NativeAdvancementValidationService, StructuralLevelUpError } from "./na
 import { PactOfTheTomeService } from "./pact-of-the-tome-service.mjs";
 import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
 import { MetamagicService } from "./metamagic-service.mjs";
+import { WarlockProjectedCantripService } from "./warlock-projected-cantrip-service.mjs";
 
 export class LevelUpRulesService {
   static async buildContext(sourceActor, draft, registry) {
@@ -128,8 +129,31 @@ export class LevelUpRulesService {
     }
     savant.levelGroups = this.#groupSpellsByLevel(savant.groups.flatMap(group => group.items), registry);
 
+    const cantripReplacementClasses = new Set(["bard", "sorcerer", "warlock"]);
+    const cantripReplacement = oldClassLevel > 0 && (cantripReplacementClasses.has(identifier) || subclassCaster)
+      ? this.#cantripReplacementContext(draft, identifier, cantripPool, stateChoices, new Set(selectedCantripSet), {
+        excludedIdentifiers: subclassCaster?.identifier === "arcane-trickster" ? new Set(["mage-hand"]) : new Set(),
+        unavailableChoiceInfo
+      })
+      : { available: false, existing: [], options: [], removeId: "", addIdentifier: "" };
+
+    const pendingInvocationCantrips = [
+      ...cantripOptions.map(option => ({ ...option, pendingChannel: "new-cantrip" })),
+      ...cantripReplacement.options.map(option => ({ ...option, pendingChannel: "cantrip-replacement" }))
+    ];
+    const selectedPendingInvocationCantrips = new Set([
+      ...selectedCantripSet,
+      ...(cantripReplacement.addIdentifier ? [cantripReplacement.addIdentifier] : [])
+    ]);
     const invocations = identifier === "warlock"
-      ? await this.#invocationContext(draft, cls, registry, stateChoices, cantripOptions)
+      ? await this.#invocationContext(
+        draft,
+        cls,
+        registry,
+        stateChoices,
+        pendingInvocationCantrips,
+        selectedPendingInvocationCantrips
+      )
       : this.#emptyInvocationContext();
     const metamagic = identifier === "sorcerer"
       ? await MetamagicService.buildContext(draft, cls, registry, {
@@ -168,14 +192,6 @@ export class LevelUpRulesService {
     const replacement = model === "limited" && oldClassLevel > 0
       ? this.#spellReplacementContext(draft, identifier, leveledPool, stateChoices, new Set([...selectedSpellSet, ...selectedSavantSet]), unavailableChoiceInfo)
       : { available: false, existing: [], options: [], removeId: "", addIdentifier: "" };
-    const cantripReplacementClasses = new Set(["bard", "sorcerer", "warlock"]);
-    const cantripReplacement = oldClassLevel > 0 && (cantripReplacementClasses.has(identifier) || subclassCaster)
-      ? this.#cantripReplacementContext(draft, identifier, cantripPool, stateChoices, new Set(selectedCantripSet), {
-        excludedIdentifiers: subclassCaster?.identifier === "arcane-trickster" ? new Set(["mage-hand"]) : new Set(),
-        unavailableChoiceInfo
-      })
-      : { available: false, existing: [], options: [], removeId: "", addIdentifier: "" };
-
     const features = await LevelUpFeatureService.buildContext(draft, cls, registry, {
       oldClassLevel,
       newClassLevel,
@@ -306,8 +322,21 @@ export class LevelUpRulesService {
     if (removeCantripId && !context.cantripReplacement.existing.some(item => item.id === removeCantripId)) {
       throw new Error("The cantrip selected for replacement is not eligible.");
     }
-    if (addCantripIdentifier && !context.cantripReplacement.options.some(item => item.identifier === addCantripIdentifier)) {
+    const projectedRemoveInvocationId = String(formData.get("levelUp.replaceInvocation.remove") ?? "");
+    const replacementCantripOption = addCantripIdentifier
+      ? context.cantripReplacement.options.find(item => item.identifier === addCantripIdentifier)
+      : null;
+    if (addCantripIdentifier && !replacementCantripOption) {
       throw new Error("The replacement cantrip is not eligible.");
+    }
+    if (replacementCantripOption && !WarlockProjectedCantripService.replacementAvailable({
+      acquisitions: replacementCantripOption.acquisitions ?? [],
+      staticDisabled: replacementCantripOption.staticDisabled
+    }, {
+      removeInvocationId: projectedRemoveInvocationId,
+      removeCantripId
+    })) {
+      throw new Error(`${replacementCantripOption.name} is still known through an acquisition that survives this Level Up.`);
     }
     this.#validateUniqueSpellSelections([
       { channel: "cantrip", identifiers: selectedCantrips },
@@ -324,8 +353,12 @@ export class LevelUpRulesService {
       if (!uuid) throw new Error(`Choose Eldritch Invocation ${index + 1}.`);
       invocationSelections.push({ uuid, targetIdentifier });
     }
+    const pendingInvocationCantrips = new Set([
+      ...selectedCantrips,
+      ...(addCantripIdentifier ? [addCantripIdentifier] : [])
+    ]);
     this.#validateInvocations(context.invocations, invocationSelections);
-    this.#validatePendingInvocationTargets(context.invocations, invocationSelections, selectedCantrips);
+    this.#validatePendingInvocationTargets(context.invocations, invocationSelections, pendingInvocationCantrips);
 
     const replaceInvocationId = String(formData.get("levelUp.replaceInvocation.remove") ?? "");
     const replaceInvocationUuid = String(formData.get("levelUp.replaceInvocation.add") ?? "");
@@ -359,12 +392,16 @@ export class LevelUpRulesService {
       this.#validateInvocations(context.invocations, [invocationReplacementSelection], {
         replacingItemId: replaceInvocationId
       });
-      this.#validatePendingInvocationTargets(context.invocations, [invocationReplacementSelection], selectedCantrips);
+      this.#validatePendingInvocationTargets(context.invocations, [invocationReplacementSelection], pendingInvocationCantrips);
     }
     this.#validateInvocationTargetSurvival(
       context.invocations,
       [...invocationSelections, ...(invocationReplacementSelection ? [invocationReplacementSelection] : [])],
-      { removeInvocationId: replaceInvocationId, removeCantripId }
+      {
+        removeInvocationId: replaceInvocationId,
+        removeCantripId,
+        pendingCantripIdentifiers: pendingInvocationCantrips
+      }
     );
 
     const selectedByIdentifier = new Map();
@@ -457,9 +494,14 @@ export class LevelUpRulesService {
     deleted += Number(metamagicResult.deletedItemIds?.length ?? 0);
 
     const createdInvocationIds = [];
+    const createdInvocationTargetBindings = [];
     for (const selection of invocationSelections) {
       const item = await this.#createInvocation(draft, cls, context.invocations, selection, state, registry);
       createdInvocationIds.push(item.id);
+      if (selection.targetIdentifier) createdInvocationTargetBindings.push({
+        invocationItemId: item.id,
+        targetIdentifier: selection.targetIdentifier
+      });
     }
     let invocationReplacementRecord = null;
     if (replaceInvocationId) {
@@ -472,6 +514,10 @@ export class LevelUpRulesService {
         targetIdentifier: replaceInvocationTarget
       }, state, registry);
       createdInvocationIds.push(item.id);
+      if (replaceInvocationTarget) createdInvocationTargetBindings.push({
+        invocationItemId: item.id,
+        targetIdentifier: replaceInvocationTarget
+      });
       invocationReplacementRecord = {
         original: replaceInvocationId,
         originalLevel,
@@ -503,6 +549,10 @@ export class LevelUpRulesService {
       deleted += Number(tomeResult.deletedItemIds?.length ?? 0);
     }
     await SourceResolver.enforceAllowedSources(draft, registry);
+    await this.#rebindCreatedInvocationTargets(draft, cls, createdInvocationTargetBindings, {
+      preferredCantripItemIds: createdSpellIds,
+      transactionId: state.transactionId
+    });
     await this.#refreshCantripAugments(draft);
     const integrityResult = await ItemGrantIntegrityService.reconcile(draft, registry, { context: "levelUp", state });
     await FeatureSpellOwnershipService.reconcile(draft, integrityResult, state);
@@ -696,7 +746,7 @@ export class LevelUpRulesService {
     };
   }
 
-  static async #invocationContext(draft, cls, registry, stateChoices, pendingCantripOptions = []) {
+  static async #invocationContext(draft, cls, registry, stateChoices, pendingCantripOptions = [], selectedPendingCantrips = null) {
     const advancement = this.#advancementData(cls).find(entry =>
       entry.type === "ItemChoice" && String(entry.title ?? "").toLowerCase() === "eldritch invocations"
     );
@@ -777,7 +827,7 @@ export class LevelUpRulesService {
     const targetCantrips = await this.#eligibleWarlockCantrips(
       draft,
       pendingCantripOptions,
-      new Set(stateChoices.cantrips ?? [])
+      selectedPendingCantrips ?? new Set(stateChoices.cantrips ?? [])
     );
     const selected = stateChoices.invocationSelections ?? [];
     const availableIdentifiers = new Set(existingIdentifiers);
@@ -961,6 +1011,9 @@ export class LevelUpRulesService {
         identifier,
         name: item.name,
         pending: false,
+        pendingSelectable: false,
+        pendingSelected: false,
+        pendingChannels: [],
         eligible: true,
         acquisitions: []
       };
@@ -971,28 +1024,42 @@ export class LevelUpRulesService {
       candidates.set(identifier, candidate);
     }
 
-    // Only cantrips that can actually be selected during this same Level Up are
-    // shown as pending targets. The rest of the Warlock catalogue is excluded.
+    // Merge every cantrip that can actually be acquired in this Level Up. A
+    // candidate may have both an existing feature-owned acquisition and a
+    // pending normal Pact Magic acquisition with the same identifier.
     for (const option of pendingCantripOptions) {
-      if (!option?.identifier || candidates.has(option.identifier)) continue;
+      if (!option?.identifier) continue;
       const document = await fromUuid(option.uuid);
       if (!document || !this.#spellDealsDamage(document)) continue;
-      candidates.set(option.identifier, {
+      const candidate = candidates.get(option.identifier) ?? {
         identifier: option.identifier,
         name: option.name,
         uuid: option.uuid,
         pending: true,
-        eligible: selectedPending.has(option.identifier),
+        pendingSelectable: false,
+        pendingSelected: false,
+        pendingChannels: [],
+        eligible: false,
         acquisitions: []
-      });
+      };
+      candidate.uuid ??= option.uuid;
+      candidate.pendingSelectable = true;
+      candidate.pendingSelected = selectedPending.has(option.identifier);
+      candidate.pendingChannels = [...new Set([
+        ...(candidate.pendingChannels ?? []),
+        option.pendingChannel ?? "cantrip-selection"
+      ])];
+      candidate.pending = candidate.acquisitions.length === 0;
+      candidate.eligible = candidate.acquisitions.length > 0 || candidate.pendingSelected;
+      candidates.set(option.identifier, candidate);
     }
 
     return [...candidates.values()]
       .map(candidate => ({
         ...candidate,
-        acquisitionBindingsString: (candidate.acquisitions ?? [])
-          .map(acquisition => `${acquisition.itemId}:${(acquisition.providerItemIds ?? []).join(",")}`)
-          .join("|")
+        hasExistingAcquisition: (candidate.acquisitions ?? []).length > 0,
+        acquisitionBindingsString: WarlockProjectedCantripService.serializeAcquisitions(candidate.acquisitions ?? []),
+        pendingChannelsString: (candidate.pendingChannels ?? []).join("|")
       }))
       .sort((a, b) => a.name.localeCompare(b.name, game.i18n.lang));
   }
@@ -1111,14 +1178,37 @@ export class LevelUpRulesService {
         && !excludedIdentifiers.has(String(item.system?.identifier ?? "")));
     const known = new Set(existing.map(item => item.system?.identifier).filter(Boolean));
     const selectedReplacement = stateChoices.cantripReplacement?.addIdentifier ?? "";
+    const removals = {
+      removeInvocationId: stateChoices.invocationReplacement?.removeId ?? "",
+      removeCantripId: stateChoices.cantripReplacement?.removeId ?? ""
+    };
+    const acquisitionsByIdentifier = this.#cantripAcquisitionsByIdentifier(draft, classIdentifier);
     const options = cantripPool.filter(option => !known.has(option.identifier)).map(option => {
       const selectedElsewhere = blockedIdentifiers.has(option.identifier) && selectedReplacement !== option.identifier;
       const unavailableReason = unavailableChoiceInfo.get(option.identifier) ?? "";
+      const acquisitions = acquisitionsByIdentifier.get(option.identifier) ?? [];
+      const ownershipBlocked = acquisitions.length > 0;
+      const staticDisabled = Boolean(unavailableReason && !ownershipBlocked);
+      const projectedAvailable = WarlockProjectedCantripService.replacementAvailable({
+        acquisitions,
+        staticDisabled
+      }, removals);
+      let disabledReason = "";
+      if (selectedElsewhere) disabledReason = "Already selected as a new cantrip during this Level Up.";
+      else if (unavailableReason && !ownershipBlocked) disabledReason = unavailableReason;
+      else if (ownershipBlocked && !projectedAvailable) {
+        disabledReason = unavailableReason || "Already known through another acquisition that survives this Level Up.";
+      }
       return {
         ...option,
         levelLabel: "Cantrip",
-        disabled: Boolean(selectedElsewhere || unavailableReason),
-        disabledReason: unavailableReason || (selectedElsewhere ? "Already selected as a new cantrip during this Level Up." : "")
+        disabled: Boolean(selectedElsewhere || !projectedAvailable),
+        disabledReason,
+        staticDisabled,
+        projectableOwnership: ownershipBlocked,
+        acquisitions,
+        acquisitionBindingsString: WarlockProjectedCantripService.serializeAcquisitions(acquisitions),
+        displayLabel: option.name
       };
     });
     return {
@@ -1128,6 +1218,23 @@ export class LevelUpRulesService {
       removeId: stateChoices.cantripReplacement?.removeId ?? "",
       addIdentifier: stateChoices.cantripReplacement?.addIdentifier ?? ""
     };
+  }
+
+  static #cantripAcquisitionsByIdentifier(draft, classIdentifier) {
+    const acquisitions = new Map();
+    for (const item of draft.items) {
+      if (item.type !== "spell" || Number(item.system?.level ?? 0) !== 0) continue;
+      if (this.#spellClassIdentifier(item, draft) !== classIdentifier) continue;
+      const identifier = String(item.system?.identifier ?? "");
+      if (!identifier) continue;
+      const rows = acquisitions.get(identifier) ?? [];
+      rows.push({
+        itemId: item.id,
+        providerItemIds: this.#spellProviderItemIds(item)
+      });
+      acquisitions.set(identifier, rows);
+    }
+    return acquisitions;
   }
 
   static #featureByIdentifier(draft, identifier) {
@@ -1291,7 +1398,9 @@ export class LevelUpRulesService {
     for (const selection of selections) {
       if (!selection.targetIdentifier) continue;
       const target = context.targetCantrips.find(cantrip => cantrip.identifier === selection.targetIdentifier);
-      if (target?.pending && !selected.has(target.identifier)) {
+      if (!target) continue;
+      const hasExisting = (target.acquisitions ?? []).length > 0;
+      if (!hasExisting && target.pendingSelectable && !selected.has(target.identifier)) {
         throw new Error(`${target.name} must be selected as a Warlock cantrip during this Level Up before an Eldritch Invocation can augment it.`);
       }
     }
@@ -1299,19 +1408,23 @@ export class LevelUpRulesService {
 
   static #validateInvocationTargetSurvival(context, selections, {
     removeInvocationId = "",
-    removeCantripId = ""
+    removeCantripId = "",
+    pendingCantripIdentifiers = new Set()
   } = {}) {
-    if (!removeInvocationId && !removeCantripId) return;
+    const pending = new Set(pendingCantripIdentifiers ?? []);
     for (const selection of selections ?? []) {
       if (!selection.targetIdentifier) continue;
       const target = context.targetCantrips.find(cantrip => cantrip.identifier === selection.targetIdentifier);
-      if (!target || target.pending) continue;
-      const survives = (target.acquisitions ?? []).some(acquisition => {
-        if (removeCantripId && acquisition.itemId === removeCantripId) return false;
-        return !removeInvocationId || !(acquisition.providerItemIds ?? []).includes(removeInvocationId);
+      if (!target) continue;
+      const survives = WarlockProjectedCantripService.targetSurvives({
+        acquisitions: target.acquisitions ?? [],
+        pendingSelected: pending.has(target.identifier)
+      }, {
+        removeInvocationId,
+        removeCantripId
       });
       if (!survives) {
-        throw new Error(`${target.name} cannot be targeted because its only eligible acquisition will be removed during this Level Up.`);
+        throw new Error(`${target.name} cannot be targeted because every eligible acquisition will be removed during this Level Up.`);
       }
     }
   }
@@ -1517,6 +1630,45 @@ export class LevelUpRulesService {
       if (Object.prototype.hasOwnProperty.call(items ?? {}, itemId)) return Number(level);
     }
     return Number(cls.system?.levels ?? 1);
+  }
+
+  static async #rebindCreatedInvocationTargets(draft, cls, bindings = [], {
+    preferredCantripItemIds = [],
+    transactionId = ""
+  } = {}) {
+    if (!(bindings ?? []).length) return;
+    const updates = [];
+    for (const binding of bindings) {
+      const invocation = draft.items.get(binding.invocationItemId);
+      if (!invocation) continue;
+      const candidates = draft.items
+        .filter(item => item.type === "spell"
+          && Number(item.system?.level ?? 0) === 0
+          && String(item.system?.identifier ?? "") === String(binding.targetIdentifier ?? "")
+          && this.#spellClassIdentifier(item, draft) === String(cls.system?.identifier ?? "warlock"))
+        .map(item => ({
+          item,
+          itemId: item.id,
+          transactionId: item.getFlag(MODULE_ID, "levelUpSpell")?.transactionId ?? ""
+        }));
+      const selected = WarlockProjectedCantripService.selectTargetCandidate(candidates, {
+        preferredItemIds: preferredCantripItemIds,
+        transactionId
+      });
+      const target = selected?.item ?? null;
+      if (!target) {
+        throw new Error(`The surviving target cantrip for ${invocation.name} was not found after Invocation replacement cleanup.`);
+      }
+      const instance = foundry.utils.deepClone(invocation.getFlag(MODULE_ID, "invocationInstance") ?? {});
+      instance.targetCantripItemId = target.id;
+      instance.targetCantripIdentifier = target.system?.identifier ?? binding.targetIdentifier ?? null;
+      instance.targetCantripName = target.name ?? null;
+      updates.push({
+        _id: invocation.id,
+        [`flags.${MODULE_ID}.invocationInstance`]: instance
+      });
+    }
+    if (updates.length) await draft.updateEmbeddedDocuments("Item", updates);
   }
 
   static async #refreshCantripAugments(draft) {

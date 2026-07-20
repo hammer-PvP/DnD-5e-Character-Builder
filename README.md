@@ -23,11 +23,11 @@ SRD 5.1 Legacy is not officially supported. Runtime Character Management remains
 - Transactional mundane Starting Equipment Shop with Checkout, exact purchase manifests, containers, quantity support, and GM Bonus Gold.
 - Review and recoverable application to the original Actor.
 
-## Character Builder 0.9.5c community beta
+## Character Builder 0.9.5e community beta
 
 Level Up uses a separate hidden transaction Draft. Native and module-managed choices are resolved on that Draft, and the live Actor is not changed until **Commit Level Up** succeeds.
 
-The 0.9.5c update moves Sorcerer Metamagic selection and its once-per-Sorcerer-level optional replacement into the Character Builder `Spells & Features` step. The source ItemChoice Advancement remains structurally authoritative, while Character Builder owns the cards, duplicate prevention, projected final choice state, exact embedded Item IDs, and atomic replacement records. The Native Advancement Modal Guard introduced in 0.9.5b remains unchanged.
+The 0.9.5e interface patch adds source-native detail cards below Optional Metamagic Replacement. The Metamagic being removed and the replacement option now show their official image, source, and enriched description, updating immediately as either dropdown changes. The approved 0.9.51 Warlock target-rebind hotfix, Sorcerer Metamagic rules, and all other progression behavior remain unchanged.
 
 ### Availability
 

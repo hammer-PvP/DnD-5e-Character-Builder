@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.5c";
-export const MODULE_BUILD = "community-beta-095c-custom-sorcerer-metamagic";
+export const MODULE_VERSION = "0.9.5e";
+export const MODULE_BUILD = "community-beta-095e-metamagic-replacement-details";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
