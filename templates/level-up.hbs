@@ -431,6 +431,88 @@
       </section>
       {{/if}}
 
+      {{#if rules.metamagic.active}}
+      {{#if rules.metamagic.count}}
+      <section class="cb-choice-section cb-managed-selection-section cb-metamagic-section"
+        data-managed-selection-section
+        data-metamagic-selection-section
+        data-required="{{rules.metamagic.count}}">
+        <header class="cb-choice-section-header">
+          <div>
+            <h3>New Metamagic Options</h3>
+            <p>{{rules.metamagic.note}}</p>
+          </div>
+          <strong data-managed-selection-count>{{rules.metamagic.selectedCount}} / {{rules.metamagic.count}}</strong>
+        </header>
+        {{#each rules.metamagic.groups}}
+        <h5 class="cb-source-heading">{{label}}</h5>
+        <div class="cb-choice-grid">
+          {{#each items}}
+          <article class="cb-choice-card cb-spell-choice-card cb-metamagic-card {{#if disabled}}duplicate-disabled{{/if}}"
+            data-metamagic-option
+            data-spell-option
+            title="{{disabledReason}}">
+            <input type="checkbox"
+              name="levelUp.metamagic"
+              value="{{uuid}}"
+              data-managed-selection-control
+              data-metamagic-control
+              data-metamagic-uuid="{{uuid}}"
+              data-metamagic-identifier="{{identifier}}"
+              data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}"
+              {{checked checked}}
+              {{#if disabled}}disabled{{/if}}>
+            <button type="button" class="cb-spell-choice-preview" data-action="open-document" data-uuid="{{uuid}}" aria-label="Open {{name}} details">
+              <img src="{{img}}" alt="">
+              <span><strong>{{name}}</strong><small>Metamagic · {{sourceLabel}}{{#if disabledReason}} · {{disabledReason}}{{/if}}</small></span>
+            </button>
+          </article>
+          {{/each}}
+        </div>
+        {{/each}}
+      </section>
+      {{/if}}
+
+      {{#if rules.metamagic.replacement.available}}
+      <section class="cb-choice-section cb-metamagic-section"
+        data-metamagic-replacement
+        data-optional-pair>
+        <h3>Optional Metamagic Replacement</h3>
+        <p>Replace one Metamagic option you know with one you do not know. New choices made above are also excluded.</p>
+        <div class="cb-replacement-row">
+          <label>Replace
+            <select name="levelUp.replaceMetamagic.remove" data-optional-pair-remove data-metamagic-replace-remove>
+              <option value="">No replacement</option>
+              {{#each rules.metamagic.replacement.existing}}
+              <option value="{{id}}"
+                data-identifier="{{identifier}}"
+                {{#if (eq ../rules.metamagic.replacement.selectedRemoveId id)}}selected{{/if}}>{{name}}</option>
+              {{/each}}
+            </select>
+          </label>
+          <i class="fa-solid fa-arrow-right"></i>
+          <label>With
+            <select name="levelUp.replaceMetamagic.add" data-optional-pair-add data-metamagic-replace-add>
+              <option value="">No replacement</option>
+              {{#each rules.metamagic.replacement.groups}}
+              <optgroup label="{{label}}">
+                {{#each items}}
+                <option value="{{uuid}}"
+                  data-identifier="{{identifier}}"
+                  data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}"
+                  data-base-label="{{name}}"
+                  {{#if disabled}}disabled{{/if}}
+                  {{#if (eq ../../rules.metamagic.replacement.selectedUuid uuid)}}selected{{/if}}>{{name}}{{#if disabledReason}} — {{disabledReason}}{{/if}}</option>
+                {{/each}}
+              </optgroup>
+              {{/each}}
+            </select>
+          </label>
+        </div>
+      </section>
+      {{/if}}
+      {{/if}}
+
       {{#each rules.features.spellSections}}
       <section class="cb-choice-section cb-spell-selection-section cb-managed-selection-section" data-managed-selection-section data-required="{{count}}">
         <header class="cb-choice-section-header"><div><h3>{{title}}</h3><p>{{note}}</p></div><strong data-managed-selection-count>{{selectedCount}} / {{count}}</strong></header>

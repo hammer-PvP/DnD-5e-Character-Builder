@@ -8,6 +8,7 @@ import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.
 import { NativeAdvancementValidationService, StructuralLevelUpError } from "./native-advancement-validation-service.mjs";
 import { PactOfTheTomeService } from "./pact-of-the-tome-service.mjs";
 import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
+import { MetamagicService } from "./metamagic-service.mjs";
 
 export class LevelUpRulesService {
   static async buildContext(sourceActor, draft, registry) {
@@ -130,6 +131,13 @@ export class LevelUpRulesService {
     const invocations = identifier === "warlock"
       ? await this.#invocationContext(draft, cls, registry, stateChoices, cantripOptions)
       : this.#emptyInvocationContext();
+    const metamagic = identifier === "sorcerer"
+      ? await MetamagicService.buildContext(draft, cls, registry, {
+        oldClassLevel,
+        newClassLevel,
+        stateChoices
+      })
+      : MetamagicService.emptyContext();
     const tomeOption = invocations.options.find(option => option.identifier === PactOfTheTomeService.INVOCATION_IDENTIFIER) ?? null;
     const currentTome = PactOfTheTomeService.findInvocation(draft);
     const currentTomeSelection = currentTome ? PactOfTheTomeService.currentSelection(draft, currentTome.id) : null;
@@ -183,7 +191,7 @@ export class LevelUpRulesService {
 
     const hasChoices = cantripCount > 0 || spellCount > 0 || savant.count > 0 || invocations.count > 0
       || replacement.available || cantripReplacement.available || invocations.replacement.available || features.hasChoices
-      || pactOfTheTome.visible;
+      || pactOfTheTome.visible || metamagic.active;
     const hasAutomatic = automaticSpells.length > 0 || automaticItemGrants.length > 0
       || automaticAdvancementSummaries.length > 0 || features.hasAutomatic;
     const requiredSpellSelections = cantripCount + spellCount + savant.count;
@@ -215,7 +223,8 @@ export class LevelUpRulesService {
       selectedSpellCount: (stateChoices.spells ?? []).length,
       requiredSpellSelections,
       selectedSpellSelections,
-      spellSelectionComplete: baseSelectionComplete && spellReplacementComplete && cantripReplacementComplete && features.complete && tomeSelectionComplete,
+      spellSelectionComplete: baseSelectionComplete && spellReplacementComplete && cantripReplacementComplete
+        && features.complete && tomeSelectionComplete && metamagic.complete,
       duplicateSelectionCount,
       cantripGroups: registry.groupOptions(cantripOptions),
       cantripLevelGroups: this.#groupSpellsByLevel(cantripOptions, registry),
@@ -229,6 +238,7 @@ export class LevelUpRulesService {
       automaticAdvancementSummaryCount: automaticAdvancementSummaries.length,
       savant,
       invocations,
+      metamagic,
       pactOfTheTome,
       replacement,
       cantripReplacement,
@@ -436,6 +446,16 @@ export class LevelUpRulesService {
     const featureResult = await LevelUpFeatureService.apply(draft, cls, registry, formData, context.features, state);
     deleted += Number(featureResult.deleted ?? 0);
 
+    const metamagicResult = await MetamagicService.apply(
+      draft,
+      cls,
+      registry,
+      formData,
+      context.metamagic,
+      state
+    );
+    deleted += Number(metamagicResult.deletedItemIds?.length ?? 0);
+
     const createdInvocationIds = [];
     for (const selection of invocationSelections) {
       const item = await this.#createInvocation(draft, cls, context.invocations, selection, state, registry);
@@ -498,6 +518,8 @@ export class LevelUpRulesService {
       spells: selectedSpells,
       savantSpells: selectedSavant,
       invocationSelections,
+      metamagicSelections: metamagicResult.choices.selections,
+      metamagicReplacement: metamagicResult.choices.replacement,
       spellReplacement: removeSpellId ? { removeId: removeSpellId, addIdentifier: addReplacementIdentifier } : null,
       cantripReplacement: removeCantripId ? { removeId: removeCantripId, addIdentifier: addCantripIdentifier } : null,
       features: featureResult.featureChoices,
@@ -515,11 +537,21 @@ export class LevelUpRulesService {
       additionalChoices: choices,
       additionalComplete: true,
       commitReady: true,
-      createdItemIds: [...new Set([...(state.createdItemIds ?? []), ...createdSpellIds, ...createdInvocationIds, ...featureResult.createdItemIds])],
+      createdItemIds: [...new Set([
+        ...(state.createdItemIds ?? []),
+        ...createdSpellIds,
+        ...createdInvocationIds,
+        ...featureResult.createdItemIds,
+        ...(metamagicResult.createdItemIds ?? [])
+      ])],
       step: "review"
     });
 
-    return { created: createdSpellIds.length + createdInvocationIds.length + featureResult.createdItemIds.length, deleted };
+    return {
+      created: createdSpellIds.length + createdInvocationIds.length + featureResult.createdItemIds.length
+        + Number(metamagicResult.createdItemIds?.length ?? 0),
+      deleted
+    };
     } catch (error) {
       try {
         await this.#restoreDraft(draft, rollbackSnapshot);
@@ -1649,6 +1681,7 @@ export class LevelUpRulesService {
       automaticItemGrantCount: 0,
       savant: this.#emptySavantContext(),
       invocations: this.#emptyInvocationContext(),
+      metamagic: MetamagicService.emptyContext(),
       replacement: { available: false, existing: [], options: [] },
       cantripReplacement: { available: false, existing: [], options: [] },
       features: {

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.5c Community Beta — Custom Sorcerer Metamagic
+
+### Custom Selection and Replacement
+
+- Moves Sorcerer Metamagic choices from the visible native Advancement window into `Spells & Features`.
+- Requires two new Metamagic options at Sorcerer levels 2, 10, and 17.
+- Offers one optional replacement after every Sorcerer Level Up from level 3 onward.
+- Keeps known options visible but greyed out and blocks duplicates across new choices and replacement.
+- Writes exact embedded Item IDs to the source-native ItemChoice Advancement and preserves full rollback safety.
+
+### Scope Preservation
+
+- No other class rules, spell ownership, protected commits, Native Advancement Modal Guard behavior, GM progression tools, settings, or sheet controls changed.
+
 ## 0.9.5b Community Beta — Native Advancement Modal Guard
 
 ## Native Advancement Modal Guard

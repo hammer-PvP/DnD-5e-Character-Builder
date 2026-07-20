@@ -2570,3 +2570,18 @@
     animation: none;
   }
 }
+
+/* 0.9.5c — Character Builder-owned Sorcerer Metamagic choices */
+.character-builder .cb-metamagic-section.complete {
+  border-color: rgba(98,185,121,.65);
+  box-shadow: inset 0 0 0 1px rgba(98,185,121,.13);
+}
+.character-builder .cb-metamagic-section.complete [data-managed-selection-count] {
+  color: #8fd99f;
+}
+.character-builder .cb-metamagic-section.invalid {
+  border-color: rgba(255,116,116,.7);
+}
+.character-builder .cb-metamagic-card {
+  cursor: pointer;
+}

@@ -157,7 +157,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     root.querySelectorAll("[data-filter-target]").forEach(input => {
       input.addEventListener("input", event => this.#filterSpellOptions(event));
     });
-    root.querySelectorAll('[name^="levelUp.replaceSpell."], [name^="levelUp.replaceCantrip."], [name^="levelUp.featureReplace."], [name^="levelUp.featureOption."], [name="levelUp.land"], [name="levelUp.wildShapeForms"], [name^="levelUp.featureSpell."], [name^="levelUp.featureTarget."]').forEach(input => {
+    root.querySelectorAll('[name^="levelUp.replaceSpell."], [name^="levelUp.replaceCantrip."], [name^="levelUp.replaceMetamagic."], [name^="levelUp.featureReplace."], [name^="levelUp.featureOption."], [name="levelUp.land"], [name="levelUp.wildShapeForms"], [name^="levelUp.featureSpell."], [name^="levelUp.featureTarget."]').forEach(input => {
       input.addEventListener("change", () => {
         if (input.matches("[data-land-select]")) this.#refreshLandPreview(input.value);
         this.#refreshSpellSelectionState();
@@ -902,6 +902,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!selectionRoot) return;
 
     this.#refreshInvocationTargetEligibility();
+    const metamagicComplete = this.#refreshMetamagicSelectionState(selectionRoot);
 
     const allSpellControls = [...selectionRoot.querySelectorAll("input[type=checkbox][data-spell-identifier]")];
     const controls = allSpellControls.filter(control => !control.matches("[data-managed-selection-control]"));
@@ -1073,12 +1074,78 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       && !conflict
       && spellReplacementComplete
       && invocationComplete
-      && invocationReplacementComplete;
+      && invocationReplacementComplete
+      && metamagicComplete;
     selectionRoot.classList.toggle("complete", complete);
     selectionRoot.classList.toggle("invalid", !complete && (conflict || selectedTotal > expectedTotal || !spellReplacementComplete));
 
     const applyButton = selectionRoot.querySelector('[data-action="save-additional"]');
     if (applyButton && applyButton.dataset.busy !== "true") applyButton.disabled = !complete;
+  }
+
+  #refreshMetamagicSelectionState(selectionRoot) {
+    const selectionSection = selectionRoot.querySelector("[data-metamagic-selection-section]");
+    const replacementSection = selectionRoot.querySelector("[data-metamagic-replacement]");
+    if (!selectionSection && !replacementSection) return true;
+
+    const controls = [...(selectionSection?.querySelectorAll("input[type=checkbox][data-metamagic-control]") ?? [])];
+    const selectedControls = controls.filter(control => control.checked);
+    const selectedIdentifiers = new Set(selectedControls.map(control => control.dataset.metamagicIdentifier).filter(Boolean));
+    const remove = replacementSection?.querySelector("[data-metamagic-replace-remove]") ?? null;
+    const add = replacementSection?.querySelector("[data-metamagic-replace-add]") ?? null;
+
+    if (add && !remove?.value && add.value) add.value = "";
+
+    const removeIdentifier = String(remove?.selectedOptions?.[0]?.dataset.identifier ?? "");
+    let addOption = add?.selectedOptions?.[0] ?? null;
+    let addIdentifier = String(addOption?.dataset.identifier ?? "");
+    let conflict = false;
+
+    for (const control of controls) {
+      const baseDisabled = control.dataset.baseDisabled === "true";
+      const selectedAsReplacement = Boolean(addIdentifier && control.dataset.metamagicIdentifier === addIdentifier);
+      const duplicateDisabled = !control.checked && selectedAsReplacement;
+      control.disabled = baseDisabled || duplicateDisabled;
+      const card = control.closest("[data-metamagic-option]");
+      card?.classList.toggle("duplicate-disabled", baseDisabled || duplicateDisabled);
+      if (card) {
+        if (baseDisabled) card.title = "Already known.";
+        else if (duplicateDisabled) card.title = "Already selected as the Metamagic replacement.";
+        else card.removeAttribute("title");
+      }
+      if (control.checked && selectedAsReplacement) conflict = true;
+    }
+
+    if (add) {
+      for (const option of add.options) {
+        if (!option.value) continue;
+        const baseDisabled = option.dataset.baseDisabled === "true";
+        const identifier = String(option.dataset.identifier ?? "");
+        const selfReplacement = Boolean(removeIdentifier && identifier === removeIdentifier);
+        const selectedAsNew = selectedIdentifiers.has(identifier);
+        option.disabled = baseDisabled || selfReplacement || selectedAsNew;
+        const reason = baseDisabled
+          ? "Already known"
+          : selfReplacement
+            ? "Cannot replace itself"
+            : selectedAsNew
+              ? "Selected as a new option"
+              : "";
+        option.textContent = `${option.dataset.baseLabel ?? option.textContent}${reason ? ` — ${reason}` : ""}`;
+      }
+      addOption = add.selectedOptions?.[0] ?? null;
+      if (add.value && addOption?.disabled) {
+        add.value = "";
+        addOption = add.selectedOptions?.[0] ?? null;
+        addIdentifier = "";
+      }
+    }
+
+    addIdentifier = String(add?.selectedOptions?.[0]?.dataset.identifier ?? "");
+    conflict = Boolean(addIdentifier && selectedIdentifiers.has(addIdentifier));
+    const pairComplete = !replacementSection || Boolean(remove?.value) === Boolean(add?.value);
+    replacementSection?.classList.toggle("invalid", !pairComplete || conflict);
+    return pairComplete && !conflict;
   }
 
   async #handleStructuralLevelUpError(error) {

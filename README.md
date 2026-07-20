@@ -23,11 +23,11 @@ SRD 5.1 Legacy is not officially supported. Runtime Character Management remains
 - Transactional mundane Starting Equipment Shop with Checkout, exact purchase manifests, containers, quantity support, and GM Bonus Gold.
 - Review and recoverable application to the original Actor.
 
-## Character Builder 0.9.5b community beta
+## Character Builder 0.9.5c community beta
 
 Level Up uses a separate hidden transaction Draft. Native and module-managed choices are resolved on that Draft, and the live Actor is not changed until **Commit Level Up** succeeds.
 
-The 0.9.5b update is an isolated interface-safety patch. Whenever Character Builder opens a source-native D&D5e Advancement, a protected backdrop blocks the Builder and the rest of the Foundry interface while keeping the native Advancement window in front. Completing or closing the native flow removes the guard and returns control to Character Builder without changing Advancement rules or source data.
+The 0.9.5c update moves Sorcerer Metamagic selection and its once-per-Sorcerer-level optional replacement into the Character Builder `Spells & Features` step. The source ItemChoice Advancement remains structurally authoritative, while Character Builder owns the cards, duplicate prevention, projected final choice state, exact embedded Item IDs, and atomic replacement records. The Native Advancement Modal Guard introduced in 0.9.5b remains unchanged.
 
 ### Availability
 
@@ -63,7 +63,7 @@ The first Roll is locked to the pending Level Up context. Back/Continue navigati
 
 Native D&D5e Advancements remain authoritative for source-defined choices. Deterministic Advancement steps that the D&D5e API can apply automatically are processed on the Draft without forcing repeated `Next`/`OK` dialogs. The Character Builder then presents the resulting grants in a larger **Unlocked This Level** summary.
 
-The native interface remains visible for every real decision, including feats, Ability Score Improvements, subclasses, Fighting Styles, Weapon Masteries, proficiencies, Metamagic, Invocations, spell choices, replacements, targets, optional grants, and ambiguous source data.
+The native interface remains visible for non-managed source decisions, including feats, Ability Score Improvements, subclasses, Fighting Styles, Weapon Masteries, proficiencies, optional grants, and ambiguous source data. Character Builder-owned panels handle Eldritch Invocations, Pact of the Tome, and Sorcerer Metamagic while preserving their native source Advancement records.
 
 ### Spells and managed features
 
@@ -76,6 +76,7 @@ The native interface remains visible for every real decision, including feats, A
 - Circle of the Land previews its complete spell progression and activates the official Nature's Ward effect matching the selected Land.
 - Bard Magical Discoveries remains a dedicated two-spell feature; Magical Secrets expands the normal Bard pool without granting an extra counter.
 - Wizard Spell Mastery and Signature Spells remain owned by the Wizard Class rather than a subclass.
+- Sorcerer Metamagic is selected directly in `Spells & Features`: two options at Sorcerer levels 2, 10, and 17, plus one optional replacement after every Sorcerer level gained from level 3 onward. Known and concurrently selected options are disabled to prevent duplicate acquisitions.
 - Warlock Invocations retain exact instances, acquisition levels, targets, prerequisite dependencies, replacement cleanup, and feature-owned spell separation.
 - Pact of the Tome now opens a Character Builder selection panel for exactly three cantrips and two level-1 Ritual spells, creates a managed Book of Shadows, and records source-specific ownership without counting those spells against normal Pact Magic. The component is maintenance-ready for the future Character Keeper, but rest hooks are not enabled in this release.
 - Patron and other feature-granted Warlock spells remain visible in normal spell lists but are disabled and identified by their owning source. Independent source-native grants such as the Archfey Patron's separate Misty Step acquisitions are preserved.

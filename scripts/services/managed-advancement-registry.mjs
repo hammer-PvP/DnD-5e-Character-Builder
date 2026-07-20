@@ -13,6 +13,18 @@ export class ManagedAdvancementRegistry {
       type: "ItemChoice",
       title: "eldritch invocations",
       handler: "warlock-invocations"
+    },
+    {
+      classIdentifier: "sorcerer",
+      type: "ItemChoice",
+      title: "metamagic",
+      handler: "sorcerer-metamagic"
+    },
+    {
+      classIdentifier: "sorcerer",
+      type: "ItemChoice",
+      title: "metamagic options",
+      handler: "sorcerer-metamagic"
     }
   ]);
 
