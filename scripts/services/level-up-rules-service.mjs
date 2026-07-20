@@ -342,13 +342,19 @@ export class LevelUpRulesService {
       && ((tomeSelectionBefore?.cantrips?.length ?? 0) !== PactOfTheTomeService.CANTRIP_COUNT
         || (tomeSelectionBefore?.rituals?.length ?? 0) !== PactOfTheTomeService.RITUAL_COUNT));
 
+    let invocationReplacementSelection = null;
     if (replaceInvocationUuid) {
-      const replacementSelection = { uuid: replaceInvocationUuid, targetIdentifier: replaceInvocationTarget };
-      this.#validateInvocations(context.invocations, [replacementSelection], {
+      invocationReplacementSelection = { uuid: replaceInvocationUuid, targetIdentifier: replaceInvocationTarget };
+      this.#validateInvocations(context.invocations, [invocationReplacementSelection], {
         replacingItemId: replaceInvocationId
       });
-      this.#validatePendingInvocationTargets(context.invocations, [replacementSelection], selectedCantrips);
+      this.#validatePendingInvocationTargets(context.invocations, [invocationReplacementSelection], selectedCantrips);
     }
+    this.#validateInvocationTargetSurvival(
+      context.invocations,
+      [...invocationSelections, ...(invocationReplacementSelection ? [invocationReplacementSelection] : [])],
+      { removeInvocationId: replaceInvocationId, removeCantripId }
+    );
 
     const selectedByIdentifier = new Map();
     for (const group of [...context.cantripGroups, ...context.spellGroups, ...context.savant.groups]) {
@@ -916,13 +922,20 @@ export class LevelUpRulesService {
     for (const item of draft.items.filter(item => item.type === "spell" && Number(item.system?.level ?? 0) === 0)) {
       const classIdentifier = this.#spellClassIdentifier(item, draft);
       if (classIdentifier !== "warlock" || !this.#spellDealsDamage(item)) continue;
-      candidates.set(item.system.identifier, {
-        identifier: item.system.identifier,
+      const identifier = String(item.system?.identifier ?? "");
+      if (!identifier) continue;
+      const candidate = candidates.get(identifier) ?? {
+        identifier,
         name: item.name,
-        itemId: item.id,
         pending: false,
-        eligible: true
+        eligible: true,
+        acquisitions: []
+      };
+      candidate.acquisitions.push({
+        itemId: item.id,
+        providerItemIds: this.#spellProviderItemIds(item)
       });
+      candidates.set(identifier, candidate);
     }
 
     // Only cantrips that can actually be selected during this same Level Up are
@@ -936,10 +949,35 @@ export class LevelUpRulesService {
         name: option.name,
         uuid: option.uuid,
         pending: true,
-        eligible: selectedPending.has(option.identifier)
+        eligible: selectedPending.has(option.identifier),
+        acquisitions: []
       });
     }
-    return [...candidates.values()].sort((a, b) => a.name.localeCompare(b.name, game.i18n.lang));
+
+    return [...candidates.values()]
+      .map(candidate => ({
+        ...candidate,
+        acquisitionBindingsString: (candidate.acquisitions ?? [])
+          .map(acquisition => `${acquisition.itemId}:${(acquisition.providerItemIds ?? []).join(",")}`)
+          .join("|")
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, game.i18n.lang));
+  }
+
+  static #spellProviderItemIds(item) {
+    const providers = new Set();
+    const add = value => {
+      const id = String(value ?? "").trim();
+      if (id) providers.add(id);
+    };
+    add(item.getFlag(MODULE_ID, "pactOfTheTomeSelection")?.invocationItemId);
+    add(item.getFlag(MODULE_ID, "featureGrantedSpell")?.featureItemId);
+    add(item.getFlag(MODULE_ID, "featureAcquisition")?.featureItemId);
+    for (const owner of item.getFlag(MODULE_ID, "featureSpellOwners") ?? []) {
+      add(owner?.ownerItemId);
+      add(owner?.featureItemId);
+    }
+    return [...providers];
   }
 
   static #spellClassIdentifier(item, draft, seen = new Set()) {
@@ -1226,6 +1264,25 @@ export class LevelUpRulesService {
     }
   }
 
+  static #validateInvocationTargetSurvival(context, selections, {
+    removeInvocationId = "",
+    removeCantripId = ""
+  } = {}) {
+    if (!removeInvocationId && !removeCantripId) return;
+    for (const selection of selections ?? []) {
+      if (!selection.targetIdentifier) continue;
+      const target = context.targetCantrips.find(cantrip => cantrip.identifier === selection.targetIdentifier);
+      if (!target || target.pending) continue;
+      const survives = (target.acquisitions ?? []).some(acquisition => {
+        if (removeCantripId && acquisition.itemId === removeCantripId) return false;
+        return !removeInvocationId || !(acquisition.providerItemIds ?? []).includes(removeInvocationId);
+      });
+      if (!survives) {
+        throw new Error(`${target.name} cannot be targeted because its only eligible acquisition will be removed during this Level Up.`);
+      }
+    }
+  }
+
   static async #createSpells(draft, cls, entries, state) {
     const existing = new Set(draft.items
       .filter(item => item.type === "spell" && this.#isNormalClassSpell(item, cls))
@@ -1346,24 +1403,36 @@ export class LevelUpRulesService {
     // contents, so remove them explicitly before deleting the Invocation.
     await PactOfTheTomeService.cleanup(draft, invocationId);
 
-    // Delete only the root Invocation with deleteContents. D&D5e owns cached
-    // spell and nested Advancement cleanup. Passing those cached IDs in the
-    // same delete request caused the EmbeddedCollection double-removal crash
-    // seen when replacing creation-time Armor of Shadows.
-    if (draft.items.get(invocationId)) {
-      await draft.deleteEmbeddedDocuments("Item", [invocationId], {
-        deleteContents: true,
+    // D&D5e Cast activities delete their cached spells from an un-awaited
+    // onDelete hook. Removing the cached spell first ensures that hook resolves
+    // no document and prevents a second delete request for the same embedded ID.
+    const cachedSpellIds = draft.items.filter(item => {
+      const cachedFor = String(item.getFlag("dnd5e", "cachedFor") ?? "");
+      return cachedFor.includes(`.Item.${invocationId}.`);
+    }).map(item => item.id).filter(id => draft.items.get(id));
+    if (cachedSpellIds.length) {
+      await draft.deleteEmbeddedDocuments("Item", cachedSpellIds, {
+        deleteContents: false,
         characterBuilderInvocationCascade: true
       });
     }
 
-    // Defensive cleanup for non-native or legacy dependents that survived the
-    // root deletion. This pass runs only after D&D5e has finished its own
-    // deleteContents work and never includes an already removed cached Item.
+    // The cached activity contents are already gone, so delete only the root.
+    // `deleteContents` stays false to keep D&D5e from scheduling a competing
+    // content deletion while the ItemChoice replacement is being reconciled.
+    if (draft.items.get(invocationId)) {
+      await draft.deleteEmbeddedDocuments("Item", [invocationId], {
+        deleteContents: false,
+        characterBuilderInvocationCascade: true
+      });
+    }
+
+    // Defensive cleanup is limited to explicit Advancement or Character
+    // Builder ownership. Cached spells are intentionally excluded because they
+    // were handled before the root deletion.
     const leftovers = draft.items.filter(item => {
       const origin = String(item.getFlag("dnd5e", "advancementOrigin") ?? "");
       const root = String(item.getFlag("dnd5e", "advancementRoot") ?? "");
-      const cachedFor = String(item.getFlag("dnd5e", "cachedFor") ?? "");
       const featureOwner = item.getFlag(MODULE_ID, "featureAcquisition")?.featureItemId
         ?? item.getFlag(MODULE_ID, "featureGrantedSpell")?.featureItemId
         ?? item.getFlag(MODULE_ID, "pactOfTheTomeSelection")?.invocationItemId
@@ -1371,9 +1440,8 @@ export class LevelUpRulesService {
         ?? null;
       return origin.startsWith(`${invocationId}.`)
         || root.startsWith(`${invocationId}.`)
-        || cachedFor.includes(`.Item.${invocationId}.`)
         || featureOwner === invocationId;
-    }).map(item => item.id);
+    }).map(item => item.id).filter(id => draft.items.get(id));
     if (leftovers.length) {
       await draft.deleteEmbeddedDocuments("Item", leftovers, {
         deleteContents: false,

@@ -50,8 +50,8 @@ export class DraftManager {
     await actor.unsetFlag(MODULE_ID, "draftActorId");
   }
 
-  static async commit(actor, draft) {
-    return ActorCommitService.commit(actor, draft);
+  static async commit(actor, draft, options = {}) {
+    return ActorCommitService.commit(actor, draft, options);
   }
 
   static getBuildState(draft) {

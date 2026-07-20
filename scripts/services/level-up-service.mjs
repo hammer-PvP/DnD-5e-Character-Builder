@@ -93,7 +93,7 @@ export class LevelUpService {
     return result;
   }
 
-  static async grant(actor) {
+  static async grant(actor, metadata = {}) {
     if (!game.user.isGM) throw new Error("Only the GM can grant a Milestone Level Up.");
     const level = this.actorLevel(actor);
     if (level >= 20) throw new Error("This character is already level 20.");
@@ -102,7 +102,9 @@ export class LevelUpService {
       grantedAt: Date.now(),
       grantedBy: game.user.id,
       sourceCharacterLevel: level,
-      targetCharacterLevel: level + 1
+      targetCharacterLevel: level + 1,
+      ...(metadata.batchId ? { batchId: metadata.batchId } : {}),
+      ...(metadata.idempotencyToken ? { idempotencyToken: metadata.idempotencyToken } : {})
     });
     return actor.getFlag(MODULE_ID, "levelUpGrant");
   }

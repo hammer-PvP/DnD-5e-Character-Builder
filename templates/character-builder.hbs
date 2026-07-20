@@ -1,4 +1,55 @@
-<div class="cb-shell">
+<div class="cb-shell {{#if commitDialog.open}}cb-commit-modal-open{{/if}}">
+  {{#if commitDialog.open}}
+  <div class="cb-commit-transaction-backdrop" aria-hidden="false">
+    <section class="cb-commit-transaction-dialog {{commitDialog.mode}}" role="dialog" aria-modal="true" aria-labelledby="cb-creation-commit-title" tabindex="-1">
+      <header>
+        <span class="cb-kicker">Protected Transaction</span>
+        <h2 id="cb-creation-commit-title">{{commitDialog.title}}</h2>
+      </header>
+
+      {{#if (eq commitDialog.mode "confirmation")}}
+      <div class="cb-commit-confirmation-copy">
+        <i class="fa-solid fa-arrow-up-right-dots cb-commit-confirm-icon" aria-hidden="true"></i>
+        <p>Create <strong>{{commitDialog.actorName}}</strong> from the completed Character Builder Draft?</p>
+        <p>The original Actor changes only after confirmation. Once the protected commit starts, it cannot be cancelled, restarted, or replaced by another click.</p>
+      </div>
+      <footer>
+        <button type="button" data-action="cancel-creation-commit"><i class="fa-solid fa-xmark"></i> Back to Review</button>
+        <button type="button" class="cb-primary-confirm" data-action="confirm-creation-commit"><i class="fa-solid fa-check"></i> Create Character</button>
+      </footer>
+      {{else}}
+      <div class="cb-commit-progress-copy">
+        {{#if (eq commitDialog.mode "success")}}
+        <i class="fa-solid fa-circle-check cb-commit-state-icon success" aria-hidden="true"></i>
+        {{else if (eq commitDialog.mode "error")}}
+        <i class="fa-solid fa-rotate-left cb-commit-state-icon error" aria-hidden="true"></i>
+        {{else if (eq commitDialog.mode "critical")}}
+        <i class="fa-solid fa-triangle-exclamation cb-commit-state-icon critical" aria-hidden="true"></i>
+        {{else}}
+        <i class="fa-solid fa-gears cb-commit-state-icon working" aria-hidden="true"></i>
+        {{/if}}
+        <strong data-commit-progress-stage>{{commitDialog.stage}}</strong>
+        <p data-commit-progress-detail>{{commitDialog.detail}}</p>
+        {{#if commitDialog.error}}<p class="cb-commit-error-detail">{{commitDialog.error}}</p>{{/if}}
+        <div class="cb-commit-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{commitDialog.percent}}">
+          <span data-commit-progress-fill style="width: {{commitDialog.percent}}%"></span>
+        </div>
+        <small data-commit-progress-value>{{commitDialog.percent}}%</small>
+      </div>
+      {{#if (eq commitDialog.mode "error")}}
+      <footer>
+        <button type="button" class="cb-primary-confirm" data-action="return-to-review-after-failed-creation"><i class="fa-solid fa-rotate-left"></i> Return to Review</button>
+      </footer>
+      {{/if}}
+      {{#if (eq commitDialog.mode "critical")}}
+      <footer>
+        <button type="button" class="cb-danger-button" data-action="close-critical-creation-commit"><i class="fa-solid fa-lock"></i> Close Character Builder</button>
+      </footer>
+      {{/if}}
+      {{/if}}
+    </section>
+  </div>
+  {{/if}}
   <aside class="cb-sidebar">
     <header>
       <h1>Character Builder</h1>

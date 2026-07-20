@@ -1,10 +1,12 @@
 import { MODULE_BUILD, MODULE_ID, MODULE_VERSION, defaultSettings } from "./constants.mjs";
 import { CharacterBuilderSettingsApp } from "./apps/settings-app.mjs";
 import { CharacterBuilderApp } from "./apps/character-builder-app.mjs";
+import { CharacterBuilderToolApp } from "./apps/character-builder-tool-app.mjs";
 import { LevelUpApp } from "./apps/level-up-app.mjs";
 import { LevelUpService } from "./services/level-up-service.mjs";
 import { LevelUpDraftManager } from "./services/level-up-draft-manager.mjs";
 import { AdvancementChoiceAnnotationService } from "./services/advancement-choice-annotation-service.mjs";
+import { ActorCommitService } from "./services/actor-commit-service.mjs";
 
 Hooks.once("init", async () => {
   if (!Handlebars.helpers.eq) Handlebars.registerHelper("eq", (a, b) => a === b);
@@ -21,6 +23,13 @@ Hooks.once("init", async () => {
     config: false,
     type: Object,
     default: defaultSettings()
+  });
+
+  game.settings.register(MODULE_ID, "progressionBatchLedger", {
+    scope: "world",
+    config: false,
+    type: Object,
+    default: { entries: [] }
   });
 
   const localizedSettingText = (key, fallback) => {
@@ -59,7 +68,8 @@ Hooks.once("init", async () => {
   game.characterBuilder = {
     open: actor => openForActor(actor),
     eligible: actor => isCreationEligible(actor),
-    levelUpEligible: actor => LevelUpService.eligibility(actor)
+    levelUpEligible: actor => LevelUpService.eligibility(actor),
+    openTool: () => game.user.isGM ? new CharacterBuilderToolApp().render({ force: true }) : null
   };
 });
 
@@ -72,6 +82,7 @@ Hooks.once("ready", async () => {
   if (game.system.version !== "5.3.3" && game.user.isGM) {
     ui.notifications.warn(`Character Builder ${MODULE_VERSION} was validated against D&D5e 5.3.3. Detected ${game.system.version}.`);
   }
+  await ActorCommitService.recoverOwnedInterruptedTransactions();
   const settings = LevelUpService.settings();
   if (game.user.isGM && settings.sources?.some(source => source.id === "srd51" && source.enabled)) {
     ui.notifications.warn("SRD 5.1 Legacy is enabled, but this beta officially supports only D&D 2024 and SRD 5.2 Modern.");
@@ -99,9 +110,11 @@ Hooks.on("createActor", async (actor, _options, userId) => {
 });
 
 Hooks.on("renderApplicationV2", (app, element) => {
-  if (!isCharacterActorSheet(app)) return;
-  renderCharacterActorSheetControls(app, element);
+  if (isActorDirectoryApp(app)) injectActorDirectoryTool(app, element);
+  if (isCharacterActorSheet(app)) renderCharacterActorSheetControls(app, element);
 });
+
+Hooks.on("renderActorDirectory", (app, html) => injectActorDirectoryTool(app, html));
 
 // Retain a small compatibility fallback for any legacy Actor sheet selected by the world.
 Hooks.on("renderActorSheet", (app, html) => {
@@ -231,54 +244,74 @@ function findSheetHeader(root) {
   return root.querySelector?.(".sheet-header") ?? null;
 }
 
-function injectCreationButton(actor, root) {
+function sheetProgressionContainer(root) {
   const header = findSheetHeader(root);
-  if (!header || header.querySelector(".cb-start-sheet-button")) return;
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "cb-start-sheet-button gold-button";
+  if (!header) return null;
+  const existing = header.querySelector(".sheet-header-buttons");
+  if (existing) return existing;
+  const rightColumn = header.querySelector(":scope > .right > div:last-child") ?? header.querySelector(".right");
+  if (!rightColumn) return null;
+  const container = document.createElement("div");
+  container.className = "sheet-header-buttons cb-sheet-header-buttons-fallback";
+  rightColumn.prepend(container);
+  return container;
+}
+
+function injectCreationButton(actor, root) {
+  const container = sheetProgressionContainer(root);
+  if (!container) return;
+  container.querySelector(".cb-level-up-sheet-button")?.remove();
+  let button = container.querySelector(".cb-start-sheet-button");
+  if (!button) {
+    button = document.createElement("button");
+    button.type = "button";
+    button.className = "cb-start-sheet-button gold-button cb-proc-button";
+    button.innerHTML = '<i class="fa-solid fa-arrow-up-right-dots" inert></i>';
+    button.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      openBuilder(actor);
+    });
+    container.append(button);
+  }
   button.dataset.tooltip = actor.getFlag(MODULE_ID, "draftActorId") ? "Resume Character Builder" : "Start Character Builder";
   button.setAttribute("aria-label", button.dataset.tooltip);
-  button.innerHTML = '<i class="fa-solid fa-person-rays" inert></i>';
-  button.addEventListener("click", event => {
-    event.preventDefault();
-    event.stopPropagation();
-    openBuilder(actor);
-  });
-  insertHeaderButton(header, button);
 }
 
 function injectLevelUpButton(actor, root) {
-  const header = findSheetHeader(root);
-  if (!header) return;
+  const container = sheetProgressionContainer(root);
+  if (!container) return;
+  container.querySelector(".cb-start-sheet-button")?.remove();
 
   const eligibility = LevelUpService.eligibility(actor);
-  const existing = header.querySelector(".cb-level-up-sheet-button");
-  if (!eligibility.ready) {
-    existing?.remove();
-    return;
+  let button = container.querySelector(".cb-level-up-sheet-button");
+  if (!button) {
+    button = document.createElement("button");
+    button.type = "button";
+    button.className = "cb-level-up-sheet-button gold-button";
+    button.innerHTML = '<i class="fa-solid fa-arrow-up" inert></i>';
+    button.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const current = LevelUpService.eligibility(actor);
+      if (!current.ready) return;
+      openLevelUp(actor);
+    });
+    container.append(button);
   }
-  if (existing) return;
 
-  const right = header.querySelector(":scope > .right") ?? header.querySelector(".right");
-  if (!right) return;
-
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "cb-level-up-sheet-button gold-button";
+  const available = Boolean(eligibility.ready);
+  button.disabled = !available;
+  button.setAttribute("aria-disabled", available ? "false" : "true");
+  button.classList.toggle("available", available && !eligibility.hasDraft);
+  button.classList.toggle("has-draft", available && eligibility.hasDraft);
+  button.classList.toggle("unavailable", !available);
   button.dataset.tooltip = eligibility.hasDraft
     ? "Resume Level Up"
-    : `Level Up to Character Level ${eligibility.targetLevel}`;
+    : available
+      ? `Start Level Up to Character Level ${eligibility.targetLevel}`
+      : `Level Up is not currently available. ${eligibility.reason}`;
   button.setAttribute("aria-label", button.dataset.tooltip);
-  button.innerHTML = '<i class="fa-solid fa-arrow-up-right-dots" inert></i>';
-  button.addEventListener("click", event => {
-    event.preventDefault();
-    event.stopPropagation();
-    const current = LevelUpService.eligibility(actor);
-    if (!current.ready) return ui.notifications.warn(current.reason);
-    openLevelUp(actor);
-  });
-  right.append(button);
 }
 
 function injectCantripAugmentAnnotations(actor, root) {
@@ -340,15 +373,39 @@ function injectAdvancementChoiceAnnotations(actor, root) {
   }
 }
 
-function insertHeaderButton(header, button) {
-  const levelBadge = header.querySelector(".level-badge");
-  if (levelBadge) levelBadge.insertAdjacentElement("afterend", button);
-  else header.append(button);
+function isActorDirectoryApp(app) {
+  const name = String(app?.constructor?.name ?? "");
+  const classes = app?.options?.classes ?? [];
+  return name.includes("ActorDirectory")
+    || name.includes("ActorsDirectory")
+    || (app?.collection === game.actors)
+    || (classes.includes("directory") && classes.includes("actors"));
+}
+
+function injectActorDirectoryTool(_app, element) {
+  if (!game.user.isGM) return;
+  const root = element instanceof HTMLElement ? element : element?.[0] ?? _app?.element;
+  if (!root || root.querySelector(".cb-actor-directory-tool")) return;
+  const header = root.querySelector(".directory-header") ?? root.querySelector("header");
+  if (!header) return;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "cb-actor-directory-tool";
+  button.innerHTML = '<i class="fa-solid fa-arrow-up-right-dots" inert></i><span>Character Builder Tool</span>';
+  button.dataset.tooltip = "Open the GM Character Builder progression tool";
+  button.addEventListener("click", event => {
+    event.preventDefault();
+    event.stopPropagation();
+    new CharacterBuilderToolApp().render({ force: true });
+  });
+  const actions = header.querySelector(".header-actions, .action-buttons") ?? header;
+  actions.append(button);
 }
 
 function isCreationEligible(actor) {
   if (!actor || actor.type !== "character" || !actor.isOwner) return false;
   if (actor.getFlag(MODULE_ID, "isDraft") || actor.getFlag(MODULE_ID, "isLevelUpDraft")) return false;
+  if (actor.getFlag(MODULE_ID, "commitSafetyLock") || actor.getFlag(MODULE_ID, "creationTransaction")) return false;
   return !actor.items.some(item => item.type === "class") || Boolean(actor.getFlag(MODULE_ID, "draftActorId"));
 }
 
@@ -362,6 +419,7 @@ function openForActor(actor) {
 function openBuilder(actor) {
   if (!actor || actor.type !== "character") return ui.notifications.error("Character Builder can only be used with Player Character Actors.");
   if (!actor.isOwner) return ui.notifications.error("You do not own this Actor.");
+  if (actor.getFlag(MODULE_ID, "commitSafetyLock")) return ui.notifications.error("Character Builder is locked for this Actor because a protected transaction could not be restored. Ask the GM to inspect the preserved backup.", { permanent: true });
   if (!isCreationEligible(actor)) return ui.notifications.warn("This Actor has already completed level 1 character creation.");
   new CharacterBuilderApp(actor).render({ force: true });
 }
@@ -384,7 +442,7 @@ async function promptCreationMode(actor) {
       content,
       buttons: {
         builder: {
-          icon: '<i class="fa-solid fa-person-rays"></i>',
+          icon: '<i class="fa-solid fa-arrow-up-right-dots"></i>',
           label: "Use Character Builder",
           callback: () => openBuilder(actor)
         },
@@ -403,7 +461,7 @@ async function promptCreationMode(actor) {
     window: { title: "Create Player Character" },
     content,
     buttons: [
-      { action: "builder", label: "Use Character Builder", icon: "fa-solid fa-person-rays" },
+      { action: "builder", label: "Use Character Builder", icon: "fa-solid fa-arrow-up-right-dots" },
       { action: "defaults", label: "Use Foundry Defaults", icon: "fa-solid fa-file-pen" }
     ],
     default: "builder"

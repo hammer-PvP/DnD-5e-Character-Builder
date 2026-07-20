@@ -1,0 +1,59 @@
+<div class="cb-tool-shell" data-mode="{{mode}}">
+  <header class="cb-tool-header">
+    <i class="fa-solid fa-arrow-up-right-dots" aria-hidden="true"></i>
+    <div>
+      <span class="cb-kicker">GM Progression</span>
+      <h1>Character Builder Tool</h1>
+      {{#if milestone}}<p>Grant one Milestone Level Up to each selected character.</p>{{else}}<p>Divide a total XP award equally among the selected characters.</p>{{/if}}
+    </div>
+  </header>
+
+  {{#if xpMode}}
+  <section class="cb-tool-xp-panel">
+    <label>
+      <span>Total XP</span>
+      <input type="number" name="totalXp" value="0" min="1" step="1" inputmode="numeric">
+    </label>
+    <div><span>Selected Characters</span><strong data-selected-count>0</strong></div>
+    <div><span>XP per Character</span><strong data-xp-per-actor>0</strong></div>
+    <div><span>Total Distributed</span><strong data-total-distributed>0</strong></div>
+    <div><span>Unassigned Remainder</span><strong data-remainder>0</strong></div>
+  </section>
+  {{else}}
+  <section class="cb-tool-selection-summary"><span>Selected Characters</span><strong data-selected-count>0</strong></section>
+  {{/if}}
+
+  <div class="cb-tool-list-controls">
+    <input type="search" placeholder="Search characters" data-character-search>
+    <div>
+      <button type="button" data-action="select-all">Select All</button>
+      <button type="button" data-action="clear-selection">Clear</button>
+      <button type="button" data-action="current-scene">Current Scene</button>
+    </div>
+  </div>
+
+  <section class="cb-tool-actor-list">
+    {{#each actors}}
+    <label class="cb-tool-actor-row {{#if disabled}}disabled{{/if}}" data-actor-row data-actor-id="{{id}}" data-current-xp="{{xp}}" data-search="{{search}}" title="{{disabledReason}}">
+      <input type="checkbox" name="actorIds" value="{{id}}" {{#if disabled}}disabled{{/if}}>
+      <img src="{{img}}" alt="">
+      <span class="cb-tool-actor-copy"><strong>{{name}}</strong><small>Level {{level}}{{#if granted}} · Level Up Granted{{/if}}{{#if hasDraft}} · Pending Level Up{{/if}}</small></span>
+      {{#if ../xpMode}}
+      <span class="cb-tool-xp-values"><small>Current {{xp}}</small><strong data-actor-award>+0</strong><small>Result <span data-actor-result>{{xp}}</span></small></span>
+      {{else}}
+      <span class="cb-tool-status">{{#if disabled}}{{disabledReason}}{{else}}Ready{{/if}}</span>
+      {{/if}}
+    </label>
+    {{else}}
+    <p class="cb-empty-tool-list">No Player Character Actors were found.</p>
+    {{/each}}
+  </section>
+
+  <footer class="cb-tool-footer">
+    <button type="button" data-action="close"><i class="fa-solid fa-xmark"></i> Cancel</button>
+    <button type="button" class="cb-primary-confirm" data-action="apply" disabled>
+      <i class="fa-solid {{#if milestone}}fa-arrow-up{{else}}fa-star{{/if}}"></i>
+      <span><strong>{{#if milestone}}Grant Level Ups{{else}}Distribute XP{{/if}}</strong><small>{{#if milestone}}Selected characters only{{else}}Equal integer award{{/if}}</small></span>
+    </button>
+  </footer>
+</div>

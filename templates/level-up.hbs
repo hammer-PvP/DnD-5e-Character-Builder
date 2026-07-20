@@ -81,7 +81,7 @@
     </button>
   </aside>
 
-  <main class="cb-level-up-main">
+  <main class="cb-level-up-main {{#if (eq state.step 'choices')}}cb-level-up-main-choices{{/if}}">
     {{#if (eq state.step "class")}}
     <section class="cb-level-up-panel">
       <header class="cb-section-heading">
@@ -229,6 +229,7 @@
         </button>
       </header>
 
+      <div class="cb-level-up-choices-scroll">
       <p class="cb-notice"><i class="fa-solid fa-bolt"></i> {{rules.cantripScaling.note}} Current scaling multiplier: ×{{rules.cantripScaling.threshold}}.</p>
 
       {{#if rules.automaticItemGrantCount}}
@@ -627,6 +628,7 @@
                 <option value="{{identifier}}"
                   data-cantrip-identifier="{{identifier}}"
                   data-pending="{{pending}}"
+                  data-acquisition-bindings="{{acquisitionBindingsString}}"
                   data-base-label="{{name}}"
                   {{#unless eligible}}disabled{{/unless}}
                   {{#if (eq ../../selectedTarget identifier)}}selected{{/if}}>{{name}}{{#if pending}}{{#unless eligible}} — choose this cantrip above first{{else}} — selected during this Level Up{{/unless}}{{/if}}</option>
@@ -686,6 +688,7 @@
               <option value="{{identifier}}"
                 data-cantrip-identifier="{{identifier}}"
                 data-pending="{{pending}}"
+                data-acquisition-bindings="{{acquisitionBindingsString}}"
                 data-base-label="{{name}}"
                 {{#unless eligible}}disabled{{/unless}}
                 {{#if (eq ../rules.invocations.replacement.selectedTarget identifier)}}selected{{/if}}>{{name}}{{#if pending}}{{#unless eligible}} — choose this cantrip above first{{else}} — selected during this Level Up{{/unless}}{{/if}}</option>
@@ -705,6 +708,7 @@
         <p class="cb-success-notice"><i class="fa-solid fa-check"></i> No additional module-managed choices are required at this level.</p>
         {{/unless}}
       {{/unless}}
+      </div>
 
     </section>
     {{/if}}

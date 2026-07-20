@@ -23,15 +23,18 @@ SRD 5.1 Legacy is not officially supported. Runtime Character Management remains
 - Transactional mundane Starting Equipment Shop with Checkout, exact purchase manifests, containers, quantity support, and GM Bonus Gold.
 - Review and recoverable application to the original Actor.
 
-## Level Up 0.9.4c community beta
+## Character Builder 0.9.5 community beta
 
 Level Up uses a separate hidden transaction Draft. Native and module-managed choices are resolved on that Draft, and the live Actor is not changed until **Commit Level Up** succeeds.
+
+The 0.9.5 update adds a protected Character Creation commit with persistent recovery, a GM-only Character Builder Tool for Milestone grants or equal XP distribution, a fixed Spells & Features confirmation header, and a new sheet interaction slot with clear available/unavailable Level Up states. Individual GM Grant, Revoke, and Reset Pending Level Up controls remain available on each character sheet.
 
 ### Availability
 
 - **Experience Points:** Level Up becomes available when the Actor reaches the next total character-level XP threshold.
-- **Milestone:** the GM grants or revokes Level Up on each individual Actor sheet.
-- **GM controls:** `Reset Pending Level Up` performs a complete administrative reset, including the locked Hit Die.
+- **Milestone:** the GM grants or revokes Level Up on each individual Actor sheet, or grants one Level Up to multiple selected characters through the GM-only Actor Directory tool.
+- **Experience distribution:** in XP Mode, the GM-only Actor Directory tool divides a total XP award equally, truncates fractional XP, and leaves the displayed remainder unassigned.
+- **GM controls:** individual `Grant Level Up`, `Revoke Level Up`, and `Reset Pending Level Up` remain available on each Actor sheet; Reset performs a complete administrative reset, including the locked Hit Die.
 
 ### Character and Class levels
 

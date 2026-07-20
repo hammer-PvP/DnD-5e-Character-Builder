@@ -825,22 +825,54 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
         .map(input => input.dataset.spellIdentifier)
         .filter(Boolean)
     );
+    const removeInvocationId = String(root.querySelector('[name="levelUp.replaceInvocation.remove"]')?.value ?? "");
+    const removeCantripId = String(root.querySelector('[name="levelUp.replaceCantrip.remove"]')?.value ?? "");
 
     for (const select of root.querySelectorAll("[data-invocation-target-select]")) {
       const current = select.value;
       for (const option of [...select.options].slice(1)) {
         const pending = option.dataset.pending === "true";
         const identifier = option.dataset.cantripIdentifier ?? option.value;
-        const eligible = !pending || checkedPendingCantrips.has(identifier);
+        const survives = pending || this.#invocationTargetOptionSurvives(option, {
+          removeInvocationId,
+          removeCantripId
+        });
+        const eligible = survives && (!pending || checkedPendingCantrips.has(identifier));
         const baseLabel = option.dataset.baseLabel ?? option.textContent;
+        option.hidden = !survives;
+        option.style.display = survives ? "" : "none";
         option.disabled = !eligible;
         option.textContent = pending
           ? `${baseLabel} — ${eligible ? "selected during this Level Up" : "choose this cantrip above first"}`
           : baseLabel;
       }
       const selected = [...select.options].find(option => option.value === current);
-      if (current && selected?.disabled) select.value = "";
+      if (current && (selected?.disabled || selected?.hidden)) select.value = "";
     }
+  }
+
+  #invocationTargetOptionSurvives(option, {
+    removeInvocationId = "",
+    removeCantripId = ""
+  } = {}) {
+    if (!removeInvocationId && !removeCantripId) return true;
+    const bindings = String(option.dataset.acquisitionBindings ?? "")
+      .split("|")
+      .filter(Boolean)
+      .map(binding => {
+        const [itemId = "", providerIds = ""] = binding.split(":", 2);
+        return {
+          itemId,
+          providerItemIds: new Set(providerIds.split(",").filter(Boolean))
+        };
+      });
+    // Legacy or source-native acquisitions without explicit ownership remain
+    // visible. The server performs the same conservative validation again.
+    if (!bindings.length) return true;
+    return bindings.some(binding => {
+      if (removeCantripId && binding.itemId === removeCantripId) return false;
+      return !removeInvocationId || !binding.providerItemIds.has(removeInvocationId);
+    });
   }
 
   #refreshPactOfTheTomeVisibility() {

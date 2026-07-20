@@ -32,6 +32,10 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     this.primaryListScroll = { species: 0, class: 0 };
     this.renderedStep = null;
     this.pendingStepScroll = null;
+    this.busy = false;
+    this.commitDialog = null;
+    this.commitInProgress = false;
+    this.commitTransactionToken = null;
   }
 
   static DEFAULT_OPTIONS = {
@@ -279,6 +283,9 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       shoppingCart,
       review: this.#reviewContext(),
       canFinalize: steps.find(entry => entry.id === "review")?.complete,
+      busy: this.busy,
+      commitDialog: this.commitDialog,
+      commitInProgress: this.commitInProgress,
       sourceOrder: SourceRegistry.orderedSources().map(source => source.label)
     };
   }
@@ -444,6 +451,19 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         break;
       case "finalize":
         await this.#finalize();
+        break;
+      case "confirm-creation-commit":
+        await this.#executeCreationCommit();
+        break;
+      case "cancel-creation-commit":
+      case "return-to-review-after-failed-creation":
+        if (!this.commitInProgress) {
+          this.commitDialog = null;
+          this.render({ force: true });
+        }
+        break;
+      case "close-critical-creation-commit":
+        if (!this.commitInProgress) await super.close();
         break;
       case "discard":
         await this.#discard();
@@ -812,6 +832,10 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   }
 
   async #finalize() {
+    if (this.commitInProgress) {
+      this.#focusCommitDialog();
+      return;
+    }
     const error = ["abilitiesBackground", "species", "class", "spells", "equipment"]
       .map(step => this.#stepValidation(step)).find(Boolean);
     if (error) return ui.notifications.error(error);
@@ -828,23 +852,132 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     const issues = ValidationService.validateDraft(this.draft);
     if (issues.length) return ui.notifications.error(issues.join(" "));
 
+    this.commitDialog = {
+      open: true,
+      mode: "confirmation",
+      title: "Create Character",
+      actorName: characterName,
+      percent: 0,
+      stage: "Ready to Create",
+      detail: "The original Actor has not been changed yet."
+    };
+    this.render({ force: true });
+  }
+
+  async #executeCreationCommit() {
+    if (this.commitInProgress) {
+      this.#focusCommitDialog();
+      return;
+    }
+    this.commitInProgress = true;
+    this.busy = true;
+    this.commitTransactionToken = foundry.utils.randomID?.(32) ?? crypto.randomUUID();
+    this.commitDialog = {
+      ...(this.commitDialog ?? {}),
+      open: true,
+      mode: "progress",
+      title: "Creating Character",
+      percent: 1,
+      stage: "Starting",
+      detail: "Preparing the protected Character Creation transaction."
+    };
+    this.render({ force: true });
+
     try {
       await SourceResolver.enforceAllowedSources(this.draft, this.registry);
       await ItemGrantIntegrityService.reconcile(this.draft, this.registry, { context: "creation" });
       await AdvancementChoiceAnnotationService.refreshCreation(this.draft);
       await AdvancementService.dedupe(this.draft);
       ItemGrantIntegrityService.validate(this.draft, { context: "creation" });
-      await DraftManager.commit(this.actor, this.draft);
+
+      const result = await DraftManager.commit(this.actor, this.draft, {
+        transactionToken: this.commitTransactionToken,
+        onProgress: payload => this.#updateCommitProgress(payload)
+      });
+      this.commitDialog = {
+        ...this.commitDialog,
+        mode: "success",
+        title: "Character Created",
+        percent: 100,
+        stage: "Complete",
+        detail: `${this.actor.name} was completed successfully.`
+      };
+      this.render({ force: true });
       ui.notifications.info(`${this.actor.name} was completed with Character Builder.`);
-      this.close();
-      this.actor.sheet.render(true);
+      await new Promise(resolve => setTimeout(resolve, 700));
+      this.draft = null;
+      this.commitInProgress = false;
+      this.busy = false;
+      this.commitTransactionToken = null;
+      this.commitDialog = null;
+      await super.close();
+      this.actor.sheet?.render?.(true);
+      return result;
     } catch (commitError) {
-      console.error(`${MODULE_ID} | Character finalization failed.`, commitError);
-      ui.notifications.error(`Character Builder could not apply the Draft: ${commitError.message}`);
+      console.error(`${MODULE_ID} | Protected Character Creation commit failed.`, commitError);
+      this.commitInProgress = false;
+      this.busy = false;
+      this.commitTransactionToken = null;
+      const critical = Boolean(commitError?.criticalRollback);
+      this.commitDialog = {
+        ...(this.commitDialog ?? {}),
+        open: true,
+        mode: critical ? "critical" : "error",
+        title: critical ? "Critical Rollback Failure" : "Character Not Created",
+        percent: 100,
+        stage: critical ? "GM Intervention Required" : (commitError?.actorRestored ? "Actor Restored" : "Draft Not Applied"),
+        detail: critical
+          ? "The Actor could not be verified after rollback. Character Builder changes are locked for this Actor until a GM restores or inspects it."
+          : commitError?.actorRestored
+            ? "The Character Creation transaction failed. The original Actor was restored and the Draft was preserved."
+            : "The Character Creation transaction was blocked before changing the live Actor. Review the Draft and try again.",
+        error: commitError.message
+      };
+      this.render({ force: true });
+      ui.notifications.error(commitError.message, { permanent: true });
     }
   }
 
+  #updateCommitProgress(payload) {
+    if (!this.commitDialog) return;
+    this.commitDialog = {
+      ...this.commitDialog,
+      percent: Math.max(0, Math.min(100, Number(payload.percent ?? this.commitDialog.percent ?? 0))),
+      stage: payload.stage ?? this.commitDialog.stage,
+      detail: payload.detail ?? this.commitDialog.detail
+    };
+    const root = this.element;
+    const fill = root?.querySelector?.("[data-commit-progress-fill]");
+    const value = root?.querySelector?.("[data-commit-progress-value]");
+    const stage = root?.querySelector?.("[data-commit-progress-stage]");
+    const detail = root?.querySelector?.("[data-commit-progress-detail]");
+    if (fill) fill.style.width = `${this.commitDialog.percent}%`;
+    if (value) value.textContent = `${Math.round(this.commitDialog.percent)}%`;
+    if (stage) stage.textContent = this.commitDialog.stage;
+    if (detail) detail.textContent = this.commitDialog.detail;
+  }
+
+  #focusCommitDialog() {
+    const dialog = this.element?.querySelector?.(".cb-commit-transaction-dialog");
+    dialog?.focus?.();
+    dialog?.animate?.([
+      { transform: "scale(1)" },
+      { transform: "scale(1.015)" },
+      { transform: "scale(1)" }
+    ], { duration: 180 });
+  }
+
+  async close(options = {}) {
+    if (this.commitInProgress) {
+      this.#focusCommitDialog();
+      ui.notifications.warn("The Character Creation commit is in progress and cannot be closed.");
+      return this;
+    }
+    return super.close(options);
+  }
+
   async #discard() {
+    if (this.commitInProgress) return this.#focusCommitDialog();
     const confirmed = await Dialog.confirm({
       title: "Discard Character Builder Draft",
       content: "<p>Delete the current Character Builder draft? The original Actor will remain unchanged.</p>"
