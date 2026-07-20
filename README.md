@@ -23,11 +23,11 @@ SRD 5.1 Legacy is not officially supported. Runtime Character Management remains
 - Transactional mundane Starting Equipment Shop with Checkout, exact purchase manifests, containers, quantity support, and GM Bonus Gold.
 - Review and recoverable application to the original Actor.
 
-## Character Builder 0.9.5e community beta
+## Character Builder 0.9.5g community beta
 
 Level Up uses a separate hidden transaction Draft. Native and module-managed choices are resolved on that Draft, and the live Actor is not changed until **Commit Level Up** succeeds.
 
-The 0.9.5e interface patch adds source-native detail cards below Optional Metamagic Replacement. The Metamagic being removed and the replacement option now show their official image, source, and enriched description, updating immediately as either dropdown changes. The approved 0.9.51 Warlock target-rebind hotfix, Sorcerer Metamagic rules, and all other progression behavior remain unchanged.
+The 0.9.5g integrity patch makes `lastLevelUp` an exact deep-cloned copy of the newest `levelUpHistory` transaction. The previous summary is removed before the new one is written, preventing nested fields from older Level Ups from surviving through Foundry flag merging. This changes no Actor Items, features, spells, Hit Points, Advancements, or progression rules. The 0.9.5f native feat guard, approved 0.9.5e Metamagic detail cards, 0.9.51 Warlock target-rebind hotfix, and all other behavior remain unchanged.
 
 ### Availability
 
@@ -64,6 +64,8 @@ The first Roll is locked to the pending Level Up context. Back/Continue navigati
 Native D&D5e Advancements remain authoritative for source-defined choices. Deterministic Advancement steps that the D&D5e API can apply automatically are processed on the Draft without forcing repeated `Next`/`OK` dialogs. The Character Builder then presents the resulting grants in a larger **Unlocked This Level** summary.
 
 The native interface remains visible for non-managed source decisions, including feats, Ability Score Improvements, subclasses, Fighting Styles, Weapon Masteries, proficiencies, optional grants, and ambiguous source data. Character Builder-owned panels handle Eldritch Invocations, Pact of the Tome, and Sorcerer Metamagic while preserving their native source Advancement records.
+
+For native ASI feat choices, Character Builder only applies deterministic exclusions: exact non-repeatable feats already owned and Epic Boons below projected total character level 19. It does not create feat opportunities, reconstruct the catalog, or infer complex prerequisites from display text.
 
 ### Spells and managed features
 

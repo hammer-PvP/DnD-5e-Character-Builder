@@ -172,8 +172,13 @@ export class LevelUpCommitService {
           identifier: item.system?.identifier ?? null
         }))
       }].slice(-50);
+      const exactLastLevelUp = foundry.utils.deepClone(history.at(-1));
       await actor.setFlag(MODULE_ID, "levelUpHistory", history);
-      await actor.setFlag(MODULE_ID, "lastLevelUp", history.at(-1));
+      // Foundry flag updates merge nested objects. Remove the previous summary
+      // before writing the new transaction so fields from an older Level Up
+      // cannot survive in lastLevelUp.
+      await actor.unsetFlag(MODULE_ID, "lastLevelUp");
+      await actor.setFlag(MODULE_ID, "lastLevelUp", exactLastLevelUp);
 
       stage = "Finalizing";
       await progress(94, stage, "Clearing the pending draft and finalizing the Level Up.");

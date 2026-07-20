@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.9.5g Community Beta — Exact `lastLevelUp` History Summary
+
+### Exact Transaction Copy
+
+- Deep-clones the newest `levelUpHistory` transaction for `lastLevelUp`.
+- Removes the previous `lastLevelUp` flag before writing the new summary so Foundry cannot merge residual nested fields from an older transaction.
+- Guarantees that new successful commits produce `lastLevelUp` with the same complete structure and values as `levelUpHistory.at(-1)`.
+- Does not migrate or rewrite historical Actors retroactively.
+
+### Scope Preservation
+
+- No Actor Items, features, spells, Hit Points, Advancement values, ownership metadata, Level Up choices, feat protection, rollback, Settings, or GM progression behavior changed.
+
+## 0.9.5f Community Beta — Native Feat Duplicate Filtering and Safe Recovery
+
+### Conservative Native Feat Guard
+
+- Preserves the D&D5e native Ability Score Improvement feat browser as the authoritative catalog.
+- Excludes Epic Boon feats when the projected total character level is below 19.
+- Keeps Epic Boons available at projected total character level 19+ whenever the current native Advancement legitimately offers a general feat choice.
+- Excludes already-owned non-repeatable feats using official source UUID first and identifier plus feat subtype for PHB/SRD mirrors.
+- Never identifies feats by display name alone and never creates a feat opportunity from total character level.
+- Leaves repeatable feats available.
+
+### Safe Recovery
+
+- Validates the selected feat before the native Advancement applies it to its clone.
+- Rejects an invalid duplicate or early Epic Boon without modifying the Draft.
+- Reopens the native feat browser in the same ASI flow, preserving prior native choices, the ASI alternative, and the locked Hit Die result.
+- Retains post-Advancement duplicate and Epic Boon validation as a defensive fallback for drag-and-drop or unexpected system paths.
+
+### Scope Preservation
+
+- No feat opportunity schedule, class Advancement levels, feat catalog reconstruction, complex prerequisite engine, Metamagic, Warlock, spell ownership, commit, Settings, or GM progression behavior changed.
+
 ## 0.9.5e Community Beta — Metamagic Replacement Detail Cards
 
 ### Replacement Preview

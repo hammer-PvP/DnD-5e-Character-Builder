@@ -1,5 +1,6 @@
 import { MODULE_ID } from "../constants.mjs";
 import { ManagedAdvancementRegistry } from "./managed-advancement-registry.mjs";
+import { NativeFeatChoiceGuard } from "./native-feat-choice-guard.mjs";
 
 /**
  * Error raised when a source-native Advancement completed in a state that the
@@ -41,6 +42,7 @@ export class NativeAdvancementValidationService {
   } = {}) {
     const added = draft.items.filter(item => !beforeItemIds.has(item.id));
     this.#validateNonRepeatableDuplicates(draft, added, workflow);
+    this.#validateEpicBoonEligibility(draft, added, state, workflow);
     this.#validateExplicitRequirements(draft, added, state, workflow);
     await this.#validateNativePrerequisites(draft, added, state, workflow);
     this.#validateRequiredAdvancementCounts(draft, state, workflow, new Set(added.map(item => item.id)), { validateManagedCounts });
@@ -48,36 +50,55 @@ export class NativeAdvancementValidationService {
   }
 
   static #validateNonRepeatableDuplicates(draft, added, workflow) {
-    const byKey = new Map();
-    for (const item of draft.items) {
-      const identifier = String(item.system?.identifier ?? "").trim();
-      if (!identifier) continue;
-      const key = `${item.type}:${identifier}`;
-      const rows = byKey.get(key) ?? [];
-      rows.push(item);
-      byKey.set(key, rows);
-    }
-
     for (const item of added) {
       // Spell documents are acquisition records, not non-repeatable feature
-      // options. Independent native grants (for example Archfey Spells and
-      // Steps of the Fey both delivering Misty Step) must coexist.
-      if (item.type === "spell") continue;
+      // options. Independent native grants must remain able to coexist.
+      if (item.type === "spell" || NativeFeatChoiceGuard.isRepeatable(item)) continue;
+
+      const sourceUuid = NativeFeatChoiceGuard.sourceUuid(item);
       const identifier = String(item.system?.identifier ?? "").trim();
-      if (!identifier) continue;
-      const repeatable = Boolean(item.system?.prerequisites?.repeatable);
-      if (repeatable) continue;
-      const duplicates = byKey.get(`${item.type}:${identifier}`) ?? [];
-      if (duplicates.length <= 1) continue;
+      const subtype = String(item.system?.type?.subtype ?? "").trim();
+      if (!sourceUuid && !identifier) continue;
+
+      const duplicate = draft.items.find(other => {
+        if (other.id === item.id || other.type !== item.type) return false;
+        const otherSource = NativeFeatChoiceGuard.sourceUuid(other);
+        if (sourceUuid && otherSource && sourceUuid === otherSource) return true;
+        if (!identifier || identifier !== String(other.system?.identifier ?? "").trim()) return false;
+        // Feats use identifier + subtype so mirrored PHB/SRD documents resolve
+        // as the same option without relying on display name alone.
+        if (item.type === "feat") {
+          return subtype === String(other.system?.type?.subtype ?? "").trim();
+        }
+        return true;
+      });
+      if (!duplicate) continue;
+
       throw new StructuralLevelUpError(
         `${item.name} cannot be selected again.`,
         {
           choiceName: item.name,
-          reason: "This option is not repeatable and the character already has it.",
-          diagnostic: `[Character Builder Level Up] ${draft.name} must not have taken ${item.name} before in order to take this feature during ${workflow}.`
+          reason: "Already owned — this option cannot be selected more than once.",
+          diagnostic: `[Character Builder Level Up] ${draft.name} already owns the non-repeatable ${item.name} during ${workflow}.`
         }
       );
     }
+  }
+
+  static #validateEpicBoonEligibility(draft, added, state, workflow) {
+    const projectedCharacterLevel = Number(state?.targetCharacterLevel ?? draft.system?.details?.level ?? 0);
+    if (projectedCharacterLevel >= 19) return;
+
+    const invalid = added.find(item => NativeFeatChoiceGuard.isEpicBoon(item));
+    if (!invalid) return;
+    throw new StructuralLevelUpError(
+      `${invalid.name} cannot be selected.`,
+      {
+        choiceName: invalid.name,
+        reason: `Epic Boon feats require character level 19 or higher. The projected character level is ${projectedCharacterLevel}.`,
+        diagnostic: `[Character Builder Level Up] ${draft.name} selected Epic Boon ${invalid.name} below character level 19 during ${workflow}.`
+      }
+    );
   }
 
   static #validateExplicitRequirements(draft, added, state, workflow) {

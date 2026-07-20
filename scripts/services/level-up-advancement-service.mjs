@@ -10,6 +10,7 @@ import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.
 import { ManagedAdvancementRegistry } from "./managed-advancement-registry.mjs";
 import { ItemChoiceReplacementIntegrityService } from "./item-choice-replacement-integrity-service.mjs";
 import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
+import { NativeFeatChoiceGuard } from "./native-feat-choice-guard.mjs";
 
 export class LevelUpAdvancementService {
   static async apply(draft, registry) {
@@ -64,7 +65,7 @@ export class LevelUpAdvancementService {
       manager.steps = manager.steps.filter(step => !this.#isManagedStep(step, classIdentifier));
       await LevelUpDraftManager.setState(draft, { nativeRunning: true });
 
-      const result = await this.#runManager(manager);
+      const result = await this.#runManager(manager, { state });
       if (!result.completed) {
         await LevelUpDraftManager.setState(draft, { nativeRunning: false });
         return result;
@@ -155,8 +156,8 @@ export class LevelUpAdvancementService {
     return ManagedAdvancementRegistry.isManaged(advancement, { classIdentifier });
   }
 
-  static #runManager(manager) {
-    return NativeAdvancementModalGuard.run(manager);
+  static #runManager(manager, { state } = {}) {
+    return NativeFeatChoiceGuard.run(manager, { state }, () => NativeAdvancementModalGuard.run(manager));
   }
 
   static #snapshot(draft) {

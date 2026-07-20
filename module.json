@@ -1,8 +1,8 @@
 {
   "id": "dnd5e-character-builder",
   "title": "Character Builder",
-  "description": "D&D 2024 Character Creation and Level Up for Foundry VTT 14, with protected creation and Level Up transactions, GM group progression tools, exact spell ownership, and native Advancement integration.",
-  "version": "0.9.5e",
+  "description": "D&D 2024 Character Creation and Level Up for Foundry VTT 14, with protected transactions, exact spell and feature ownership, conservative native feat protection, and structurally exact Level Up history summaries.",
+  "version": "0.9.5g",
   "authors": [
     {
       "name": "Raphael Andrade"
@@ -49,7 +49,7 @@
   "readme": "README.md",
   "url": "https://github.com/hammer-PvP/DnD-5e-Character-Builder",
   "manifest": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/latest/download/module.json",
-  "download": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/download/v0.9.5e/module.zip",
+  "download": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/download/v0.9.5g/module.zip",
   "bugs": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/issues",
-  "changelog": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/tag/v0.9.5e"
+  "changelog": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/tag/v0.9.5g"
 }
