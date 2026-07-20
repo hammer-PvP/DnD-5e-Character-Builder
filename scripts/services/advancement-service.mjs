@@ -2,12 +2,24 @@ import { MODULE_ID } from "../constants.mjs";
 import { HitPointService } from "./hit-point-service.mjs";
 import { SourceResolver } from "./source-resolver.mjs";
 import { ItemGrantIntegrityService } from "./item-grant-integrity-service.mjs";
+import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
 
 export class AdvancementService {
   static async replacePrimaryDocument(draft, document, type, onComplete, options = {}) {
-    const current = draft.items.find(item => item.type === type);
-    if (current) await this.removeItem(draft, current);
-    return this.addItem(draft, document, type, onComplete, options);
+    const rollbackSnapshot = this.snapshotDraft(draft);
+    try {
+      const current = draft.items.find(item => item.type === type);
+      if (current) {
+        const removed = await this.removeItem(draft, current);
+        if (!removed) return null;
+      }
+      const added = await this.addItem(draft, document, type, onComplete, options);
+      if (!added) await this.restoreDraft(draft, rollbackSnapshot);
+      return added;
+    } catch (error) {
+      await this.restoreDraft(draft, rollbackSnapshot);
+      throw error;
+    }
   }
 
   static async addItem(draft, document, type, onComplete, { abilityAssignments = null, registry = null } = {}) {
@@ -54,19 +66,8 @@ export class AdvancementService {
     }
 
     recoveryActor = manager.clone;
-    await new Promise((resolve, reject) => {
-      const hookId = Hooks.on("dnd5e.advancementManagerComplete", async completed => {
-        if (completed !== manager) return;
-        Hooks.off("dnd5e.advancementManagerComplete", hookId);
-        try {
-          await finish();
-          resolve();
-        } catch (error) {
-          reject(error);
-        }
-      });
-      manager.render(true);
-    });
+    const result = await NativeAdvancementModalGuard.run(manager, { onComplete: finish });
+    if (!result.completed) return null;
 
     return draft.items.find(item => item.type === type && item.system?.identifier === data.system?.identifier);
   }
@@ -75,7 +76,7 @@ export class AdvancementService {
     const Manager = globalThis.dnd5e?.applications?.advancement?.AdvancementManager;
     if (!Manager) {
       await item.delete();
-      return;
+      return true;
     }
 
     const manager = Manager.forDeletedItem(draft, item.id, {
@@ -85,17 +86,54 @@ export class AdvancementService {
 
     if (!manager.steps.length) {
       await item.delete();
-      return;
+      return true;
     }
 
-    await new Promise(resolve => {
-      const hookId = Hooks.on("dnd5e.advancementManagerComplete", completed => {
-        if (completed !== manager) return;
-        Hooks.off("dnd5e.advancementManagerComplete", hookId);
-        resolve();
-      });
-      manager.render(true);
+    const result = await NativeAdvancementModalGuard.run(manager);
+    return result.completed;
+  }
+
+  static snapshotDraft(draft) {
+    return {
+      system: foundry.utils.deepClone(draft._source?.system ?? draft.toObject().system ?? {}),
+      flags: foundry.utils.deepClone(draft._source?.flags ?? draft.toObject().flags ?? {}),
+      items: draft.items.map(item => foundry.utils.deepClone(item._source ?? item.toObject())),
+      effects: draft.effects.map(effect => foundry.utils.deepClone(effect._source ?? effect.toObject()))
+    };
+  }
+
+  static async restoreDraft(draft, snapshot) {
+    if (!snapshot) return;
+    await draft.update(this.#flatten({ system: snapshot.system, flags: snapshot.flags }), {
+      characterBuilderNativeAdvancementRollback: true
     });
+
+    const itemIds = draft.items.map(item => item.id);
+    if (itemIds.length) {
+      await draft.deleteEmbeddedDocuments("Item", itemIds, {
+        deleteContents: true,
+        characterBuilderNativeAdvancementRollback: true
+      });
+    }
+    if (snapshot.items.length) {
+      await draft.createEmbeddedDocuments("Item", foundry.utils.deepClone(snapshot.items), {
+        keepId: true,
+        characterBuilderNativeAdvancementRollback: true
+      });
+    }
+
+    const effectIds = draft.effects.map(effect => effect.id);
+    if (effectIds.length) {
+      await draft.deleteEmbeddedDocuments("ActiveEffect", effectIds, {
+        characterBuilderNativeAdvancementRollback: true
+      });
+    }
+    if (snapshot.effects.length) {
+      await draft.createEmbeddedDocuments("ActiveEffect", foundry.utils.deepClone(snapshot.effects), {
+        keepId: true,
+        characterBuilderNativeAdvancementRollback: true
+      });
+    }
   }
 
   static async #postProcessPrimary(draft, document, type) {
@@ -245,6 +283,20 @@ export class AdvancementService {
       if (changed) updates.push({ _id: item.id, "system.advancement": advancement });
     }
     if (updates.length) await actor.updateEmbeddedDocuments("Item", updates, { diff: false, recursive: false });
+  }
+
+  static #flatten(value, prefix = "", output = {}) {
+    if (Array.isArray(value) || value === null || typeof value !== "object") {
+      if (prefix) output[prefix] = foundry.utils.deepClone(value);
+      return output;
+    }
+    const keys = Object.keys(value);
+    if (!keys.length) {
+      if (prefix) output[prefix] = {};
+      return output;
+    }
+    for (const key of keys) this.#flatten(value[key], prefix ? `${prefix}.${key}` : key, output);
+    return output;
   }
 
   static #originFor(item) {

@@ -23,11 +23,11 @@ SRD 5.1 Legacy is not officially supported. Runtime Character Management remains
 - Transactional mundane Starting Equipment Shop with Checkout, exact purchase manifests, containers, quantity support, and GM Bonus Gold.
 - Review and recoverable application to the original Actor.
 
-## Character Builder 0.9.5a community beta
+## Character Builder 0.9.5b community beta
 
 Level Up uses a separate hidden transaction Draft. Native and module-managed choices are resolved on that Draft, and the live Actor is not changed until **Commit Level Up** succeeds.
 
-The 0.9.5a maintenance update preserves the stable 0.9.5 feature set and makes three isolated corrections: `Reset Pending Level Up` is available to GMs in XP Mode, the approved `Start Character Builder` sheet button no longer collides with the level ornament, and the module Settings window now uses a viewport-safe fixed header/footer with a scrollable compact body.
+The 0.9.5b update is an isolated interface-safety patch. Whenever Character Builder opens a source-native D&D5e Advancement, a protected backdrop blocks the Builder and the rest of the Foundry interface while keeping the native Advancement window in front. Completing or closing the native flow removes the guard and returns control to Character Builder without changing Advancement rules or source data.
 
 ### Availability
 

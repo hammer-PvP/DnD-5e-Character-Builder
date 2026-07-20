@@ -511,7 +511,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       }
       ui.notifications.info(`Selecting ${document.name} with the native D&D5e Advancement flow.`);
 
-      await AdvancementService.replacePrimaryDocument(this.draft, document, type, async () => {
+      const selected = await AdvancementService.replacePrimaryDocument(this.draft, document, type, async () => {
         this.previewUuid = document.uuid;
         const changes = {};
         if (type === "class") {
@@ -524,6 +524,10 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         if (Object.keys(changes).length) await DraftManager.setBuildState(this.draft, changes);
         await SourceResolver.enforceAllowedSources(this.draft, this.registry);
       }, { registry: this.registry });
+      if (!selected) {
+        ui.notifications.info(`${document.name} Advancement was cancelled.`);
+        return;
+      }
       this.pendingPrimaryUuid[kind] = null;
     } catch (error) {
       console.error(`${MODULE_ID} | ${kind} selection failed.`, error);
@@ -671,6 +675,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
 
   async #saveAbilitiesAndBackground({ advance = false } = {}) {
+    let nativeRollbackSnapshot = null;
     try {
       const form = new FormData(this.element);
       const method = String(form.get("abilityMethod") ?? "pointBuy");
@@ -701,9 +706,17 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         return this.render({ force: true });
       }
 
+      nativeRollbackSnapshot = AdvancementService.snapshotDraft(this.draft);
+
       // Remove the previous Background first so its native Advancement changes,
       // including Ability Score bonuses, are fully reversed by D&D5e.
-      if (existing) await AdvancementService.removeItem(this.draft, existing);
+      if (existing) {
+        const removed = await AdvancementService.removeItem(this.draft, existing);
+        if (!removed) {
+          ui.notifications.info("Background Advancement was cancelled.");
+          return;
+        }
+      }
 
       const baseUpdate = {};
       for (const ability of ABILITIES) baseUpdate[`system.abilities.${ability.key}.value`] = base[ability.key];
@@ -712,9 +725,14 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       // The Background is passed to the native D&D5e AdvancementManager intact.
       // Its Ability Score Improvement is selected exactly once in the system UI,
       // alongside any other choices provided by the Background.
-      await AdvancementService.addItem(this.draft, source, "background", null, {
+      const addedBackground = await AdvancementService.addItem(this.draft, source, "background", null, {
         registry: this.registry
       });
+      if (!addedBackground) {
+        await AdvancementService.restoreDraft(this.draft, nativeRollbackSnapshot);
+        ui.notifications.info("Background Advancement was cancelled.");
+        return;
+      }
 
       if (CustomBackgroundService.isCustom(backgroundUuid)) {
         await this.#ensureCustomBackgroundCommon();
@@ -733,6 +751,13 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       ui.notifications.info("Ability Scores and Background confirmed.");
       this.render({ force: true });
     } catch (error) {
+      if (nativeRollbackSnapshot) {
+        try {
+          await AdvancementService.restoreDraft(this.draft, nativeRollbackSnapshot);
+        } catch (rollbackError) {
+          console.error(`${MODULE_ID} | Background Advancement rollback failed.`, rollbackError);
+        }
+      }
       console.error(`${MODULE_ID} | Ability Scores and Background failure`, error);
       ui.notifications.error(error.message);
     }

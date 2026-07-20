@@ -9,6 +9,7 @@ import { NativeAdvancementValidationService, StructuralLevelUpError } from "./na
 import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.mjs";
 import { ManagedAdvancementRegistry } from "./managed-advancement-registry.mjs";
 import { ItemChoiceReplacementIntegrityService } from "./item-choice-replacement-integrity-service.mjs";
+import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
 
 export class LevelUpAdvancementService {
   static async apply(draft, registry) {
@@ -155,39 +156,7 @@ export class LevelUpAdvancementService {
   }
 
   static #runManager(manager) {
-    return new Promise((resolve, reject) => {
-      let completed = false;
-      let settled = false;
-      const settle = value => {
-        if (settled) return;
-        settled = true;
-        resolve(value);
-      };
-
-      const hookId = Hooks.on("dnd5e.advancementManagerComplete", completedManager => {
-        if (completedManager !== manager) return;
-        completed = true;
-        Hooks.off("dnd5e.advancementManagerComplete", hookId);
-        settle({ completed: true });
-      });
-
-      const originalClose = manager.close.bind(manager);
-      manager.close = async (...args) => {
-        const closed = await originalClose(...args);
-        if (!completed) {
-          Hooks.off("dnd5e.advancementManagerComplete", hookId);
-          settle({ completed: false, cancelled: true });
-        }
-        return closed;
-      };
-
-      try {
-        manager.render(true);
-      } catch (error) {
-        Hooks.off("dnd5e.advancementManagerComplete", hookId);
-        reject(error);
-      }
-    });
+    return NativeAdvancementModalGuard.run(manager);
   }
 
   static #snapshot(draft) {
