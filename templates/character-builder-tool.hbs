@@ -34,14 +34,14 @@
 
   <section class="cb-tool-actor-list">
     {{#each actors}}
-    <label class="cb-tool-actor-row {{#if disabled}}disabled{{/if}}" data-actor-row data-actor-id="{{id}}" data-current-xp="{{xp}}" data-search="{{search}}" title="{{disabledReason}}">
+    <label class="cb-tool-actor-row {{#if disabled}}disabled{{/if}}" data-actor-row data-actor-id="{{id}}" data-current-xp="{{xp}}" data-search="{{search}}" data-level-up-eligible="{{levelUpEligible}}" data-epic-boon-eligible="{{epicBoonEligible}}" title="{{disabledReason}}">
       <input type="checkbox" name="actorIds" value="{{id}}" {{#if disabled}}disabled{{/if}}>
       <img src="{{img}}" alt="">
-      <span class="cb-tool-actor-copy"><strong>{{name}}</strong><small>Level {{level}}{{#if granted}} · Level Up Granted{{/if}}{{#if hasDraft}} · Pending Level Up{{/if}}</small></span>
+      <span class="cb-tool-actor-copy"><strong>{{name}}</strong><small>Level {{level}}{{#if granted}} · Level Up Granted{{/if}}{{#if hasDraft}} · Pending Level Up{{/if}}{{#if pendingEpicBoon}} · Epic Boon Pending{{/if}}</small></span>
       {{#if ../xpMode}}
       <span class="cb-tool-xp-values"><small>Current {{xp}}</small><strong data-actor-award>+0</strong><small>Result <span data-actor-result>{{xp}}</span></small></span>
       {{else}}
-      <span class="cb-tool-status">{{#if disabled}}{{disabledReason}}{{else}}Ready{{/if}}</span>
+      <span class="cb-tool-status">{{status}}</span>
       {{/if}}
     </label>
     {{else}}
@@ -51,9 +51,17 @@
 
   <footer class="cb-tool-footer">
     <button type="button" data-action="close"><i class="fa-solid fa-xmark"></i> Cancel</button>
-    <button type="button" class="cb-primary-confirm" data-action="apply" disabled>
-      <i class="fa-solid {{#if milestone}}fa-arrow-up{{else}}fa-star{{/if}}"></i>
-      <span><strong>{{#if milestone}}Grant Level Ups{{else}}Distribute XP{{/if}}</strong><small>{{#if milestone}}Selected characters only{{else}}Equal integer award{{/if}}</small></span>
-    </button>
+    <div class="cb-tool-footer-actions">
+      <button type="button" class="cb-primary-confirm" data-action="apply" disabled>
+        <i class="fa-solid {{#if milestone}}fa-arrow-up{{else}}fa-star{{/if}}"></i>
+        <span><strong>{{#if milestone}}Grant Level Ups{{else}}Distribute XP{{/if}}</strong><small>{{#if milestone}}Selected characters only{{else}}Equal integer award{{/if}}</small></span>
+      </button>
+      {{#if epicBoonEnabled}}
+      <button type="button" class="cb-primary-confirm" data-action="grant-epic-boon" disabled>
+        <i class="fa-solid fa-star"></i>
+        <span><strong>Grant Epic Boons</strong><small>Selected characters only</small></span>
+      </button>
+      {{/if}}
+    </div>
   </footer>
 </div>

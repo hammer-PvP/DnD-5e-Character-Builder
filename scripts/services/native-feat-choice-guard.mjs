@@ -1,19 +1,21 @@
 import { MODULE_ID } from "../constants.mjs";
 
 /**
- * Conservative guard around the native D&D5e Ability Score Improvement feat
- * browser. The native browser remains authoritative; this service only removes
- * choices that are deterministically invalid and validates the selected UUID
- * before the native Advancement applies it to its clone.
+ * Minimal guard around the native D&D5e Ability Score Improvement feat choice.
  *
- * This intentionally does not rebuild the feat catalog or interpret free-form
- * prerequisite text. Ambiguous metadata remains visible and is left to D&D5e.
+ * The native Compendium Browser remains completely authoritative. Character
+ * Builder passes the original browser options through unchanged and validates
+ * only the UUID confirmed by the player before D&D5e applies that feat to the
+ * Advancement clone.
+ *
+ * This service does not filter, rebuild, clone, decorate, hide, or otherwise
+ * modify browser entries, indexes, sources, tooltips, or sidebar filters.
  */
 export class NativeFeatChoiceGuard {
   static #active = null;
 
   /**
-   * Run a native AdvancementManager while guarding ASI feat browser calls.
+   * Run a native AdvancementManager while guarding confirmed ASI feat choices.
    *
    * @param {object} manager  D&D5e AdvancementManager.
    * @param {object} options
@@ -41,19 +43,19 @@ export class NativeFeatChoiceGuard {
         return originalSelectOne.call(this, options, renderOptions);
       }
 
-      // The ASI flow remains open while this loop runs. An invalid result is
-      // never returned to D&D5e, so the selected feat is not applied and the
-      // player can choose again without restarting Class Progression or losing
-      // the locked Hit Die result.
+      // The browser receives the exact native options object. Invalid choices
+      // are stopped only after confirmation and are never returned to D&D5e.
       while (NativeFeatChoiceGuard.#active === context) {
-        const guardedOptions = NativeFeatChoiceGuard.buildBrowserOptions(options, {
-          actor: manager.clone,
-          projectedCharacterLevel: context.projectedCharacterLevel
-        });
-        const result = await originalSelectOne.call(this, guardedOptions, renderOptions);
+        const result = await originalSelectOne.call(this, options, renderOptions);
         if (!result) return null;
 
-        const candidate = await fromUuid(result);
+        let candidate = null;
+        try {
+          candidate = await fromUuid(result);
+        } catch (error) {
+          console.warn(`${MODULE_ID} | Failed to resolve the confirmed native feat UUID.`, error);
+        }
+
         const invalid = NativeFeatChoiceGuard.invalidCandidateReason(candidate, {
           actor: manager.clone,
           projectedCharacterLevel: context.projectedCharacterLevel
@@ -79,70 +81,30 @@ export class NativeFeatChoiceGuard {
 
   /**
    * Identify the browser invocation used by AbilityScoreImprovementFlow.
-   * ItemChoice feat browsers use CompendiumBrowser.select and are intentionally
-   * outside this patch.
+   * ItemChoice feat browsers use CompendiumBrowser.select and remain outside
+   * this guard.
    */
   static isAbilityScoreFeatBrowser(options = {}) {
     const locked = options?.filters?.locked ?? {};
     return options?.tab === "feats"
       && locked?.additional?.category?.feat === 1
+      && !locked?.additional?.subtype
       && (!locked.types || locked.types.has?.("feat"));
   }
 
   /**
-   * Build a filtered copy of the native browser options.
+   * Validate only the feat confirmed by the player.
    *
-   * Filters are exclusions only:
-   * - Epic Boons below projected character level 19.
-   * - Exact non-repeatable feats already owned by source UUID.
-   * - Identifier + subtype equivalents, covering PHB/SRD mirrors.
-   */
-  static buildBrowserOptions(options, { actor, projectedCharacterLevel } = {}) {
-    const guarded = foundry.utils.deepClone(options ?? {});
-    guarded.filters ??= {};
-    guarded.filters.locked ??= {};
-    const locked = guarded.filters.locked;
-    locked.arbitrary = Array.isArray(locked.arbitrary) ? [...locked.arbitrary] : [];
-
-    if (Number(projectedCharacterLevel ?? 0) < 19) {
-      locked.arbitrary.push({
-        o: "NOT",
-        v: { k: "system.type.subtype", o: "exact", v: "epicBoon" }
-      });
-    }
-
-    const identities = this.ownedNonRepeatableIdentities(actor);
-    if (identities.sourceUuids.size) {
-      locked.arbitrary.push({
-        o: "NOT",
-        v: { k: "uuid", o: "in", v: identities.sourceUuids }
-      });
-    }
-
-    for (const { identifier, subtype } of identities.identifierSubtypes.values()) {
-      if (!identifier || !subtype) continue;
-      locked.arbitrary.push({
-        o: "NOT",
-        v: {
-          o: "AND",
-          v: [
-            { k: "system.identifier", o: "exact", v: identifier },
-            { k: "system.type.subtype", o: "exact", v: subtype }
-          ]
-        }
-      });
-    }
-
-    return guarded;
-  }
-
-  /**
-   * Validate a browser result before D&D5e applies it.
-   * Returns null when valid, otherwise a user-facing reason.
+   * Returns null when valid, otherwise a user-facing reason. No prerequisite
+   * engine is implemented here; all other feat rules remain native to D&D5e.
    */
   static invalidCandidateReason(candidate, { actor, projectedCharacterLevel } = {}) {
     if (!candidate || candidate.type !== "feat" || candidate.system?.type?.value !== "feat") {
-      return "The selected document is not a feat.";
+      return "The selected document could not be resolved as a feat from its source compendium.";
+    }
+
+    if (this.isAbilityScoreImprovement(candidate)) {
+      return "Ability Score Improvement cannot be selected here. This screen is only for choosing a feat. If you want to increase ability scores, return to the previous screen and use the Ability Score Improvement option.";
     }
 
     const level = Number(projectedCharacterLevel ?? actor?.system?.details?.level ?? 0);
@@ -154,25 +116,6 @@ export class NativeFeatChoiceGuard {
       return `${candidate.name} is already owned and cannot be selected more than once.`;
     }
 
-    // Retain the system's own structured prerequisite validation as a final
-    // browser-level check. An ambiguous or unavailable validator fails open;
-    // the existing post-Advancement validation remains the fallback.
-    const validator = candidate.system?.validatePrerequisites;
-    if (typeof validator === "function") {
-      try {
-        const result = validator.call(candidate.system, actor, {
-          level,
-          showMessage: false,
-          throwError: false
-        });
-        if (result !== true && Array.isArray(result) && result.length) {
-          return result.map(entry => String(entry)).join(" ");
-        }
-      } catch (error) {
-        console.warn(`${MODULE_ID} | Native feat prerequisite precheck failed open.`, error);
-      }
-    }
-
     return null;
   }
 
@@ -180,6 +123,12 @@ export class NativeFeatChoiceGuard {
     const stateLevel = Number(state?.targetCharacterLevel ?? 0);
     if (stateLevel > 0) return stateLevel;
     return Number(manager?.clone?.system?.details?.level ?? manager?.actor?.system?.details?.level ?? 0);
+  }
+
+  static isAbilityScoreImprovement(item) {
+    return item?.type === "feat"
+      && item.system?.type?.value === "feat"
+      && String(item.system?.identifier ?? "").trim() === "ability-score-improvement";
   }
 
   static isEpicBoon(item) {
@@ -190,20 +139,6 @@ export class NativeFeatChoiceGuard {
 
   static isRepeatable(item) {
     return item?.system?.prerequisites?.repeatable === true;
-  }
-
-  static ownedNonRepeatableIdentities(actor) {
-    const sourceUuids = new Set();
-    const identifierSubtypes = new Map();
-    for (const item of actor?.items ?? []) {
-      if (item.type !== "feat" || item.system?.type?.value !== "feat" || this.isRepeatable(item)) continue;
-      const sourceUuid = this.sourceUuid(item);
-      if (sourceUuid) sourceUuids.add(sourceUuid);
-      const identifier = String(item.system?.identifier ?? "").trim();
-      const subtype = String(item.system?.type?.subtype ?? "").trim();
-      if (identifier && subtype) identifierSubtypes.set(`${identifier}:${subtype}`, { identifier, subtype });
-    }
-    return { sourceUuids, identifierSubtypes };
   }
 
   static findOwnedEquivalent(candidate, actor) {
@@ -235,10 +170,11 @@ export class NativeFeatChoiceGuard {
   static async #showInvalidChoice(candidate, reason) {
     const name = foundry.utils.escapeHTML(candidate?.name ?? "The selected feat");
     const safeReason = foundry.utils.escapeHTML(reason);
+    const isAsi = NativeFeatChoiceGuard.isAbilityScoreImprovement(candidate);
     const content = `<div class="cb-structural-error">
-      <p><strong>${name} cannot be selected.</strong></p>
+      ${isAsi ? "" : `<p><strong>${name} cannot be selected.</strong></p>`}
       <p>${safeReason}</p>
-      <p>The choice was not applied. Select another feat or return to Ability Score Improvement.</p>
+      <p>This choice was not applied. Select a different feat or return to the previous step.</p>
     </div>`;
     const DialogV2 = foundry.applications?.api?.DialogV2;
     if (DialogV2?.wait) {

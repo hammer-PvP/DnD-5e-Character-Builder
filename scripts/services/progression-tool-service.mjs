@@ -1,5 +1,6 @@
 import { MODULE_ID } from "../constants.mjs";
 import { LevelUpService } from "./level-up-service.mjs";
+import { EpicBoonService } from "./epic-boon-service.mjs";
 
 /**
  * GM-only group progression operations. The tool grants milestone permissions
@@ -31,6 +32,31 @@ export class ProgressionToolService {
         await LevelUpService.grant(actor, { batchId: batch.batchId, idempotencyToken: batch.idempotencyToken });
         results.push({ actorId: actor.id, name: actor.name, ok: true, message: "Level Up granted." });
         actor.sheet?.render?.(false);
+      } catch (error) {
+        results.push({ actorId: actor.id, name: actor.name, ok: false, message: error.message });
+      }
+    }
+    await this.#completeBatch(batch, results);
+    return { ...batch, results };
+  }
+
+  static async grantEpicBoons(actors) {
+    this.#assertGM();
+    if (!LevelUpService.settings().enableGrantEpicBoons) {
+      throw new Error("Grant Epic Boons is disabled in Character Builder settings.");
+    }
+    const unique = this.#uniqueActors(actors);
+    if (!unique.length) throw new Error("Select at least one character.");
+
+    const batch = await this.#beginBatch("epicBoon", unique, {});
+    const results = [];
+    for (const actor of unique) {
+      try {
+        await EpicBoonService.grant(actor, {
+          batchId: batch.batchId,
+          idempotencyToken: batch.idempotencyToken
+        });
+        results.push({ actorId: actor.id, name: actor.name, ok: true, message: "Epic Boon granted." });
       } catch (error) {
         results.push({ actorId: actor.id, name: actor.name, ok: false, message: error.message });
       }

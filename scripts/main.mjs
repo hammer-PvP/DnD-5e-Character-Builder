@@ -7,6 +7,8 @@ import { LevelUpService } from "./services/level-up-service.mjs";
 import { LevelUpDraftManager } from "./services/level-up-draft-manager.mjs";
 import { AdvancementChoiceAnnotationService } from "./services/advancement-choice-annotation-service.mjs";
 import { ActorCommitService } from "./services/actor-commit-service.mjs";
+import { EpicBoonService } from "./services/epic-boon-service.mjs";
+import { ClassProgressionGuard } from "./services/class-progression-guard.mjs";
 
 Hooks.once("init", async () => {
   if (!Handlebars.helpers.eq) Handlebars.registerHelper("eq", (a, b) => a === b);
@@ -42,7 +44,7 @@ Hooks.once("init", async () => {
     label: localizedSettingText("CB.Settings.Button", "Configure Character Builder"),
     hint: localizedSettingText(
       "CB.Settings.Hint",
-      "Configure content sources, Ability Score methods, the Starting Equipment Shop, Level Up availability, multiclassing, and Hit Point advancement."
+      "Configure content sources, Ability Score methods, the Starting Equipment Shop, Level Up availability, Epic Boon grants, multiclassing, and Hit Point advancement."
     ),
     icon: "fa-solid fa-arrow-up-right-dots",
     type: CharacterBuilderSettingsApp,
@@ -51,7 +53,7 @@ Hooks.once("init", async () => {
 
   game.keybindings.register(MODULE_ID, "openBuilder", {
     name: "Open Character Builder",
-    hint: "Open Character Builder or an available Level Up for the currently controlled Player Character Actor.",
+    hint: "Open Character Builder, an available Level Up, or a pending Epic Boon for the currently controlled Player Character Actor.",
     editable: [{ key: "KeyB", modifiers: ["CONTROL", "SHIFT"] }],
     restricted: false,
     onDown: () => {
@@ -69,6 +71,8 @@ Hooks.once("init", async () => {
     open: actor => openForActor(actor),
     eligible: actor => isCreationEligible(actor),
     levelUpEligible: actor => LevelUpService.eligibility(actor),
+    epicBoonEligible: actor => EpicBoonService.grantEligibility(actor),
+    claimEpicBoon: actor => EpicBoonService.claim(actor),
     openTool: () => game.user.isGM ? new CharacterBuilderToolApp().render({ force: true }) : null
   };
 });
@@ -99,6 +103,14 @@ Hooks.once("ready", async () => {
     }
   }
 });
+
+Hooks.on("preCreateItem", (item, data, options) =>
+  ClassProgressionGuard.blockDirectCreate(item, data, options)
+);
+
+Hooks.on("dnd5e.preAdvancementManagerComplete", (manager, updates, toCreate, toUpdate, toDelete) =>
+  ClassProgressionGuard.blockNativeAdvancement(manager, updates, toCreate, toUpdate, toDelete)
+);
 
 Hooks.on("createActor", async (actor, _options, userId) => {
   if (userId !== game.user.id || !isCreationEligible(actor)) return;
@@ -193,6 +205,25 @@ Hooks.on("getHeaderControlsApplicationV2", (app, controls) => {
     });
   }
 
+  if (EpicBoonService.pending(actor)?.available) {
+    moduleControls.push({
+      action: "cbRevokeEpicBoon",
+      label: "Revoke Epic Boon",
+      icon: "fa-solid fa-star-half-stroke",
+      visible: true,
+      onClick: async () => {
+        try {
+          await EpicBoonService.revoke(actor);
+          ui.notifications.info(`Pending Epic Boon revoked for ${actor.name}.`);
+          await app.render({ force: true });
+        } catch (error) {
+          console.error(`${MODULE_ID} | Revoke Epic Boon failed.`, error);
+          ui.notifications.error(error.message);
+        }
+      }
+    });
+  }
+
   if (moduleControls.length) controls.unshift(...moduleControls);
 });
 
@@ -237,6 +268,7 @@ function renderCharacterActorSheetControls(app, element) {
 
   if (isCreationEligible(actor)) injectCreationButton(actor, root);
   else if (actor.isOwner && actor.items.some(item => item.type === "class")) injectLevelUpButton(actor, root);
+  replaceNativeClassEntryControls(actor, root);
   injectCantripAugmentAnnotations(actor, root);
   injectInvocationTargetAnnotations(actor, root);
   injectAdvancementChoiceAnnotations(actor, root);
@@ -289,34 +321,90 @@ function injectLevelUpButton(actor, root) {
   container.classList.remove("cb-start-slot-active");
 
   const eligibility = LevelUpService.eligibility(actor);
+  const pendingEpicBoon = Boolean(EpicBoonService.pending(actor)?.available);
   let button = container.querySelector(".cb-level-up-sheet-button");
   if (!button) {
     button = document.createElement("button");
     button.type = "button";
     button.className = "cb-level-up-sheet-button gold-button";
     button.innerHTML = '<i class="fa-solid fa-arrow-up" inert></i>';
-    button.addEventListener("click", event => {
+    button.addEventListener("click", async event => {
       event.preventDefault();
       event.stopPropagation();
-      const current = LevelUpService.eligibility(actor);
-      if (!current.ready) return;
-      openLevelUp(actor);
+      try {
+        if (EpicBoonService.pending(actor)?.available) {
+          await openEpicBoon(actor);
+          return;
+        }
+        const current = LevelUpService.eligibility(actor);
+        if (!current.ready) return;
+        openLevelUp(actor);
+      } catch (error) {
+        console.error(`${MODULE_ID} | Epic Boon claim failed.`, error);
+        ui.notifications.error(error.message, { permanent: true });
+      }
     });
     container.append(button);
   }
 
-  const available = Boolean(eligibility.ready);
+  const available = pendingEpicBoon || Boolean(eligibility.ready);
   button.disabled = !available;
   button.setAttribute("aria-disabled", available ? "false" : "true");
   button.classList.toggle("available", available && !eligibility.hasDraft);
   button.classList.toggle("has-draft", available && eligibility.hasDraft);
   button.classList.toggle("unavailable", !available);
-  button.dataset.tooltip = eligibility.hasDraft
-    ? "Resume Level Up"
-    : available
-      ? `Start Level Up to Character Level ${eligibility.targetLevel}`
-      : `Level Up is not currently available. ${eligibility.reason}`;
+  button.dataset.tooltip = pendingEpicBoon
+    ? "Claim Epic Boon"
+    : eligibility.hasDraft
+      ? "Resume Level Up"
+      : available
+        ? `Start Level Up to Character Level ${eligibility.targetLevel}`
+        : `Level Up is not currently available. ${eligibility.reason}`;
   button.setAttribute("aria-label", button.dataset.tooltip);
+}
+
+function replaceNativeClassEntryControls(actor, root) {
+  const classSection = root.querySelector("section.classes");
+  if (!classSection) return;
+
+  for (const control of classSection.querySelectorAll('[data-action="findItem"][data-item-type="subclass"]')) {
+    control.remove();
+  }
+
+  const classControls = [...classSection.querySelectorAll('[data-action="findItem"][data-item-type="class"]')];
+  const existingSlot = classSection.querySelector(".cb-start-character-builder-class-slot");
+  if (!isCreationEligible(actor)) {
+    existingSlot?.remove();
+    for (const control of classControls) control.remove();
+    return;
+  }
+
+  let slot = existingSlot ?? classControls.shift();
+  for (const extra of classControls) {
+    if (extra !== slot) extra.remove();
+  }
+  if (!slot) {
+    slot = document.createElement("div");
+    slot.className = "pill-lg empty roboto-upper";
+    classSection.append(slot);
+  }
+  slot.removeAttribute("data-action");
+  slot.removeAttribute("data-item-type");
+  slot.classList.add("cb-start-character-builder-class-slot");
+  slot.setAttribute("role", "button");
+  slot.setAttribute("tabindex", "0");
+  const label = actor.getFlag(MODULE_ID, "draftActorId") ? "Resume Character Builder" : "Start Character Builder";
+  slot.innerHTML = `<i class="fa-solid fa-arrow-up-right-dots" inert></i><span>${label}</span>`;
+  slot.dataset.tooltip = label;
+  slot.setAttribute("aria-label", label);
+  const activate = event => {
+    if (event.type === "keydown" && !["Enter", " "].includes(event.key)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    openBuilder(actor);
+  };
+  slot.onclick = activate;
+  slot.onkeydown = activate;
 }
 
 function injectCantripAugmentAnnotations(actor, root) {
@@ -416,6 +504,7 @@ function isCreationEligible(actor) {
 
 function openForActor(actor) {
   if (isCreationEligible(actor)) return openBuilder(actor);
+  if (EpicBoonService.pending(actor)?.available) return openEpicBoon(actor);
   const eligibility = LevelUpService.eligibility(actor);
   if (eligibility.ready) return openLevelUp(actor);
   return ui.notifications.warn(eligibility.reason || "Character Builder is not currently available for this Actor.");
@@ -427,6 +516,13 @@ function openBuilder(actor) {
   if (actor.getFlag(MODULE_ID, "commitSafetyLock")) return ui.notifications.error("Character Builder is locked for this Actor because a protected transaction could not be restored. Ask the GM to inspect the preserved backup.", { permanent: true });
   if (!isCreationEligible(actor)) return ui.notifications.warn("This Actor has already completed level 1 character creation.");
   new CharacterBuilderApp(actor).render({ force: true });
+}
+
+async function openEpicBoon(actor) {
+  if (!EpicBoonService.pending(actor)?.available) {
+    return ui.notifications.warn("This Actor has no pending Epic Boon.");
+  }
+  return EpicBoonService.claim(actor);
 }
 
 function openLevelUp(actor) {

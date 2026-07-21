@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.5g";
-export const MODULE_BUILD = "community-beta-095g-exact-last-level-up";
+export const MODULE_VERSION = "0.9.6";
+export const MODULE_BUILD = "community-beta-096-epic-boon-and-class-entry-guard";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -111,6 +111,7 @@ export function defaultSettings() {
     levelUpMode: "milestone",
     allowMulticlassing: true,
     enforceMulticlassRequirements: true,
+    enableGrantEpicBoons: false,
     hitPointAdvancement: {
       methods: {
         roll: true,

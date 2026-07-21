@@ -100,6 +100,7 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       levelUpMode: String(form.querySelector('[name="levelUpMode"]')?.value ?? "milestone"),
       allowMulticlassing: form.querySelector('[name="allowMulticlassing"]')?.checked ?? false,
       enforceMulticlassRequirements: form.querySelector('[name="enforceMulticlassRequirements"]')?.checked ?? true,
+      enableGrantEpicBoons: form.querySelector('[name="enableGrantEpicBoons"]')?.checked ?? false,
       hitPointAdvancement: {
         methods: hpMethods,
         defaultMethod,

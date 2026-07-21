@@ -23,11 +23,29 @@ SRD 5.1 Legacy is not officially supported. Runtime Character Management remains
 - Transactional mundane Starting Equipment Shop with Checkout, exact purchase manifests, containers, quantity support, and GM Bonus Gold.
 - Review and recoverable application to the original Actor.
 
-## Character Builder 0.9.5g community beta
+## Character Builder 0.9.6 community beta
 
 Level Up uses a separate hidden transaction Draft. Native and module-managed choices are resolved on that Draft, and the live Actor is not changed until **Commit Level Up** succeeds.
 
-The 0.9.5g integrity patch makes `lastLevelUp` an exact deep-cloned copy of the newest `levelUpHistory` transaction. The previous summary is removed before the new one is written, preventing nested fields from older Level Ups from surviving through Foundry flag merging. This changes no Actor Items, features, spells, Hit Points, Advancements, or progression rules. The 0.9.5f native feat guard, approved 0.9.5e Metamagic detail cards, 0.9.51 Warlock target-rebind hotfix, and all other behavior remain unchanged.
+Version 0.9.6 is built directly on the validated 0.9.5k codebase. It preserves the complete Character Creation and Level Up transaction model without migrating or rewriting existing Actor history. The release adds an optional GM Epic Boon gift flow for level 20 characters, replaces the native Add Class entry with a second Start Character Builder entry, and guards direct class, subclass, and class-feature insertion while leaving normal item drag-and-drop untouched.
+
+The 0.9.5k feat correction remains unchanged. The D&D5e native feat browser receives its original query and rendering options unchanged. Character Builder does not filter, rebuild, decorate, or hide normal feat-browser results. It checks only the UUID confirmed by the player and rejects Ability Score Improvement selected from inside `Choose a Feat`, an Epic Boon below projected total character level 19, or an already-owned non-repeatable feat. All other feat rules, sources, tooltips, filters, and internal Advancements remain native.
+
+### Epic Boon gifts
+
+A GM world setting, **Enable Grant Epic Boons**, appears in the same Level Up Availability block as XP, Milestone, and multiclass controls. It controls only new grants. Existing Epic Boons remain on Actors, and pending gifts remain claimable and revocable if the setting is later disabled.
+
+When enabled, the GM-only Character Builder Tool displays **Grant Epic Boons** beside the normal progression action. The same character checkboxes can select one or more eligible level 20 Player Character Actors. Every grant requires explicit GM confirmation. Each selected Actor receives an independent pending permission; no class level, XP, Hit Die, `levelUpHistory`, or `lastLevelUp` data is changed.
+
+A pending gift lights the existing Character Builder sheet button. The player opens the native D&D5e Compendium Browser with the native **Epic Boon** subtype filter locked, chooses an official source document, and completes the Boon's native Advancement. Non-repeatable Boons already owned and documents from disabled Character Builder sources are rejected only after confirmation, without rebuilding the browser catalog. Cancellation leaves the gift pending; a controlled finalization failure restores the pre-claim ability values and removes the created Boon before returning the gift to its pending state. Completed gifts are recorded in `epicBoonGiftHistory`. The GM can use **Revoke Epic Boon** while a gift is still pending, even if new grants are disabled.
+
+Character Builder does not override the current D&D5e system limitation that may prevent an Epic Boon from increasing an ability above 20. The official Item and its native Advancement are preserved so the system correction can apply without a module-side ability override.
+
+### Native class-entry guard
+
+For live Player Character Actors, the native **Add Class** control is removed. On an Actor without a class, the same location in the Features header displays **Start Character Builder** or **Resume Character Builder**, using the exact same draft and handler as the existing sheet-header button. After a class exists, native Add Class and native subclass-add controls remain unavailable; multiclassing continues through Character Builder Level Up.
+
+The guard is selective. Direct insertion of `class`, `subclass`, or class-feature Items is blocked on the live Actor, including native Advancement completion paths. Weapons, armor, potions, consumables, equipment, tools, loot, containers, spells, general feats, and other normal drag-and-drop content continue to use the native D&D5e workflow. Character Builder draft and commit operations remain authorized.
 
 ### Availability
 
@@ -65,7 +83,7 @@ Native D&D5e Advancements remain authoritative for source-defined choices. Deter
 
 The native interface remains visible for non-managed source decisions, including feats, Ability Score Improvements, subclasses, Fighting Styles, Weapon Masteries, proficiencies, optional grants, and ambiguous source data. Character Builder-owned panels handle Eldritch Invocations, Pact of the Tome, and Sorcerer Metamagic while preserving their native source Advancement records.
 
-For native ASI feat choices, Character Builder only applies deterministic exclusions: exact non-repeatable feats already owned and Epic Boons below projected total character level 19. It does not create feat opportunities, reconstruct the catalog, or infer complex prerequisites from display text.
+For native ASI feat choices, Character Builder passes the native browser options through unchanged. It validates only the confirmed source UUID before D&D5e applies it, rejecting the invalid Ability Score Improvement feat, early Epic Boons, and already-owned non-repeatable feats. It does not filter or reconstruct the catalog, alter source or tooltip data, create feat opportunities, or infer complex prerequisites.
 
 ### Spells and managed features
 
@@ -115,8 +133,22 @@ Character creation, Shop Checkout, native Level Up Advancements, module-managed 
 
 ## Release validation
 
-The release package includes a focused testing guide and static audit report. Live Foundry validation is still required for runtime Advancement dialogs, Actor commits, rollback injection, and class-specific progression before promoting this community beta beyond its tested environment.
+This README is the consolidated project and release document. Static validation is performed before packaging, while live Foundry validation remains required for runtime Advancement dialogs, Epic Boon claiming, guarded class drops, Actor commits, rollback injection, and class-specific progression.
 
 ## Repository
 
 https://github.com/hammer-PvP/DnD-5e-Character-Builder
+
+## 0.9.6 validation checklist
+
+- Existing 0.9.5k Character Creation and Level Up flows remain unchanged.
+- The Epic Boon setting saves and reloads correctly.
+- Grant Epic Boons is hidden when disabled and available when enabled.
+- Only level 20 Player Character Actors without a pending gift are eligible.
+- Individual and batch grants require confirmation.
+- Pending gifts light the existing sheet button and remain claimable after the setting is disabled.
+- The native browser opens with Epic Boon locked, source UUIDs remain intact, cancellation preserves the gift, and successful completion consumes it.
+- Revoke Epic Boon appears only to GMs while a gift is pending.
+- Add Class is replaced by Start/Resume Character Builder on classless Actors and does not reappear in Edit Mode.
+- Native class, subclass, and class-feature insertion is blocked without affecting equipment, potion, spell, or other normal drops.
+- Invalid Ability Score Improvement feat text matches the approved wording.

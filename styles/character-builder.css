@@ -2677,3 +2677,39 @@
   }
 }
 
+
+/* 0.9.6 — native class entry replacement and Epic Boon grant action */
+.dnd5e2.sheet.actor.character section.classes .cb-start-character-builder-class-slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--dnd5e-color-gold, #d1b06b);
+  border-color: rgba(209, 176, 107, .72);
+  background: linear-gradient(180deg, rgba(67, 50, 23, .34), rgba(27, 22, 14, .45));
+}
+.dnd5e2.sheet.actor.character section.classes .cb-start-character-builder-class-slot:hover,
+.dnd5e2.sheet.actor.character section.classes .cb-start-character-builder-class-slot:focus-visible {
+  outline: none;
+  border-color: #e7c979;
+  box-shadow: 0 0 8px rgba(231, 201, 121, .38);
+  background: linear-gradient(180deg, rgba(91, 66, 28, .48), rgba(34, 27, 16, .6));
+}
+.dnd5e2.sheet.actor.character section.classes .cb-start-character-builder-class-slot > i {
+  pointer-events: none;
+}
+.cb-tool-footer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.cb-tool-footer-actions .cb-primary-confirm {
+  min-width: 210px;
+}
+@media (max-width: 760px) {
+  .cb-tool-footer { align-items: flex-end; }
+  .cb-tool-footer-actions { width: 100%; }
+  .cb-tool-footer-actions .cb-primary-confirm { flex: 1 1 210px; }
+}
