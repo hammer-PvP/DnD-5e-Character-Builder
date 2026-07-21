@@ -2325,7 +2325,8 @@
 
 /* 0.9.5 — Character Builder interaction slot on the D&D5e character sheet */
 .dnd5e2.sheet.actor.character .sheet-header-buttons .cb-start-sheet-button,
-.dnd5e2.sheet.actor.character .sheet-header-buttons .cb-level-up-sheet-button {
+.dnd5e2.sheet.actor.character .sheet-header-buttons .cb-level-up-sheet-button,
+.dnd5e2.sheet.actor.character .sheet-header-buttons .cb-scribe-spell-sheet-button {
   box-sizing: border-box;
   position: relative;
   inset: auto;
@@ -2376,7 +2377,8 @@
   box-shadow: 0 0 6px rgba(209,176,107,.45);
 }
 .dnd5e2.sheet.actor.character .sheet-header-buttons .cb-start-sheet-button > i,
-.dnd5e2.sheet.actor.character .sheet-header-buttons .cb-level-up-sheet-button > i {
+.dnd5e2.sheet.actor.character .sheet-header-buttons .cb-level-up-sheet-button > i,
+.dnd5e2.sheet.actor.character .sheet-header-buttons .cb-scribe-spell-sheet-button > i {
   margin: 0;
   pointer-events: none;
 }
@@ -2712,4 +2714,665 @@
   .cb-tool-footer { align-items: flex-end; }
   .cb-tool-footer-actions { width: 100%; }
   .cb-tool-footer-actions .cb-primary-confirm { flex: 1 1 210px; }
+}
+
+/* 0.9.7a — Character Keeper / Runtime Character Management */
+.rest-management-app .window-content {
+  padding: 0;
+  overflow: hidden;
+}
+.character-builder .cb-keeper-shell {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  color: var(--cb-text, #ddd5c4);
+  background:
+    radial-gradient(circle at 80% 0%, rgba(138, 105, 48, .14), transparent 34%),
+    linear-gradient(145deg, rgba(24, 22, 20, .98), rgba(13, 13, 14, .99));
+}
+.character-builder .cb-keeper-header {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 92px;
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(211, 177, 91, .42);
+  background: linear-gradient(180deg, rgba(43, 38, 29, .98), rgba(25, 23, 21, .98));
+  box-shadow: 0 5px 14px rgba(0, 0, 0, .32);
+}
+.character-builder .cb-keeper-actor,
+.character-builder .cb-keeper-feature-title,
+.character-builder .cb-keeper-header-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.character-builder .cb-keeper-actor > img {
+  width: 62px;
+  height: 62px;
+  object-fit: cover;
+  border: 2px solid rgba(211, 177, 91, .6);
+  border-radius: 6px;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, .4);
+}
+.character-builder .cb-keeper-header h1,
+.character-builder .cb-keeper-feature-header h2 {
+  margin: 1px 0 2px;
+  line-height: 1.05;
+}
+.character-builder .cb-keeper-header p,
+.character-builder .cb-keeper-feature-header p,
+.character-builder .cb-keeper-sidebar p {
+  margin: 0;
+  opacity: .78;
+}
+.character-builder .cb-keeper-header-status {
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  gap: 2px;
+}
+.character-builder .cb-keeper-header-status > i {
+  font-size: 22px;
+  color: var(--dnd5e-color-gold, #d1b06b);
+}
+.character-builder .cb-keeper-header-status small {
+  max-width: 420px;
+  opacity: .62;
+}
+.character-builder .cb-keeper-body {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+.character-builder .cb-keeper-sidebar {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  min-height: 0;
+  padding: 16px;
+  border-right: 1px solid rgba(211, 177, 91, .28);
+  background: linear-gradient(180deg, rgba(30, 28, 25, .97), rgba(18, 18, 19, .98));
+}
+.character-builder .cb-keeper-sidebar-heading {
+  padding: 0 4px;
+}
+.character-builder .cb-keeper-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 3px;
+}
+.character-builder button.cb-keeper-action {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 62px;
+  padding: 8px;
+  text-align: left;
+  color: inherit;
+  border: 1px solid rgba(211, 177, 91, .25);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, .025);
+  box-shadow: none;
+}
+.character-builder button.cb-keeper-action:hover,
+.character-builder button.cb-keeper-action:focus-visible {
+  border-color: rgba(231, 201, 121, .72);
+  background: rgba(211, 177, 91, .09);
+}
+.character-builder button.cb-keeper-action.selected {
+  border-color: #d3b15b;
+  background: linear-gradient(90deg, rgba(122, 88, 30, .38), rgba(68, 52, 28, .2));
+  box-shadow: inset 3px 0 #d3b15b;
+}
+.character-builder button.cb-keeper-action.complete > i {
+  color: #8ecb86;
+}
+.character-builder button.cb-keeper-action img {
+  width: 42px;
+  height: 42px;
+  object-fit: cover;
+  border: 1px solid rgba(211, 177, 91, .42);
+  border-radius: 4px;
+}
+.character-builder button.cb-keeper-action span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 3px;
+}
+.character-builder button.cb-keeper-action strong,
+.character-builder button.cb-keeper-action small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.character-builder button.cb-keeper-action small {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
+  opacity: .68;
+  line-height: 1.25;
+}
+.character-builder .cb-keeper-sidebar-note {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(101, 142, 172, .35);
+  border-radius: 4px;
+  background: rgba(45, 76, 101, .12);
+  font-size: 12px;
+}
+.character-builder .cb-keeper-main {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.character-builder .cb-keeper-feature-header {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 98px;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(211, 177, 91, .26);
+  background: rgba(30, 28, 25, .97);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, .25);
+}
+.character-builder .cb-keeper-feature-title > img {
+  width: 58px;
+  height: 58px;
+  object-fit: cover;
+  border: 1px solid rgba(211, 177, 91, .55);
+  border-radius: 5px;
+}
+.character-builder .cb-keeper-feature-actions {
+  flex: 0 0 auto;
+}
+.character-builder .cb-keeper-feature-actions .cb-primary-confirm {
+  min-width: 250px;
+}
+.character-builder .cb-keeper-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 18px 20px 28px;
+}
+.character-builder .cb-keeper-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.character-builder .cb-keeper-two-column {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.character-builder .cb-keeper-class-group,
+.character-builder .cb-keeper-land-card {
+  border: 1px solid rgba(211, 177, 91, .27);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, .025);
+  overflow: hidden;
+}
+.character-builder .cb-keeper-class-group > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(211, 177, 91, .2);
+  background: rgba(211, 177, 91, .06);
+}
+.character-builder .cb-keeper-class-group h4,
+.character-builder .cb-keeper-land-card h5 {
+  margin: 0;
+}
+.character-builder .cb-keeper-class-group > header span {
+  opacity: .7;
+}
+.character-builder .cb-keeper-mastery-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+.character-builder .cb-keeper-mastery-slot {
+  display: grid;
+  grid-template-columns: minmax(150px, .8fr) auto minmax(240px, 1.2fr);
+  align-items: end;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, .16);
+}
+.character-builder .cb-keeper-current-choice,
+.character-builder .cb-keeper-mastery-slot label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.character-builder .cb-keeper-current-choice span,
+.character-builder .cb-keeper-mastery-slot label > span {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  opacity: .65;
+}
+.character-builder .cb-keeper-option-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 10px;
+}
+.character-builder .cb-keeper-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.character-builder .cb-keeper-card-list.tall {
+  max-height: 455px;
+  overflow-y: auto;
+  padding-right: 3px;
+}
+.character-builder .cb-keeper-radio-card {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  min-height: 58px;
+  border: 1px solid rgba(211, 177, 91, .25);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, .025);
+  overflow: hidden;
+}
+.character-builder .cb-keeper-radio-card:hover,
+.character-builder .cb-keeper-radio-card:has(input:checked) {
+  border-color: rgba(231, 201, 121, .78);
+  background: rgba(211, 177, 91, .09);
+}
+.character-builder .cb-keeper-radio-card.current {
+  box-shadow: inset 3px 0 rgba(109, 155, 199, .8);
+}
+.character-builder .cb-keeper-radio-card.disabled {
+  opacity: .48;
+}
+.character-builder .cb-keeper-radio-card > label {
+  display: grid;
+  grid-template-columns: auto 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 42px 7px 8px;
+  cursor: pointer;
+}
+.character-builder .cb-keeper-radio-card > label > img {
+  width: 42px;
+  height: 42px;
+  object-fit: cover;
+  border: 1px solid rgba(211, 177, 91, .38);
+  border-radius: 3px;
+}
+.character-builder .cb-keeper-radio-card > label > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 3px;
+}
+.character-builder .cb-keeper-radio-card > label small {
+  opacity: .68;
+}
+.character-builder .cb-keeper-open-document {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  width: 30px;
+  height: 30px;
+  min-height: 0;
+  padding: 0;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: var(--dnd5e-color-gold, #d1b06b);
+}
+.character-builder .cb-keeper-land-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.character-builder .cb-keeper-land-card.current {
+  box-shadow: inset 3px 0 rgba(109, 155, 199, .8);
+}
+.character-builder .cb-keeper-land-card.selected {
+  border-color: rgba(231, 201, 121, .78);
+}
+.character-builder .cb-keeper-land-selector {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border-bottom: 1px solid rgba(211, 177, 91, .2);
+  cursor: pointer;
+}
+.character-builder .cb-keeper-land-selector > span {
+  display: flex;
+  flex-direction: column;
+}
+.character-builder .cb-keeper-land-selector em {
+  padding: 2px 6px;
+  border: 1px solid rgba(109, 155, 199, .5);
+  border-radius: 999px;
+  font-size: 11px;
+  font-style: normal;
+}
+.character-builder .cb-keeper-land-spells {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+}
+.character-builder .cb-keeper-land-spells section.locked {
+  opacity: .42;
+}
+.character-builder .cb-keeper-land-spells h5 {
+  margin: 0 0 5px;
+  opacity: .75;
+}
+.character-builder .cb-keeper-spell-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.character-builder .cb-keeper-spell-chip-list > button {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  max-width: 210px;
+  min-height: 34px;
+  padding: 3px 7px 3px 3px;
+  text-align: left;
+}
+.character-builder .cb-keeper-spell-chip-list img {
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+}
+.character-builder .cb-keeper-spell-chip-list span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.character-builder .cb-keeper-spell-chip-list strong,
+.character-builder .cb-keeper-spell-chip-list small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.character-builder .cb-keeper-roll-panel,
+.character-builder .cb-keeper-native-panel {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+  padding: 18px;
+  border: 1px solid rgba(211, 177, 91, .27);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, .025);
+}
+.character-builder .cb-keeper-roll-panel > img,
+.character-builder .cb-keeper-native-panel > img {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border: 1px solid rgba(211, 177, 91, .5);
+  border-radius: 5px;
+}
+.character-builder .cb-keeper-result {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(109, 155, 199, .4);
+  border-radius: 4px;
+  background: rgba(47, 79, 106, .14);
+}
+.character-builder .cb-keeper-result.ready {
+  border-color: rgba(102, 166, 98, .55);
+  background: rgba(53, 103, 52, .15);
+}
+.character-builder .cb-keeper-footer {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  min-height: 68px;
+  padding: 10px 16px;
+  border-top: 1px solid rgba(211, 177, 91, .38);
+  background: linear-gradient(180deg, rgba(27, 25, 22, .99), rgba(18, 17, 16, .99));
+  box-shadow: 0 -5px 14px rgba(0, 0, 0, .28);
+}
+.character-builder .cb-keeper-footer .cb-primary-confirm {
+  min-width: 300px;
+}
+.character-builder .cb-keeper-empty {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  min-height: 100%;
+  text-align: center;
+  opacity: .7;
+}
+.character-builder .cb-keeper-empty > i {
+  font-size: 46px;
+  color: var(--dnd5e-color-gold, #d1b06b);
+}
+.character-builder .cb-keeper-busy-overlay {
+  position: absolute;
+  z-index: 20;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  background: rgba(12, 12, 13, .86);
+  backdrop-filter: blur(2px);
+}
+.character-builder .cb-keeper-busy-overlay[hidden] {
+  display: none;
+}
+.character-builder .cb-keeper-busy-overlay > i {
+  font-size: 38px;
+  color: var(--dnd5e-color-gold, #d1b06b);
+  animation: cb-keeper-spin 1.4s linear infinite;
+}
+.character-builder .cb-keeper-busy-overlay strong {
+  font-size: 20px;
+}
+@keyframes cb-keeper-spin { to { transform: rotate(360deg); } }
+
+/* Wizard-only shortcut. The button intentionally reuses the exact square
+   control treatment used by the Level Up button. Only its icon and action differ. */
+.dnd5e2.sheet.actor.character .sheet-header-buttons .cb-scribe-spell-sheet-button {
+  max-width: 32px;
+  max-height: 32px;
+}
+
+@media (max-width: 900px) {
+  .character-builder .cb-keeper-body { grid-template-columns: 240px minmax(0, 1fr); }
+  .character-builder .cb-keeper-land-list,
+  .character-builder .cb-keeper-two-column { grid-template-columns: 1fr; }
+  .character-builder .cb-keeper-feature-header { align-items: flex-start; flex-direction: column; }
+  .character-builder .cb-keeper-feature-actions,
+  .character-builder .cb-keeper-feature-actions .cb-primary-confirm { width: 100%; }
+}
+
+/* 0.9.7b — explicit recovery after a completed native rest */
+.character-builder .cb-keeper-footer .cb-keeper-recover {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  min-height: 50px;
+  padding: 7px 12px;
+  border: 1px solid rgba(196, 112, 92, .7);
+  border-radius: 6px;
+  background: linear-gradient(180deg, rgba(139, 62, 48, .28), rgba(91, 39, 32, .18));
+  color: #f3c2b7;
+  text-align: left;
+}
+.character-builder .cb-keeper-footer .cb-keeper-recover:hover:not(:disabled) {
+  background: linear-gradient(180deg, rgba(162, 74, 57, .38), rgba(104, 44, 35, .24));
+}
+.character-builder .cb-keeper-footer .cb-keeper-recover > i { font-size: 19px; }
+.character-builder .cb-keeper-footer .cb-keeper-recover span,
+.character-builder .cb-keeper-footer .cb-keeper-recover strong,
+.character-builder .cb-keeper-footer .cb-keeper-recover small { display: block; min-width: 0; }
+.character-builder .cb-keeper-footer .cb-keeper-recover small { margin-top: 3px; opacity: .76; }
+
+/* 0.9.7c — Character Keeper visual guidance and stable sheet-control grid */
+.character-builder .cb-keeper-feature-icons {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  pointer-events: none;
+}
+.character-builder .cb-keeper-feature-icons > img {
+  width: 58px;
+  height: 58px;
+  object-fit: cover;
+  border: 1px solid rgba(211, 177, 91, .55);
+  border-radius: 5px;
+  pointer-events: none;
+  user-select: none;
+}
+.character-builder .cb-keeper-feature-icons > img.cb-keeper-feature-icon-secondary {
+  border-color: rgba(124, 154, 216, .62);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .42);
+}
+.character-builder .cb-war-bond-guide {
+  max-width: 860px;
+  margin: 0 auto;
+}
+.character-builder .cb-war-bond-steps {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.character-builder .cb-war-bond-steps > li {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 12px 14px;
+  border: 1px solid rgba(211, 177, 91, .25);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, .025);
+}
+.character-builder .cb-war-bond-steps > li > span {
+  display: grid;
+  place-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(211, 177, 91, .65);
+  border-radius: 50%;
+  color: #f0d58f;
+  background: rgba(101, 76, 31, .34);
+  font-weight: 700;
+}
+.character-builder .cb-war-bond-steps strong {
+  display: block;
+  margin-bottom: 3px;
+  color: #f1e5ca;
+}
+.character-builder .cb-war-bond-steps p {
+  margin: 0;
+  opacity: .78;
+}
+
+.dnd5e2.sheet.actor.character .sheet-header-buttons.cb-sheet-control-grid {
+  position: absolute;
+  display: grid !important;
+  grid-template-columns: repeat(3, 32px);
+  grid-template-rows: repeat(2, 32px);
+  grid-auto-flow: row;
+  gap: 4px;
+  align-items: center;
+  justify-items: center;
+  width: max-content;
+  min-width: 104px;
+  overflow: visible;
+  pointer-events: none;
+}
+.dnd5e2.sheet.actor.character .sheet-header-buttons.cb-sheet-control-grid > [data-action="rest"][data-type="short"] {
+  grid-column: 1;
+  grid-row: 2;
+  margin: 0;
+}
+.dnd5e2.sheet.actor.character .sheet-header-buttons.cb-sheet-control-grid > [data-action="rest"][data-type="long"] {
+  grid-column: 2;
+  grid-row: 2;
+  margin: 0;
+}
+.dnd5e2.sheet.actor.character .sheet-header-buttons.cb-sheet-control-grid > .cb-level-up-sheet-button {
+  grid-column: 3;
+  grid-row: 2;
+  margin: 0;
+  transform: none;
+}
+.dnd5e2.sheet.actor.character .sheet-header-buttons.cb-sheet-control-grid > .cb-scribe-spell-sheet-button {
+  position: static;
+  inset: auto;
+  grid-column: 3;
+  grid-row: 1;
+  margin: 0;
+  transform: none;
+}
+.dnd5e2.sheet.actor.character .sheet-header-buttons.cb-sheet-control-grid {
+  transform: translateY(-36px);
+}
+
+.dnd5e2.sheet.actor.character .sheet-header-buttons.cb-sheet-control-grid > [data-action="rest"],
+.dnd5e2.sheet.actor.character .sheet-header-buttons.cb-sheet-control-grid > .cb-level-up-sheet-button,
+.dnd5e2.sheet.actor.character .sheet-header-buttons.cb-sheet-control-grid > .cb-scribe-spell-sheet-button {
+  box-sizing: border-box;
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  min-height: 32px !important;
+  max-width: 32px !important;
+  max-height: 32px !important;
+  padding: 0 !important;
+  pointer-events: auto;
+}
+
+.dnd5e2.sheet.actor.character .sheet-header-buttons.cb-sheet-control-grid > .cb-scribe-spell-sheet-button::after {
+  pointer-events: none;
 }

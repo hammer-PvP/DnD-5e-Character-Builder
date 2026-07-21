@@ -1,8 +1,8 @@
 {
   "id": "dnd5e-character-builder",
   "title": "Character Builder",
-  "description": "D&D 2024 Character Creation and Level Up for Foundry VTT 14, with protected transactions, native Epic Boon gifts for level 20 characters, and guarded class progression.",
-  "version": "0.9.6",
+  "description": "D&D 2024 Character Creation, Level Up, Epic Boon gifts, and Character Keeper Short/Long Rest management for Foundry VTT 14.",
+  "version": "0.9.7c",
   "authors": [
     {
       "name": "Raphael Andrade"
@@ -49,7 +49,7 @@
   "readme": "README.md",
   "url": "https://github.com/hammer-PvP/DnD-5e-Character-Builder",
   "manifest": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/latest/download/module.json",
-  "download": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/download/v0.9.6/module.zip",
+  "download": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/download/v0.9.7c/module.zip",
   "bugs": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/issues",
-  "changelog": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/tag/v0.9.6"
+  "changelog": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/tag/v0.9.7c"
 }

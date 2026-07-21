@@ -2,7 +2,7 @@
   "CB.Title": "Character Builder",
   "CB.Settings.Title": "Character Builder Settings",
   "CB.Settings.Button": "Configure Character Builder",
-  "CB.Settings.Hint": "Configure content sources, Ability Score methods, the Starting Equipment Shop, Level Up availability, multiclassing, and Hit Point advancement.",
+  "CB.Settings.Hint": "Configure content sources, Ability Score methods, the Starting Equipment Shop, Level Up, Epic Boons, Character Keeper rest management, multiclassing, and Hit Point advancement.",
   "CB.Start": "Start Character Builder",
   "CB.Resume": "Resume Character Builder",
   "CB.Prompt.Title": "Create Player Character",
@@ -12,5 +12,9 @@
   "CB.LevelUp.Title": "Level Up",
   "CB.LevelUp.Grant": "Grant Level Up",
   "CB.LevelUp.Revoke": "Revoke Level Up",
-  "CB.LevelUp.Resume": "Resume Level Up"
+  "CB.LevelUp.Resume": "Resume Level Up",
+  "CB.Keeper.Title": "Character Keeper",
+  "CB.Keeper.ShortRest": "Short Rest Management",
+  "CB.Keeper.LongRest": "Long Rest Management",
+  "CB.Keeper.Scribe": "Scribe Spell to Spellbook"
 }

@@ -27,6 +27,8 @@ export class ClassProgressionGuard {
       || options.characterBuilderPactOfTheTomeRollback
       || options.characterBuilderEpicBoonGift
       || options.characterBuilderEpicBoonRollback
+      || options.characterBuilderRuntimeManagement
+      || options.characterBuilderRuntimeRollback
     );
   }
 

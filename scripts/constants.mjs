@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.6";
-export const MODULE_BUILD = "community-beta-096-epic-boon-and-class-entry-guard";
+export const MODULE_VERSION = "0.9.7c";
+export const MODULE_BUILD = "community-beta-097c-character-keeper-runtime-fixes";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -112,6 +112,7 @@ export function defaultSettings() {
     allowMulticlassing: true,
     enforceMulticlassRequirements: true,
     enableGrantEpicBoons: false,
+    chargeWizardScribingCosts: true,
     hitPointAdvancement: {
       methods: {
         roll: true,

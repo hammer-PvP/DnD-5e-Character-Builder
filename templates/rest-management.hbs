@@ -1,0 +1,404 @@
+<div class="cb-keeper-shell {{#if busy}}busy{{/if}}">
+  <header class="cb-keeper-header">
+    <div class="cb-keeper-actor">
+      <img src="{{actor.img}}" alt="{{actor.name}}">
+      <div>
+        <span class="cb-kicker">Character Keeper</span>
+        <h1>{{actor.name}}</h1>
+        <p>{{#if externalMode}}Wizard Spellbook Management{{else}}{{restLabel}} Management · Character Level {{actor.level}}{{/if}}</p>
+      </div>
+    </div>
+    <div class="cb-keeper-header-status">
+      {{#if externalMode}}
+      <i class="fa-solid fa-book-open-reader"></i>
+      <strong>Scribe Spell</strong>
+      {{else}}
+      <i class="fa-solid {{#if (eq restType 'short')}}fa-mug-hot{{else}}fa-campground{{/if}}"></i>
+      <strong>{{restLabel}}</strong>
+      {{/if}}
+      <small>Sources: {{sourceOrder}}</small>
+    </div>
+  </header>
+
+  <div class="cb-keeper-body">
+    <aside class="cb-keeper-sidebar">
+      <div class="cb-keeper-sidebar-heading">
+        <span class="cb-kicker">Available Actions</span>
+        <p>Every action is optional. Select one to manage it.</p>
+      </div>
+      <nav class="cb-keeper-actions" aria-label="Character Keeper actions">
+        {{#each actions}}
+        <button type="button" class="cb-keeper-action {{#if selected}}selected{{/if}} {{#if complete}}complete{{/if}}"
+          data-action="select-rest-action" data-action-id="{{id}}" {{#if ../busy}}disabled{{/if}}>
+          <img src="{{img}}" alt="">
+          <span>
+            <strong>{{label}}</strong>
+            <small>{{#if complete}}Choice ready{{else}}{{description}}{{/if}}</small>
+          </span>
+          {{#if complete}}<i class="fa-solid fa-circle-check" aria-label="Choice ready"></i>{{else}}<i class="fa-solid fa-chevron-right"></i>{{/if}}
+        </button>
+        {{/each}}
+      </nav>
+      {{#unless externalMode}}
+      <div class="cb-keeper-sidebar-note">
+        <i class="fa-solid fa-circle-info"></i>
+        <p>Normal recovery, spell preparation, slots, uses, dice, and effects remain controlled by D&amp;D5e.</p>
+      </div>
+      {{/unless}}
+    </aside>
+
+    <main class="cb-keeper-main">
+      {{#if selected}}
+      <header class="cb-keeper-feature-header">
+        <div class="cb-keeper-feature-title">
+          <span class="cb-keeper-feature-icons" aria-hidden="true">
+            <img src="{{selected.img}}" alt="" draggable="false">
+            {{#if selected.secondaryImg}}<img class="cb-keeper-feature-icon-secondary" src="{{selected.secondaryImg}}" alt="" draggable="false">{{/if}}
+          </span>
+          <div>
+            <span class="cb-kicker">{{#if selected.complete}}Choice Ready{{else}}Optional Rest Action{{/if}}</span>
+            <h2>{{selected.label}}</h2>
+            <p>{{selected.description}}</p>
+          </div>
+        </div>
+        {{#unless selected.isWarBondGuide}}
+        <div class="cb-keeper-feature-actions">
+          {{#if selected.isRoll}}
+          <button type="button" class="cb-primary-confirm" data-action="roll-current-action" {{#if selected.rollContext.locked}}disabled{{/if}} {{#if busy}}disabled{{/if}}>
+            <i class="fa-solid fa-dice"></i>
+            <span><strong>{{#if selected.rollContext.locked}}Roll Locked{{else}}{{selected.applyLabel}}{{/if}}</strong><small>Visible to player and GM in chat</small></span>
+          </button>
+          {{else if selected.isNativeFeature}}
+          <button type="button" class="cb-primary-confirm" data-action="invoke-native-feature" {{#if busy}}disabled{{/if}}>
+            <i class="fa-solid fa-arrow-up-right-from-square"></i>
+            <span><strong>{{selected.applyLabel}}</strong><small>Use the source-native feature routine</small></span>
+          </button>
+          {{else}}
+          <button type="button" class="cb-primary-confirm" data-action="apply-current-action" {{#if busy}}disabled{{/if}}>
+            <i class="fa-solid fa-circle-check"></i>
+            <span><strong>{{selected.applyLabel}}</strong><small>Apply when this rest completes</small></span>
+          </button>
+          {{/if}}
+        </div>
+        {{/unless}}
+      </header>
+
+      <div class="cb-keeper-scroll">
+        {{#if selected.complete}}
+        <p class="cb-notice success"><i class="fa-solid fa-circle-check"></i> This action has a confirmed choice ready for the current {{restLabel}}. You can reopen it and replace that pending choice before continuing.</p>
+        {{/if}}
+
+        {{#if selected.isWeaponMastery}}
+        <section class="cb-keeper-section">
+          <header class="cb-choice-section-header">
+            <div><h3>Weapon Mastery Changes</h3><p>Each class uses its own Long Rest rule. Leave unused replacement rows blank.</p></div>
+          </header>
+          {{#each selected.masteryGroups}}
+          <section class="cb-keeper-class-group" data-mastery-group data-class-item-id="{{classItemId}}" data-max-changes="{{maxChanges}}">
+            <header>
+              <h4>{{className}}</h4>
+              <span>Level {{classLevel}} · {{#if oneChange}}Change 1 of {{currentCount}}{{else}}Change up to {{maxChanges}} of {{currentCount}}{{/if}}</span>
+            </header>
+            <div class="cb-keeper-mastery-slots">
+              {{#each changeSlots}}
+              <article class="cb-keeper-mastery-slot" data-mastery-change-slot data-slot-index="{{index}}">
+                <label>
+                  <span>Current Mastery {{#unless ../oneChange}}{{add index 1}}{{/unless}}</span>
+                  <select name="keeper.mastery.oldKey">
+                    <option value="">No change</option>
+                    {{#each ../currentChoices}}
+                    <option value="{{key}}" {{#if (eq key ../selectedOldKey)}}selected{{/if}}>{{label}}</option>
+                    {{/each}}
+                  </select>
+                </label>
+                <i class="fa-solid fa-arrow-right-arrow-left"></i>
+                <label>
+                  <span>Replace With</span>
+                  <select name="keeper.mastery.newKey">
+                    <option value="">Choose replacement weapon</option>
+                    {{#each ../options}}
+                    <option value="{{masteryKey}}" data-base-item="{{baseItem}}" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}"
+                      {{#if (eq masteryKey ../selectedNewKey)}}selected{{/if}} {{#if disabled}}disabled{{/if}}>{{name}} · {{sourceLabel}}</option>
+                    {{/each}}
+                  </select>
+                </label>
+              </article>
+              {{/each}}
+            </div>
+          </section>
+          {{/each}}
+        </section>
+        {{/if}}
+
+        {{#if selected.isEffectChoice}}
+        <section class="cb-keeper-section">
+          <header class="cb-choice-section-header"><div><h3>Choose Active Option</h3><p>Current: <strong>{{selected.effectChoice.current}}</strong></p></div></header>
+          <div class="cb-keeper-option-grid">
+            {{#each selected.effectChoice.options}}
+            <article class="cb-keeper-radio-card {{#if active}}current{{/if}}" data-document-card>
+              <label>
+                <input type="radio" name="keeper.effectId" value="{{id}}" {{#if (eq id ../selected.effectChoice.selected)}}checked{{/if}}>
+                <img src="{{img}}" alt=""><span><strong>{{label}}</strong><small>{{#if active}}Currently active{{else}}Available after rest{{/if}}</small></span>
+              </label>
+            </article>
+            {{/each}}
+          </div>
+        </section>
+        {{/if}}
+
+        {{#if selected.isActivityChoice}}
+        <section class="cb-keeper-section">
+          <header class="cb-choice-section-header"><div><h3>Choose Feature Option</h3><p>Current: <strong>{{selected.activityChoice.currentLabel}}</strong></p></div></header>
+          <div class="cb-keeper-option-grid">
+            {{#each selected.activityChoice.options}}
+            <article class="cb-keeper-radio-card {{#if (eq value ../selected.activityChoice.current)}}current{{/if}}">
+              <label>
+                <input type="radio" name="keeper.activityValue" value="{{value}}" {{#if (eq value ../selected.activityChoice.selected)}}checked{{/if}}>
+                <img src="{{img}}" alt=""><span><strong>{{label}}</strong><small>{{#if (eq value ../selected.activityChoice.current)}}Current choice{{else}}Available choice{{/if}}</small></span>
+              </label>
+            </article>
+            {{/each}}
+          </div>
+        </section>
+        {{/if}}
+
+        {{#if selected.isLand}}
+        <section class="cb-keeper-section">
+          <header class="cb-choice-section-header"><div><h3>Circle Land</h3><p>Current Land: <strong>{{selected.landContext.currentLabel}}</strong>. Circle Spells and Nature's Ward update together.</p></div></header>
+          <div class="cb-keeper-land-list">
+            {{#each selected.landContext.lands}}
+            <article class="cb-keeper-land-card {{#if current}}current{{/if}} {{#if selected}}selected{{/if}}">
+              <label class="cb-keeper-land-selector">
+                <input type="radio" name="keeper.land" value="{{id}}" {{#if selected}}checked{{/if}}>
+                <span><strong>{{label}}</strong><small>Nature's Ward: {{resistance}} resistance</small></span>
+                {{#if current}}<em>Current</em>{{/if}}
+              </label>
+              <div class="cb-keeper-land-spells">
+                {{#each spellGroups}}
+                <section class="{{#unless unlocked}}locked{{/unless}}">
+                  <h5>Druid Level {{druidLevel}} {{#unless unlocked}}· Locked{{/unless}}</h5>
+                  <div class="cb-keeper-spell-chip-list">
+                    {{#each spells}}
+                    <button type="button" data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}} details">
+                      <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}} · {{sourceLabel}}</small></span>
+                    </button>
+                    {{/each}}
+                  </div>
+                </section>
+                {{/each}}
+              </div>
+            </article>
+            {{/each}}
+          </div>
+        </section>
+        {{/if}}
+
+        {{#if selected.isWildShape}}
+        <section class="cb-keeper-section cb-keeper-two-column">
+          <div>
+            <header class="cb-choice-section-header"><div><h3>Known Form to Replace</h3><p>Maximum CR {{selected.wildShapeContext.maxCrLabel}}{{#unless selected.wildShapeContext.flyAllowed}} · Flying forms unavailable{{/unless}}</p></div></header>
+            <div class="cb-keeper-card-list">
+              {{#each selected.wildShapeContext.current}}
+              <article class="cb-keeper-radio-card">
+                <label><input type="radio" name="keeper.wildShape.oldUuid" value="{{uuid}}" {{#if (eq uuid ../selected.wildShapeContext.replacingId)}}checked{{/if}}>
+                  <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>CR {{cr}}{{#if fly}} · Fly{{/if}}</small></span></label>
+              </article>
+              {{/each}}
+            </div>
+          </div>
+          <div>
+            <header class="cb-choice-section-header"><div><h3>Eligible Replacement</h3><p>Creatures with missing, empty, or non-numeric CR are excluded.</p></div></header>
+            <input type="search" placeholder="Search eligible Beast forms" data-filter-target="#cb-keeper-wild-shape-options">
+            <div id="cb-keeper-wild-shape-options" class="cb-keeper-card-list tall">
+              {{#each selected.wildShapeContext.options}}
+              <article class="cb-keeper-radio-card {{#if disabled}}disabled{{/if}}" data-search="{{name}} {{sourceLabel}}">
+                <label title="{{#if disabled}}Already known{{else}}Select {{name}}{{/if}}"><input type="radio" name="keeper.wildShape.newUuid" value="{{uuid}}" {{#if (eq uuid ../selected.wildShapeContext.selectedUuid)}}checked{{/if}} {{#if disabled}}disabled{{/if}}>
+                  <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>CR {{crLabel}}{{#if fly}} · Fly{{/if}} · {{sourceLabel}}</small></span></label>
+              </article>
+              {{/each}}
+            </div>
+          </div>
+        </section>
+        {{/if}}
+
+        {{#if selected.isPactTome}}
+        <section class="cb-keeper-section">
+          <p class="cb-notice"><i class="fa-solid fa-book"></i> The existing Book of Shadows is preserved. Current selections are preselected; reconfirming the same five spells creates no duplicate Items.</p>
+          {{> "modules/dnd5e-character-builder/templates/partials/pact-of-the-tome-selection.hbs"
+            pact=selected.pactOfTheTome managed=true idPrefix="keeper-tome" fieldPrefix="keeper.tome"}}
+        </section>
+        {{/if}}
+
+        {{#if selected.isReplaceCantrip}}
+        <section class="cb-keeper-section cb-keeper-two-column">
+          <div>
+            <header class="cb-choice-section-header"><div><h3>Current Wizard Cantrip</h3><p>Select exactly one cantrip learned through Wizard Spellcasting.</p></div></header>
+            <div class="cb-keeper-card-list">
+              {{#each selected.replaceCantrip.current}}
+              <article class="cb-keeper-radio-card {{#if disabled}}disabled{{/if}}" title="{{disabledReason}}">
+                <label><input type="radio" name="keeper.cantrip.oldItemId" value="{{id}}" {{#if (eq id ../selected.replaceCantrip.oldItemId)}}checked{{/if}} {{#if disabled}}disabled{{/if}}>
+                  <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{#if disabled}}{{disabledReason}}{{else}}Known Wizard cantrip{{/if}}</small></span></label>
+              </article>
+              {{/each}}
+            </div>
+          </div>
+          <div>
+            <header class="cb-choice-section-header"><div><h3>Replacement Cantrip</h3><p>Official Wizard cantrips from enabled sources.</p></div></header>
+            <input type="search" placeholder="Search Wizard cantrips" data-filter-target="#cb-keeper-cantrip-options">
+            <div id="cb-keeper-cantrip-options" class="cb-keeper-card-list tall">
+              {{#each selected.replaceCantrip.options}}
+              <article class="cb-keeper-radio-card {{#if disabled}}disabled{{/if}}" data-search="{{name}} {{sourceLabel}}" data-document-card>
+                <label><input type="radio" name="keeper.cantrip.newUuid" value="{{uuid}}" {{#if (eq uuid ../selected.replaceCantrip.newUuid)}}checked{{/if}} {{#if disabled}}disabled{{/if}}>
+                  <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{sourceLabel}}</small></span></label>
+                <button type="button" class="cb-keeper-open-document" data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}} details"><i class="fa-solid fa-book-open"></i></button>
+              </article>
+              {{/each}}
+            </div>
+          </div>
+        </section>
+        {{/if}}
+
+        {{#if selected.isReplacePreparedSpell}}
+        <section class="cb-keeper-section cb-keeper-two-column">
+          <div>
+            <header class="cb-choice-section-header"><div><h3>Current {{selected.replacePreparedSpell.className}} Spell</h3><p>Select exactly one spell prepared through this class.</p></div></header>
+            <div class="cb-keeper-card-list tall">
+              {{#each selected.replacePreparedSpell.current}}
+              <article class="cb-keeper-radio-card">
+                <label><input type="radio" name="keeper.preparedSpell.oldItemId" value="{{id}}" {{#if (eq id ../selected.replacePreparedSpell.oldItemId)}}checked{{/if}}>
+                  <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}}</small></span></label>
+              </article>
+              {{/each}}
+            </div>
+          </div>
+          <div>
+            <header class="cb-choice-section-header"><div><h3>Replacement {{selected.replacePreparedSpell.className}} Spell</h3><p>Official class spells of levels 1–{{selected.replacePreparedSpell.maxLevel}} from enabled sources.</p></div></header>
+            <input type="search" placeholder="Search {{selected.replacePreparedSpell.className}} spells" data-filter-target="#cb-keeper-prepared-spell-options">
+            <div id="cb-keeper-prepared-spell-options" class="cb-keeper-card-list tall">
+              {{#each selected.replacePreparedSpell.options}}
+              <article class="cb-keeper-radio-card {{#if disabled}}disabled{{/if}}" data-search="{{name}} {{levelLabel}} {{sourceLabel}}" data-document-card>
+                <label><input type="radio" name="keeper.preparedSpell.newUuid" value="{{uuid}}" {{#if (eq uuid ../selected.replacePreparedSpell.newUuid)}}checked{{/if}} {{#if disabled}}disabled{{/if}}>
+                  <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}} · {{sourceLabel}}</small></span></label>
+                <button type="button" class="cb-keeper-open-document" data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}} details"><i class="fa-solid fa-book-open"></i></button>
+              </article>
+              {{/each}}
+            </div>
+          </div>
+        </section>
+        {{/if}}
+
+        {{#if selected.isSpellMastery}}
+        <section class="cb-keeper-section cb-keeper-two-column">
+          <div>
+            <header class="cb-choice-section-header"><div><h3>Current Spell Mastery</h3><p>Choose one of the two mastered spells.</p></div></header>
+            <div class="cb-keeper-card-list">
+              {{#each selected.spellMastery.current}}
+              <article class="cb-keeper-radio-card">
+                <label><input type="radio" name="keeper.spellMastery.oldItemId" value="{{id}}" data-level="{{level}}" {{#if (eq id ../selected.spellMastery.oldItemId)}}checked{{/if}}>
+                  <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>Level {{level}}</small></span></label>
+              </article>
+              {{/each}}
+            </div>
+          </div>
+          <div>
+            <header class="cb-choice-section-header"><div><h3>New Mastered Spell</h3><p>Must be an eligible spell of the same level with an Action casting time.</p></div></header>
+            <div class="cb-keeper-card-list tall">
+              {{#each selected.spellMastery.candidates}}
+              <article class="cb-keeper-radio-card" data-spell-mastery-candidate data-item-id="{{id}}" data-level="{{level}}">
+                <label><input type="radio" name="keeper.spellMastery.newItemId" value="{{id}}" {{#if (eq id ../selected.spellMastery.newItemId)}}checked{{/if}}>
+                  <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}}</small></span></label>
+              </article>
+              {{/each}}
+            </div>
+          </div>
+        </section>
+        {{/if}}
+
+        {{#if selected.isRoll}}
+        <section class="cb-keeper-section cb-keeper-roll-panel">
+          <img src="{{selected.rollContext.feature.img}}" alt="">
+          <div>
+            <h3>{{selected.label}}</h3>
+            <p>Formula: <strong>{{selected.rollContext.formula}}</strong>. The result is posted publicly to chat and locked for this pending rest.</p>
+            {{#if selected.rollContext.active}}
+            <div class="cb-keeper-result"><span>Current active state</span><strong>{{#if selected.isCosmicOmen}}{{selected.rollContext.active.omen}}{{else}}{{selected.rollContext.active.results}}{{/if}}</strong></div>
+            <p class="cb-notice warning"><i class="fa-solid fa-hourglass-end"></i> The current result expires when this Long Rest completes. Roll now to replace it with a new result.</p>
+            {{/if}}
+            {{#if selected.rollContext.locked}}
+            <div class="cb-keeper-result ready"><span>New result ready</span><strong>{{#if selected.isCosmicOmen}}{{selected.rollContext.locked.omen}} · {{selected.rollContext.locked.results}}{{else}}{{selected.rollContext.locked.results}}{{/if}}</strong></div>
+            {{else}}
+            <p class="cb-notice"><i class="fa-solid fa-lock"></i> Once rolled, closing and reopening Character Keeper preserves this result and prevents a reroll exploit.</p>
+            {{/if}}
+          </div>
+        </section>
+        {{/if}}
+
+        {{#if selected.isScribe}}
+        <section class="cb-keeper-section">
+          <header class="cb-choice-section-header"><div><h3>Written Wizard Spells</h3><p>{{#if selected.scribeContext.chargeCosts}}Cost: 50 GP and 2 hours per spell level.{{else}}Gold costs are disabled by the GM. Time is still displayed for roleplay.{{/if}} Available currency: {{selected.scribeContext.availableGp}} GP.</p></div></header>
+          <div class="cb-keeper-card-list">
+            {{#each selected.scribeContext.sources}}
+            <article class="cb-keeper-radio-card cb-keeper-scribe-card {{#unless affordable}}disabled{{/unless}}" data-scribe-source-id="{{sourceItemId}}" data-spell-uuid="{{spellUuid}}" data-document-card>
+              <label><input type="radio" name="keeper.scribe.sourceItemId" value="{{sourceItemId}}" data-affordable="{{#if affordable}}true{{else}}false{{/if}}" {{#if (eq sourceItemId ../selected.scribeContext.selectedSourceItemId)}}checked{{/if}} {{#unless affordable}}disabled{{/unless}}>
+                <img src="{{spellImg}}" alt=""><span><strong>{{spellName}}</strong><small>{{levelLabel}} · {{costLabel}} · {{timeHours}} hours · Arcana DC {{arcanaDc}} · Source: {{sourceItemName}}</small></span></label>
+              {{#if sourceUuid}}<button type="button" class="cb-keeper-open-document" data-action="open-document" data-uuid="{{sourceUuid}}" title="Open {{spellName}} details"><i class="fa-solid fa-book-open"></i></button>{{/if}}
+            </article>
+            {{/each}}
+          </div>
+          <p class="cb-notice warning"><i class="fa-solid fa-scroll"></i> Attempting the copy makes a public Intelligence (Arcana) check against DC 10 + spell level. The Spell Scroll is destroyed whether the check succeeds or fails.</p>
+        </section>
+        {{/if}}
+
+
+        {{#if selected.isWarBondGuide}}
+        <section class="cb-keeper-section cb-war-bond-guide">
+          <p class="cb-notice"><i class="fa-solid fa-shield-halved"></i> Character Keeper is only a reminder for this feature. Weapon selection and binding remain controlled by the native D&amp;D5e War Bond activity.</p>
+          <ol class="cb-war-bond-steps">
+            <li><span>1</span><div><strong>Open War Bond on the Character Sheet</strong><p>Go to the <em>Features</em> tab and open the native <strong>War Bond</strong> feature.</p></div></li>
+            <li><span>2</span><div><strong>Use Bond with Weapon</strong><p>Run the native activity. D&amp;D5e creates the War Bond enchantment card in chat.</p></div></li>
+            <li><span>3</span><div><strong>Open the Inventory</strong><p>Return to the character inventory while keeping the chat card visible.</p></div></li>
+            <li><span>4</span><div><strong>Drag the Weapon to Chat</strong><p>Drag an inventory weapon onto the card area labeled <em>“Place item here to enchant it…”</em>.</p></div></li>
+            <li><span>5</span><div><strong>Bind a Second Weapon When Needed</strong><p>Repeat the native process for the second permitted weapon, then complete the binding through D&amp;D5e.</p></div></li>
+          </ol>
+          <p class="cb-notice warning"><i class="fa-solid fa-circle-info"></i> The two header images are visual cues only. They do not open War Bond, Mordenkainen’s Sword, or any other document.</p>
+        </section>
+        {{/if}}
+
+        {{#if selected.isNativeFeature}}
+        <section class="cb-keeper-section cb-keeper-native-panel">
+          <img src="{{selected.feature.img}}" alt="">
+          <div><h3>{{selected.feature.name}}</h3><p>Character Keeper does not rebuild this feature. Use the button above to open the D&amp;D5e source-native routine.</p></div>
+        </section>
+        {{/if}}
+      </div>
+      {{else}}
+      <div class="cb-keeper-empty"><i class="fa-solid fa-bed"></i><h2>No optional actions</h2><p>The native rest can continue normally.</p></div>
+      {{/if}}
+    </main>
+  </div>
+
+  <footer class="cb-keeper-footer">
+    {{#if nativeRestCompleted}}
+    <button type="button" class="cb-keeper-recover" data-action="recover-rest-management" {{#if busy}}disabled{{/if}}>
+      <i class="fa-solid fa-rotate-left"></i>
+      <span><strong>Discard Pending Changes</strong><small>Keep the completed native rest and close Keeper</small></span>
+    </button>
+    {{else}}
+    <button type="button" data-action="cancel-rest-management" {{#if busy}}disabled{{/if}}>
+      <i class="fa-solid fa-xmark"></i> {{#if externalMode}}Close{{else}}Cancel{{/if}}
+    </button>
+    {{/if}}
+    {{#unless externalMode}}
+    <button type="button" class="cb-primary-confirm" data-action="continue-rest" {{#if busy}}disabled{{/if}}>
+      <i class="fa-solid {{#if nativeRestCompleted}}fa-gears{{else}}fa-bed{{/if}}"></i>
+      <span><strong>{{continueLabel}}</strong><small>{{continueHint}}</small></span>
+    </button>
+    {{/unless}}
+  </footer>
+
+  <div class="cb-keeper-busy-overlay" data-keeper-busy {{#unless busy}}hidden{{/unless}}>
+    <i class="fa-solid fa-gears"></i>
+    <strong>{{busyLabel}}</strong>
+    <p>Updating your character. Please wait.</p>
+  </div>
+</div>

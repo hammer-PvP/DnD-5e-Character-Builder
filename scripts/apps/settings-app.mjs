@@ -101,6 +101,7 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       allowMulticlassing: form.querySelector('[name="allowMulticlassing"]')?.checked ?? false,
       enforceMulticlassRequirements: form.querySelector('[name="enforceMulticlassRequirements"]')?.checked ?? true,
       enableGrantEpicBoons: form.querySelector('[name="enableGrantEpicBoons"]')?.checked ?? false,
+      chargeWizardScribingCosts: form.querySelector('[name="chargeWizardScribingCosts"]')?.checked ?? true,
       hitPointAdvancement: {
         methods: hpMethods,
         defaultMethod,

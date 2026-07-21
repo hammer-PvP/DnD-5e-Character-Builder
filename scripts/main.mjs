@@ -9,6 +9,7 @@ import { AdvancementChoiceAnnotationService } from "./services/advancement-choic
 import { ActorCommitService } from "./services/actor-commit-service.mjs";
 import { EpicBoonService } from "./services/epic-boon-service.mjs";
 import { ClassProgressionGuard } from "./services/class-progression-guard.mjs";
+import { RestManagementApp } from "./apps/rest-management-app.mjs";
 
 Hooks.once("init", async () => {
   if (!Handlebars.helpers.eq) Handlebars.registerHelper("eq", (a, b) => a === b);
@@ -73,6 +74,8 @@ Hooks.once("init", async () => {
     levelUpEligible: actor => LevelUpService.eligibility(actor),
     epicBoonEligible: actor => EpicBoonService.grantEligibility(actor),
     claimEpicBoon: actor => EpicBoonService.claim(actor),
+    openKeeper: (actor, restType = "long", config = {}) => RestManagementApp.launch(actor, restType, config),
+    scribeSpell: actor => RestManagementApp.launchScribe(actor),
     openTool: () => game.user.isGM ? new CharacterBuilderToolApp().render({ force: true }) : null
   };
 });
@@ -111,6 +114,9 @@ Hooks.on("preCreateItem", (item, data, options) =>
 Hooks.on("dnd5e.preAdvancementManagerComplete", (manager, updates, toCreate, toUpdate, toDelete) =>
   ClassProgressionGuard.blockNativeAdvancement(manager, updates, toCreate, toUpdate, toDelete)
 );
+
+Hooks.on("dnd5e.preShortRest", (actor, config) => interceptRest(actor, "short", config));
+Hooks.on("dnd5e.preLongRest", (actor, config) => interceptRest(actor, "long", config));
 
 Hooks.on("createActor", async (actor, _options, userId) => {
   if (userId !== game.user.id || !isCreationEligible(actor)) return;
@@ -266,12 +272,67 @@ function renderCharacterActorSheetControls(app, element) {
   const root = element instanceof HTMLElement ? element : element?.[0] ?? app.element;
   if (!root) return;
 
+  const progressionControls = sheetProgressionContainer(root);
+  progressionControls?.classList.toggle("cb-sheet-control-grid", actor.isOwner && actor.items.some(item => item.type === "class"));
   if (isCreationEligible(actor)) injectCreationButton(actor, root);
   else if (actor.isOwner && actor.items.some(item => item.type === "class")) injectLevelUpButton(actor, root);
   replaceNativeClassEntryControls(actor, root);
+  injectScribeSpellButton(actor, root);
   injectCantripAugmentAnnotations(actor, root);
   injectInvocationTargetAnnotations(actor, root);
   injectAdvancementChoiceAnnotations(actor, root);
+}
+
+function interceptRest(actor, restType, config = {}) {
+  if (config?.characterBuilderRestBypass) return true;
+  if (!actor || actor.type !== "character") return true;
+  if (actor.getFlag(MODULE_ID, "isDraft") || actor.getFlag(MODULE_ID, "isLevelUpDraft")) return true;
+  if (!actor.isOwner) return true;
+  if (actor.getFlag(MODULE_ID, "runtimeManagementSafetyLock")) {
+    ui.notifications.error("Character Keeper is safety-locked for this Actor. A GM must inspect the previous failed transaction before another rest.", { permanent: true });
+    return false;
+  }
+  void RestManagementApp.launch(actor, restType, config ?? {}).catch(error => {
+    console.error(`${MODULE_ID} | Character Keeper could not start.`, error);
+    ui.notifications.error(error.message);
+  });
+  return false;
+}
+
+function injectScribeSpellButton(actor, root) {
+  const container = sheetProgressionContainer(root);
+  if (!container) return;
+  const existing = container.querySelector(".cb-scribe-spell-sheet-button");
+  const wizard = actor.items.find(item => item.type === "class" && item.system?.identifier === "wizard");
+  if (!actor.isOwner || !wizard) {
+    existing?.remove();
+    return;
+  }
+  const longRest = container.querySelector('[data-action="rest"][data-type="long"]');
+  if (!longRest) {
+    existing?.remove();
+    return;
+  }
+  let button = existing;
+  if (!button) {
+    button = document.createElement("button");
+    button.type = "button";
+    button.className = "cb-scribe-spell-sheet-button gold-button";
+    button.innerHTML = '<i class="fa-solid fa-book-open" inert></i>';
+    button.dataset.tooltip = "Scribe Spell to Spellbook";
+    button.setAttribute("aria-label", "Scribe Spell to Spellbook");
+    button.addEventListener("click", async event => {
+      event.preventDefault();
+      event.stopPropagation();
+      try {
+        await RestManagementApp.launchScribe(actor);
+      } catch (error) {
+        console.error(`${MODULE_ID} | Scribe Spell could not open.`, error);
+        ui.notifications.error(error.message);
+      }
+    });
+    container.append(button);
+  }
 }
 
 function findSheetHeader(root) {

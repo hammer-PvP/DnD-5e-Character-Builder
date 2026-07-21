@@ -1,6 +1,6 @@
 # Character Builder
 
-Character Builder is a guided D&D 2024 character creation and Level Up module for Foundry Virtual Tabletop 14 and D&D5e 5.3.3.
+Character Builder is a guided D&D 2024 character creation, Level Up, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14 and D&D5e 5.3.3.
 
 ## Official compatibility
 
@@ -9,7 +9,7 @@ Character Builder is a guided D&D 2024 character creation and Level Up module fo
 - Foundry VTT 14.364
 - D&D5e 5.3.3
 
-SRD 5.1 Legacy is not officially supported. Runtime Character Management remains a future top-level capability and is not included in this release.
+SRD 5.1 Legacy is not officially supported. Character Keeper is under active testing in version 0.9.7c as an experimental Short Rest, Long Rest, and Wizard spellbook-management capability.
 
 ## Level 1 creation
 
@@ -23,11 +23,70 @@ SRD 5.1 Legacy is not officially supported. Runtime Character Management remains
 - Transactional mundane Starting Equipment Shop with Checkout, exact purchase manifests, containers, quantity support, and GM Bonus Gold.
 - Review and recoverable application to the original Actor.
 
-## Character Builder 0.9.6 community beta
+## Character Builder 0.9.7c — Character Keeper runtime correction patch
 
-Level Up uses a separate hidden transaction Draft. Native and module-managed choices are resolved on that Draft, and the live Actor is not changed until **Commit Level Up** succeeds.
+Version 0.9.7c consolidates the next focused Character Keeper fixes discovered during live testing. It remains based on the stable 0.9.6 Character Creation and Level Up code plus the isolated runtime-management layer. Wizard cantrip replacement was validated in 0.9.7b and is intentionally unchanged.
 
-Version 0.9.6 is built directly on the validated 0.9.5k codebase. It preserves the complete Character Creation and Level Up transaction model without migrating or rewriting existing Actor history. The release adds an optional GM Epic Boon gift flow for level 20 characters, replaces the native Add Class entry with a second Start Character Builder entry, and guards direct class, subclass, and class-feature insertion while leaving normal item drag-and-drop untouched.
+- **Runtime badge reconciliation:** Character Keeper now replaces stale Character Builder choice badges instead of stacking a new runtime badge beside the original Character Creation or Level Up badge. The first reconciled families are Weapon Mastery, Spell Mastery, and Pact of the Tome. Only module-owned badge metadata is changed; Actor mechanics remain authoritative and the badge update participates in the same rollback-protected transaction.
+- **Weapon Mastery:** after a Long Rest replacement, each owning class keeps one current Weapon Mastery badge. The previous weapon label is removed rather than retained beside the new choice, and multiclass ownership remains separated by class Item and class identifier.
+- **Spell Mastery:** the D&D5e native enchantment remains responsible for adding and removing the `, Mastered` spell-name suffix and for the free-cast behavior. Character Keeper now moves only the Character Builder `Spell Mastery` badge from the old spell to the two currently mastered spells. It does not rename spells or recreate the native effect.
+- **Pact of the Tome:** the 0.9.7b locked-cantrip and pre-rest validation corrections remain in place. A confirmed rest selection now also replaces the old Pact of the Tome badge with the current three cantrips and two level 1 Ritual spells.
+- **Native Spell Scroll recognition:** Scribe Spell now recognizes the normal D&D5e 5.3.3 Spell Scroll produced by dragging a spell into the inventory and accepting the native scroll prompt. These Items may contain attack, save, or utility Activities without `activity.spell.uuid`; Character Keeper resolves them through an official effect origin when present, otherwise through an exact unambiguous scroll name and spell-level match against enabled official sources.
+- **Scribing messages:** a compatible scroll remains visible even when the Actor cannot afford the transcription cost. Empty-state notifications now distinguish no scroll, an unresolved scroll, a non-Wizard spell, a spell already in the spellbook, and a spell above the maximum level the Wizard can prepare.
+- **War Bond guidance:** War Bond remains listed once in an eligible Short or Long Rest, but Character Keeper no longer opens or executes the feature. Its panel is dedicated to instructions for using the native feature and chat enchantment card. The header displays the official War Bond image and, when the PHB 2024 source is available, only the image asset from Mordenkainen's Sword as a second noninteractive visual cue. Neither image opens a document or imports spell mechanics.
+- **Character-sheet controls:** Short Rest, Long Rest, and Level Up are aligned on one lower row. The Wizard Scribe Spell shortcut occupies the upper-right cell directly above Level Up, without changing the native actions behind any control.
+
+Signature Spells clickable badges remain a future runtime convenience. This patch does not add that behavior: the native `Expend First Spell` and `Expend Second Spell` Activities remain authoritative.
+
+## Character Builder 0.9.7b — Pact of the Tome and rest recovery correction
+
+Version 0.9.7b remains based directly on the stable 0.9.6 code plus the isolated Character Keeper layer. It corrects the first runtime issue found in 0.9.7a without changing Character Creation, Level Up, Epic Boon, or native class-entry behavior.
+
+- A current Pact of the Tome cantrip targeted by Agonizing Blast, Eldritch Spear, Repelling Blast, or another recorded cantrip-dependent Invocation remains preselected and locked against removal, but is now valid to keep and reconfirm.
+- Pact of the Tome still offers cantrips and level 1 Ritual spells from any enabled class list. Chosen spells function as Warlock spells while the Book of Shadows is carried.
+- A locked cantrip cannot be removed during rest because Eldritch Invocation retargeting is not granted by Pact of the Tome or by a rest.
+- Pact of the Tome choices are preflight-validated when confirmed and again before the native rest starts. An invalid staged choice can no longer complete the native rest first.
+- If a post-rest Character Keeper transaction still fails after the native rest has completed, the interface now exposes **Discard Pending Changes**. This clears only the pending Keeper session, keeps the completed native rest, and remains unavailable when the Actor has a rollback safety lock.
+
+## Character Builder 0.9.7a — Character Keeper test build
+
+Version 0.9.7a is built directly on the runtime-validated 0.9.6 release. Version 0.9.6 remains the stable rollback baseline. This test build does not migrate, rewrite, or clean existing Actor history, Level Up transactions, class documents, spells, or feature ownership.
+
+Level Up continues to use its separate hidden transaction Draft. Native and module-managed choices are resolved on that Draft, and the live Actor is not changed until **Commit Level Up** succeeds. The Character Keeper is an independent runtime layer and does not change Character Creation, class levels, XP, Hit Dice, `levelUpHistory`, or `lastLevelUp`.
+
+### Character Keeper rest management
+
+Character Keeper intercepts a Player Character's native Short Rest or Long Rest only when the Actor is owned and not a Builder Draft. It discovers the optional actions supported by the Actor, opens a Character Builder-sized interface, and displays one feature button per eligible action in the left column. The selected routine is rendered in the right panel. The header, sidebar, and footer remain fixed while only the routine content scrolls.
+
+A feature that is valid after a Short or Long Rest appears once for the current rest. A Long Rest never creates a second opportunity for the same feature merely because it also satisfies Short Rest wording. The player can skip every optional action. Continuing calls the native D&D5e rest exactly once, then applies staged Character Keeper changes in a separate atomic transaction.
+
+The test build includes:
+
+- Weapon Mastery replacement, with class-specific limits and separate multiclass ownership.
+- Aspect of the Wilds reconfiguration.
+- Circle of the Land replacement, including Circle Spells and strict activation of the matching official Nature's Ward effect.
+- replacement of one Known Wild Shape form using only finite numeric CR data and the class's actual Wild Shape CR scale; null, blank, missing, or nonnumeric CR values are rejected.
+- Pact of the Tome maintenance using the same Book of Shadows, with current cantrips and rituals preselected and no duplicate book creation.
+- Fiendish Resilience, Hunter's Prey, and Defensive Tactics state management.
+- Paladin and Ranger replacement of one normal class-prepared spell after a Long Rest.
+- Wizard cantrip replacement and Spell Mastery replacement.
+- public Cosmic Omen and Portent rolls, with visible chat results and persistent active-state badges.
+- guided native use for War Bond, plus source-native surfacing for Star Map replacement and Primal Companion without reimplementing their native Activities.
+- Wizard **Scribe Spell to Spellbook**, available from Long Rest management and from a book-and-quill sheet control.
+
+Normal recovery of uses, spell slots, Hit Dice, class resources, effects, and prepared/unprepared states remains native D&D5e behavior. Signature Spells receives no Character Keeper replacement action because the feature only refreshes its native free uses.
+
+Every feature commit blocks duplicate clicks immediately, uses an idempotency token, and is applied through a rollback-protected runtime transaction. Public rest rolls are locked to the pending rest session so closing and reopening cannot reroll them. If the native rest has already completed and a Keeper commit fails, the native rest remains complete while the Keeper mutation is restored to its post-rest safety snapshot for controlled retry or GM inspection.
+
+### Wizard scribing
+
+The setting **Charge Wizard Scribing Costs** controls whether the module charges the official 50 GP per spell level. The interface also reports the required 2 hours per spell level. A Spell Scroll must contain an eligible level 1+ Wizard spell that the Actor can currently add and does not already have in the spellbook. The added spell is resolved from the highest-priority enabled source, prioritizing PHB 2024 over SRD 5.2 Modern.
+
+The routine performs the Intelligence (Arcana) check against DC 10 + spell level and posts the result to chat. The scroll is destroyed on success or failure. When cost charging is enabled, D&D5e's native Currency Manager pays the cost and makes change without converting the entire wallet unnecessarily.
+
+### Stable 0.9.6 baseline
+
+Version 0.9.6 was built directly on the validated 0.9.5k codebase. It preserves the complete Character Creation and Level Up transaction model without migrating or rewriting existing Actor history. It added the optional GM Epic Boon gift flow for level 20 characters, replaced the native Add Class entry with a second Start Character Builder entry, and guarded direct class, subclass, and class-feature insertion while leaving normal item drag-and-drop untouched.
 
 The 0.9.5k feat correction remains unchanged. The D&D5e native feat browser receives its original query and rendering options unchanged. Character Builder does not filter, rebuild, decorate, or hide normal feat-browser results. It checks only the UUID confirmed by the player and rejects Ability Score Improvement selected from inside `Choose a Feat`, an Epic Boon below projected total character level 19, or an already-owned non-repeatable feat. All other feat rules, sources, tooltips, filters, and internal Advancements remain native.
 
@@ -98,7 +157,7 @@ For native ASI feat choices, Character Builder passes the native browser options
 - Wizard Spell Mastery and Signature Spells remain owned by the Wizard Class rather than a subclass.
 - Sorcerer Metamagic is selected directly in `Spells & Features`: two options at Sorcerer levels 2, 10, and 17, plus one optional replacement after every Sorcerer level gained from level 3 onward. Known and concurrently selected options are disabled to prevent duplicate acquisitions.
 - Warlock Invocations retain exact instances, acquisition levels, targets, prerequisite dependencies, replacement cleanup, and feature-owned spell separation.
-- Pact of the Tome now opens a Character Builder selection panel for exactly three cantrips and two level-1 Ritual spells, creates a managed Book of Shadows, and records source-specific ownership without counting those spells against normal Pact Magic. The component is maintenance-ready for the future Character Keeper, but rest hooks are not enabled in this release.
+- Pact of the Tome opens a Character Builder selection panel for exactly three cantrips and two level-1 Ritual spells, creates one managed Book of Shadows during acquisition, and records source-specific ownership without counting those spells against normal Pact Magic. Character Keeper maintenance reuses that component and the existing book rather than creating another.
 - Patron and other feature-granted Warlock spells remain visible in normal spell lists but are disabled and identified by their owning source. Independent source-native grants such as the Archfey Patron's separate Misty Step acquisitions are preserved.
 
 ### Choice badges
@@ -133,13 +192,13 @@ Character creation, Shop Checkout, native Level Up Advancements, module-managed 
 
 ## Release validation
 
-This README is the consolidated project and release document. Static validation is performed before packaging, while live Foundry validation remains required for runtime Advancement dialogs, Epic Boon claiming, guarded class drops, Actor commits, rollback injection, and class-specific progression.
+This README is the consolidated project and release document. Static validation is performed before packaging, while live Foundry validation remains required for native Advancement dialogs, Epic Boon claiming, guarded class drops, Actor commits, rollback injection, native rest interception, source-native Activities, class-specific Character Keeper routines, and sheet integration.
 
 ## Repository
 
 https://github.com/hammer-PvP/DnD-5e-Character-Builder
 
-## 0.9.6 validation checklist
+## 0.9.7c validation checklist
 
 - Existing 0.9.5k Character Creation and Level Up flows remain unchanged.
 - The Epic Boon setting saves and reloads correctly.
@@ -152,3 +211,22 @@ https://github.com/hammer-PvP/DnD-5e-Character-Builder
 - Add Class is replaced by Start/Resume Character Builder on classless Actors and does not reappear in Edit Mode.
 - Native class, subclass, and class-feature insertion is blocked without affecting equipment, potion, spell, or other normal drops.
 - Invalid Ability Score Improvement feat text matches the approved wording.
+
+
+### Character Keeper runtime checklist
+
+- A character with no supported rest action reaches the native Short or Long Rest directly.
+- A supported action appears once in Short Rest and once in Long Rest where permitted, never twice in a Long Rest.
+- The native rest dialog and recovery execute exactly once.
+- Closing before the native rest does not perform the rest or apply staged changes.
+- Header, sidebar, and footer remain fixed while the selected routine scrolls.
+- Repeated clicks and lag do not duplicate a staged action, chat roll, Item creation, deletion, or currency payment.
+- Weapon Mastery applies only the number of changes permitted by each owning class and replaces its stale Character Builder badge instead of stacking another badge.
+- Change Land replaces only the Land-owned spells and activates exactly one matching official Nature's Ward effect.
+- Known Wild Shape Forms rejects `null`, blank, missing, nonnumeric, over-limit, and premature flying forms. PHB and SRD copies of the same name and CR cannot coexist as duplicate known forms.
+- Pact of the Tome preselects the current five spells, preserves the same Book of Shadows, and safely remaps dependent cantrip augments when a permitted cantrip changes.
+- Paladin, Ranger, Wizard cantrip, and Spell Mastery replacements preserve official source and ownership metadata. Spell Mastery keeps the native `, Mastered` behavior and moves only the Character Builder badge.
+- Cosmic Omen and Portent rolls are public, persist after closing, and cannot be rerolled in the same pending rest.
+- War Bond displays noninteractive instructions and two visual header assets without opening a feature; Star Map and Primal Companion continue to call their source-native Activities.
+- Scribe Spell uses the same routine from Long Rest and the Wizard sheet icon, recognizes native D&D5e Spell Scroll Items even when they have no cast Activity UUID, prioritizes PHB 2024, optionally charges gold, consumes the scroll, and records success or failure in chat.
+- Character Creation, Level Up, Epic Boon gifts, normal equipment drag-and-drop, and existing Actor histories remain unchanged from stable 0.9.6.
