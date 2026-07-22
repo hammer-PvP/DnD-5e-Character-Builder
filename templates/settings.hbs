@@ -88,8 +88,20 @@
       <fieldset>
         <legend>Character Keeper</legend>
         <div class="cb-settings-toggle">
+          <label><input type="checkbox" name="allowSpellScrollScribing" {{checked settings.allowSpellScrollScribing}}> Allow Spell Scroll Scribing</label>
+          <p class="hint">Allow Wizards to copy eligible Spell Scrolls into their spellbooks through Character Keeper.</p>
+        </div>
+        <div class="cb-settings-toggle">
           <label><input type="checkbox" name="chargeWizardScribingCosts" {{checked settings.chargeWizardScribingCosts}}> Charge Wizard Scribing Costs</label>
-          <p class="hint">When enabled, Scribe Spell to Spellbook deducts 50 GP per spell level. The written Spell Scroll is consumed in either mode.</p>
+          <p class="hint">Deduct the official 50 GP per spell level. When disabled, the checkout still reports the rules cost but the effective cost is 0 GP.</p>
+        </div>
+        <div class="cb-settings-toggle">
+          <label><input type="checkbox" name="requireArcanaCheckForSpellScrollScribing" {{checked settings.requireArcanaCheckForSpellScrollScribing}}> Require Arcana Check for Spell Scroll Scribing</label>
+          <p class="hint">Require a public Intelligence (Arcana) check against DC 10 + spell level. When disabled, a confirmed eligible attempt succeeds automatically.</p>
+        </div>
+        <div class="cb-settings-toggle">
+          <label><input type="checkbox" name="chargeScribingCostOnFailedCheck" {{checked settings.chargeScribingCostOnFailedCheck}}> Charge Scribing Cost on Failed Check</label>
+          <p class="hint">When the Arcana check fails, consume the Spell Scroll and also charge the GP cost. When disabled, a failed check consumes the scroll but preserves the character's currency.</p>
         </div>
         <p class="hint">Optional Short Rest and Long Rest reconfiguration uses native D&amp;D5e recovery, then applies only the Character Keeper choices confirmed for that rest.</p>
       </fieldset>

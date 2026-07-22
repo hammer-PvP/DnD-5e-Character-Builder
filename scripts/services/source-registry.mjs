@@ -9,6 +9,7 @@ const INDEX_FIELDS = [
   "system.type.value",
   "system.type.subtype",
   "system.type.baseItem",
+  "system.mastery",
   "system.classIdentifier",
   "system.level",
   "system.school",

@@ -10,6 +10,9 @@ import { ActorCommitService } from "./services/actor-commit-service.mjs";
 import { EpicBoonService } from "./services/epic-boon-service.mjs";
 import { ClassProgressionGuard } from "./services/class-progression-guard.mjs";
 import { RestManagementApp } from "./apps/rest-management-app.mjs";
+import { SourceRegistry } from "./services/source-registry.mjs";
+
+let scribeIconPromise = null;
 
 Hooks.once("init", async () => {
   if (!Handlebars.helpers.eq) Handlebars.registerHelper("eq", (a, b) => a === b);
@@ -304,7 +307,8 @@ function injectScribeSpellButton(actor, root) {
   if (!container) return;
   const existing = container.querySelector(".cb-scribe-spell-sheet-button");
   const wizard = actor.items.find(item => item.type === "class" && item.system?.identifier === "wizard");
-  if (!actor.isOwner || !wizard) {
+  const settings = LevelUpService.settings();
+  if (!actor.isOwner || !wizard || settings.allowSpellScrollScribing === false) {
     existing?.remove();
     return;
   }
@@ -318,7 +322,7 @@ function injectScribeSpellButton(actor, root) {
     button = document.createElement("button");
     button.type = "button";
     button.className = "cb-scribe-spell-sheet-button gold-button";
-    button.innerHTML = '<i class="fa-solid fa-book-open" inert></i>';
+    button.innerHTML = '<img class="cb-scribe-spell-sheet-icon" src="systems/dnd5e/icons/svg/ink-pot.svg" alt="" draggable="false" inert>';
     button.dataset.tooltip = "Scribe Spell to Spellbook";
     button.setAttribute("aria-label", "Scribe Spell to Spellbook");
     button.addEventListener("click", async event => {
@@ -333,6 +337,28 @@ function injectScribeSpellButton(actor, root) {
     });
     container.append(button);
   }
+  void resolveScribeSpellIcon().then(src => {
+    const icon = button?.querySelector?.(".cb-scribe-spell-sheet-icon");
+    if (icon && src) icon.src = src;
+  });
+}
+
+async function resolveScribeSpellIcon() {
+  scribeIconPromise ??= (async () => {
+    try {
+      const registry = new SourceRegistry();
+      await registry.load();
+      const options = registry.optionsForKey("spell", "comprehend-languages");
+      return options.find(option => option.sourceId === "phb2024")?.img
+        ?? options.find(option => option.sourceId === "srd52")?.img
+        ?? options[0]?.img
+        ?? "systems/dnd5e/icons/svg/ink-pot.svg";
+    } catch (error) {
+      console.warn(`${MODULE_ID} | Could not resolve the Scribe Spell placeholder icon.`, error);
+      return "systems/dnd5e/icons/svg/ink-pot.svg";
+    }
+  })();
+  return scribeIconPromise;
 }
 
 function findSheetHeader(root) {

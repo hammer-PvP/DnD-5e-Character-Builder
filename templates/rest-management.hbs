@@ -73,6 +73,11 @@
             <i class="fa-solid fa-arrow-up-right-from-square"></i>
             <span><strong>{{selected.applyLabel}}</strong><small>Use the source-native feature routine</small></span>
           </button>
+          {{else if selected.isScribe}}
+          <button type="button" class="cb-primary-confirm" data-action="apply-current-action" {{#if busy}}disabled{{/if}}>
+            <i class="fa-solid fa-book"></i>
+            <span><strong data-scribe-apply-label>Select a Spell Scroll</strong><small>Review the complete cost and consequences before confirmation</small></span>
+          </button>
           {{else}}
           <button type="button" class="cb-primary-confirm" data-action="apply-current-action" {{#if busy}}disabled{{/if}}>
             <i class="fa-solid fa-circle-check"></i>
@@ -106,8 +111,12 @@
                   <span>Current Mastery {{#unless ../oneChange}}{{add index 1}}{{/unless}}</span>
                   <select name="keeper.mastery.oldKey">
                     <option value="">No change</option>
-                    {{#each ../currentChoices}}
-                    <option value="{{key}}" {{#if (eq key ../selectedOldKey)}}selected{{/if}}>{{label}}</option>
+                    {{#each ../currentChoiceGroups}}
+                    <optgroup label="{{label}}">
+                      {{#each items}}
+                      <option value="{{key}}" {{#if (eq key ../../selectedOldKey)}}selected{{/if}}>{{label}}</option>
+                      {{/each}}
+                    </optgroup>
                     {{/each}}
                   </select>
                 </label>
@@ -116,9 +125,13 @@
                   <span>Replace With</span>
                   <select name="keeper.mastery.newKey">
                     <option value="">Choose replacement weapon</option>
-                    {{#each ../options}}
-                    <option value="{{masteryKey}}" data-base-item="{{baseItem}}" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}"
-                      {{#if (eq masteryKey ../selectedNewKey)}}selected{{/if}} {{#if disabled}}disabled{{/if}}>{{name}} · {{sourceLabel}}</option>
+                    {{#each ../optionGroups}}
+                    <optgroup label="{{label}}">
+                      {{#each items}}
+                      <option value="{{masteryKey}}" data-base-item="{{baseItem}}" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}"
+                        {{#if (eq masteryKey ../../selectedNewKey)}}selected{{/if}} {{#if disabled}}disabled{{/if}}>{{displayLabel}}</option>
+                      {{/each}}
+                    </optgroup>
                     {{/each}}
                   </select>
                 </label>
@@ -258,35 +271,6 @@
         </section>
         {{/if}}
 
-        {{#if selected.isReplacePreparedSpell}}
-        <section class="cb-keeper-section cb-keeper-two-column">
-          <div>
-            <header class="cb-choice-section-header"><div><h3>Current {{selected.replacePreparedSpell.className}} Spell</h3><p>Select exactly one spell prepared through this class.</p></div></header>
-            <div class="cb-keeper-card-list tall">
-              {{#each selected.replacePreparedSpell.current}}
-              <article class="cb-keeper-radio-card">
-                <label><input type="radio" name="keeper.preparedSpell.oldItemId" value="{{id}}" {{#if (eq id ../selected.replacePreparedSpell.oldItemId)}}checked{{/if}}>
-                  <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}}</small></span></label>
-              </article>
-              {{/each}}
-            </div>
-          </div>
-          <div>
-            <header class="cb-choice-section-header"><div><h3>Replacement {{selected.replacePreparedSpell.className}} Spell</h3><p>Official class spells of levels 1–{{selected.replacePreparedSpell.maxLevel}} from enabled sources.</p></div></header>
-            <input type="search" placeholder="Search {{selected.replacePreparedSpell.className}} spells" data-filter-target="#cb-keeper-prepared-spell-options">
-            <div id="cb-keeper-prepared-spell-options" class="cb-keeper-card-list tall">
-              {{#each selected.replacePreparedSpell.options}}
-              <article class="cb-keeper-radio-card {{#if disabled}}disabled{{/if}}" data-search="{{name}} {{levelLabel}} {{sourceLabel}}" data-document-card>
-                <label><input type="radio" name="keeper.preparedSpell.newUuid" value="{{uuid}}" {{#if (eq uuid ../selected.replacePreparedSpell.newUuid)}}checked{{/if}} {{#if disabled}}disabled{{/if}}>
-                  <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}} · {{sourceLabel}}</small></span></label>
-                <button type="button" class="cb-keeper-open-document" data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}} details"><i class="fa-solid fa-book-open"></i></button>
-              </article>
-              {{/each}}
-            </div>
-          </div>
-        </section>
-        {{/if}}
-
         {{#if selected.isSpellMastery}}
         <section class="cb-keeper-section cb-keeper-two-column">
           <div>
@@ -334,20 +318,79 @@
         {{/if}}
 
         {{#if selected.isScribe}}
-        <section class="cb-keeper-section">
-          <header class="cb-choice-section-header"><div><h3>Written Wizard Spells</h3><p>{{#if selected.scribeContext.chargeCosts}}Cost: 50 GP and 2 hours per spell level.{{else}}Gold costs are disabled by the GM. Time is still displayed for roleplay.{{/if}} Available currency: {{selected.scribeContext.availableGp}} GP.</p></div></header>
-          <div class="cb-keeper-card-list">
+        <section class="cb-keeper-section cb-scribe-workflow">
+          <header class="cb-choice-section-header">
+            <div>
+              <h3>Eligible Spell Scrolls</h3>
+              <p>Select one scroll. The checkout below shows every cost, roll, difficulty, and consequence before confirmation.</p>
+            </div>
+          </header>
+          <div class="cb-keeper-card-list cb-scribe-source-list">
             {{#each selected.scribeContext.sources}}
-            <article class="cb-keeper-radio-card cb-keeper-scribe-card {{#unless affordable}}disabled{{/unless}}" data-scribe-source-id="{{sourceItemId}}" data-spell-uuid="{{spellUuid}}" data-document-card>
-              <label><input type="radio" name="keeper.scribe.sourceItemId" value="{{sourceItemId}}" data-affordable="{{#if affordable}}true{{else}}false{{/if}}" {{#if (eq sourceItemId ../selected.scribeContext.selectedSourceItemId)}}checked{{/if}} {{#unless affordable}}disabled{{/unless}}>
-                <img src="{{spellImg}}" alt=""><span><strong>{{spellName}}</strong><small>{{levelLabel}} · {{costLabel}} · {{timeHours}} hours · Arcana DC {{arcanaDc}} · Source: {{sourceItemName}}</small></span></label>
+            <article class="cb-keeper-radio-card cb-keeper-scribe-card {{#unless affordable}}unaffordable{{/unless}}"
+              data-scribe-source-id="{{sourceItemId}}"
+              data-spell-uuid="{{spellUuid}}"
+              data-spell-name="{{spellName}}"
+              data-level-label="{{levelLabel}}"
+              data-source-item-name="{{sourceItemName}}"
+              data-rules-cost-gp="{{rulesCostGp}}"
+              data-effective-cost-gp="{{effectiveCostGp}}"
+              data-cost-label="{{costLabel}}"
+              data-available-gp-label="{{availableGpLabel}}"
+              data-remaining-gp-label="{{remainingGpLabel}}"
+              data-time-hours="{{timeHours}}"
+              data-require-check="{{#if requireArcanaCheck}}true{{else}}false{{/if}}"
+              data-arcana-bonus-label="{{arcanaBonusLabel}}"
+              data-arcana-dc="{{arcanaDc}}"
+              data-charge-on-failed-check="{{#if chargeOnFailedCheck}}true{{else}}false{{/if}}"
+              data-failure-cost-label="{{failureCostLabel}}"
+              data-affordable="{{#if affordable}}true{{else}}false{{/if}}"
+              data-document-card>
+              <label>
+                <input type="radio" name="keeper.scribe.sourceItemId" value="{{sourceItemId}}"
+                  data-affordable="{{#if affordable}}true{{else}}false{{/if}}"
+                  {{#if (eq sourceItemId ../selected.scribeContext.selectedSourceItemId)}}checked{{/if}}>
+                <img src="{{spellImg}}" alt="">
+                <span>
+                  <strong>{{spellName}}</strong>
+                  <small>{{levelLabel}} · {{costLabel}} · {{timeHours}} hours{{#if requireArcanaCheck}} · Arcana DC {{arcanaDc}}{{else}} · Automatic success{{/if}}</small>
+                  <small>Source: {{sourceItemName}}</small>
+                </span>
+              </label>
               {{#if sourceUuid}}<button type="button" class="cb-keeper-open-document" data-action="open-document" data-uuid="{{sourceUuid}}" title="Open {{spellName}} details"><i class="fa-solid fa-book-open"></i></button>{{/if}}
             </article>
             {{/each}}
           </div>
-          <p class="cb-notice warning"><i class="fa-solid fa-scroll"></i> Attempting the copy makes a public Intelligence (Arcana) check against DC 10 + spell level. The Spell Scroll is destroyed whether the check succeeds or fails.</p>
+
+          <section class="cb-scribe-checkout" data-scribe-checkout hidden>
+            <header>
+              <img src="{{selected.scribeContext.icon}}" alt="" draggable="false">
+              <div><span class="cb-kicker">Scribing Checkout</span><h3 data-scribe-summary="spell"></h3><p><span data-scribe-summary="level"></span> · <span data-scribe-summary="source"></span></p></div>
+            </header>
+            <div class="cb-scribe-budget-grid">
+              <div><span>Rules Cost</span><strong data-scribe-summary="rules-cost"></strong></div>
+              <div><span>Effective Cost</span><strong data-scribe-summary="effective-cost"></strong></div>
+              <div><span>Available Currency</span><strong data-scribe-summary="available"></strong></div>
+              <div><span>Remaining Currency</span><strong data-scribe-summary="remaining"></strong></div>
+              <div><span>Required Time</span><strong data-scribe-summary="time"></strong></div>
+              <div><span>Resolution</span><strong data-scribe-summary="check"></strong></div>
+            </div>
+            <div class="cb-scribe-outcomes {{#unless selected.scribeContext.requireArcanaCheck}}automatic{{/unless}}">
+              <article class="success"><i class="fa-solid fa-circle-check"></i><div><strong>{{#if selected.scribeContext.requireArcanaCheck}}Success{{else}}Automatic Success{{/if}}</strong><p>The Spell Scroll is destroyed, the effective cost is paid, and the spell is added to the Wizard spellbook.</p></div></article>
+              {{#if selected.scribeContext.requireArcanaCheck}}
+              <article class="failure"><i class="fa-solid fa-circle-xmark"></i><div><strong>Failure</strong><p>The Spell Scroll is destroyed and the spell is not added. <span data-scribe-summary="failure-cost"></span>.</p></div></article>
+              {{/if}}
+            </div>
+          </section>
+
+          {{#if selected.scribeContext.requireArcanaCheck}}
+          <p class="cb-notice warning"><i class="fa-solid fa-dice-d20"></i> A public Intelligence (Arcana) check is required against DC 10 + spell level. The checkout reports the exact DC and whether GP is charged on failure.</p>
+          {{else}}
+          <p class="cb-notice success"><i class="fa-solid fa-wand-magic-sparkles"></i> The GM disabled the Arcana check. A confirmed eligible attempt succeeds automatically; the Spell Scroll is still consumed.</p>
+          {{/if}}
         </section>
         {{/if}}
+
 
 
         {{#if selected.isWarBondGuide}}

@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.7c";
-export const MODULE_BUILD = "community-beta-097c-character-keeper-runtime-fixes";
+export const MODULE_VERSION = "0.9.7d";
+export const MODULE_BUILD = "community-beta-097d-keeper-scribe-and-mastery-polish";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -112,7 +112,10 @@ export function defaultSettings() {
     allowMulticlassing: true,
     enforceMulticlassRequirements: true,
     enableGrantEpicBoons: false,
+    allowSpellScrollScribing: true,
     chargeWizardScribingCosts: true,
+    requireArcanaCheckForSpellScrollScribing: true,
+    chargeScribingCostOnFailedCheck: true,
     hitPointAdvancement: {
       methods: {
         roll: true,

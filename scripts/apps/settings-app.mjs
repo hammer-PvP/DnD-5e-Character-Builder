@@ -56,8 +56,10 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       input.addEventListener("change", () => this.#refreshHpDefaults());
     });
     root.querySelector('[name="allowMulticlassing"]')?.addEventListener("change", () => this.#refreshMulticlassRequirements());
+    root.querySelector('[name="requireArcanaCheckForSpellScrollScribing"]')?.addEventListener("change", () => this.#refreshScribeSettings());
     this.#refreshHpDefaults();
     this.#refreshMulticlassRequirements();
+    this.#refreshScribeSettings();
   }
 
   async #save(event) {
@@ -101,7 +103,10 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       allowMulticlassing: form.querySelector('[name="allowMulticlassing"]')?.checked ?? false,
       enforceMulticlassRequirements: form.querySelector('[name="enforceMulticlassRequirements"]')?.checked ?? true,
       enableGrantEpicBoons: form.querySelector('[name="enableGrantEpicBoons"]')?.checked ?? false,
+      allowSpellScrollScribing: form.querySelector('[name="allowSpellScrollScribing"]')?.checked ?? true,
       chargeWizardScribingCosts: form.querySelector('[name="chargeWizardScribingCosts"]')?.checked ?? true,
+      requireArcanaCheckForSpellScrollScribing: form.querySelector('[name="requireArcanaCheckForSpellScrollScribing"]')?.checked ?? true,
+      chargeScribingCostOnFailedCheck: form.querySelector('[name="chargeScribingCostOnFailedCheck"]')?.checked ?? true,
       hitPointAdvancement: {
         methods: hpMethods,
         defaultMethod,
@@ -134,6 +139,14 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     if (!allow || !enforce) return;
     enforce.disabled = !allow.checked;
     enforce.closest("label")?.classList.toggle("disabled", !allow.checked);
+  }
+
+  #refreshScribeSettings() {
+    const requireCheck = this.element?.querySelector?.('[name="requireArcanaCheckForSpellScrollScribing"]');
+    const chargeFailure = this.element?.querySelector?.('[name="chargeScribingCostOnFailedCheck"]');
+    if (!requireCheck || !chargeFailure) return;
+    chargeFailure.disabled = !requireCheck.checked;
+    chargeFailure.closest("label")?.classList.toggle("disabled", !requireCheck.checked);
   }
 
   #refreshHpDefaults() {

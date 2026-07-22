@@ -135,7 +135,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     const registry = new SourceRegistry();
     await registry.load();
     const context = await RuntimeFeatureService.externalScribeContext(actor, registry);
-    if (!context.sources.length) {
+    if (!context.enabled || !context.sources.length) {
       ui.notifications.warn(context.emptyMessage || "No eligible written Wizard spell is currently available to scribe.");
       return;
     }
@@ -143,7 +143,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     app.actions = [{
       id: "scribe-spell", label: "Scribe Spell to Spellbook", kind: "scribe-spell",
       description: "Copy an eligible written Wizard spell into the spellbook.",
-      img: "systems/dnd5e/icons/svg/ink-pot.svg", complete: false, order: 1
+      img: context.icon ?? "systems/dnd5e/icons/svg/ink-pot.svg", complete: false, order: 1
     }];
     this.#instances.set(key, app);
     await app.render({ force: true });
@@ -231,9 +231,13 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
       input.addEventListener("change", () => this.#refreshTomeCounts());
     });
     this.#refreshTomeCounts();
+    root.querySelectorAll('[name="keeper.scribe.sourceItemId"]').forEach(input => {
+      input.addEventListener("change", () => this.#refreshScribeCheckout());
+    });
     root.querySelectorAll("input, select").forEach(input => {
       input.addEventListener("change", () => this.#refreshApplyButton());
     });
+    this.#refreshScribeCheckout();
     this.#refreshApplyButton();
   }
 
@@ -289,6 +293,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     const action = this.#selectedAction();
     if (!action || action.native) return;
     const payload = this.#payloadFor(action);
+    if (action.kind === "scribe-spell" && !(await this.#confirmScribeCheckout(payload))) return;
     const token = foundry.utils.randomID();
     if (this.operationToken) return;
     this.operationToken = token;
@@ -305,9 +310,15 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
         const result = await RuntimeTransactionService.run(this.actor, { session: syntheticSession, label: "Scribe Spell to Spellbook" }, async transactionId => {
           return RuntimeFeatureService.applyExternalScribe(this.actor, this.registry, payload, transactionId);
         });
-        ui.notifications.info(result?.success === false
-          ? "The Arcana check failed. The Spell Scroll was destroyed and the spell was not copied."
-          : "Spell scribed to the Wizard spellbook.");
+        if (result?.success === false) {
+          ui.notifications.warn(result?.chargedGp
+            ? `The Arcana check failed. The Spell Scroll was destroyed and ${result.chargedGp} GP was spent.`
+            : "The Arcana check failed. The Spell Scroll was destroyed, the spell was not copied, and currency was preserved.");
+        } else {
+          ui.notifications.info(result?.automaticSuccess
+            ? "Spell scribed automatically to the Wizard spellbook; the GM disabled the Arcana check."
+            : "Spell scribed to the Wizard spellbook.");
+        }
         await this.close();
         return;
       }
@@ -548,12 +559,6 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
         if (!oldItemId || !newUuid) throw new Error("Choose the cantrip to replace and its replacement.");
         return { oldItemId, newUuid };
       }
-      case "replace-prepared-spell": {
-        const oldItemId = checkedValues("keeper.preparedSpell.oldItemId")[0] ?? "";
-        const newUuid = checkedValues("keeper.preparedSpell.newUuid")[0] ?? "";
-        if (!oldItemId || !newUuid) throw new Error("Choose the prepared spell to replace and its replacement.");
-        return { oldItemId, newUuid };
-      }
       case "spell-mastery": {
         const oldItemId = checkedValues("keeper.spellMastery.oldItemId")[0] ?? "";
         const newItemId = checkedValues("keeper.spellMastery.newItemId")[0] ?? "";
@@ -583,7 +588,6 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
       "wild-shape-form": "Replace Known Form",
       "pact-of-the-tome": "Confirm Pact of the Tome",
       "replace-cantrip": "Replace Cantrip",
-      "replace-prepared-spell": `Replace ${action.replacePreparedSpell?.className ?? "Prepared"} Spell`,
       "spell-mastery": "Confirm Spell Mastery",
       "roll-cosmic-omen": "Roll Cosmic Omen",
       "roll-portent": "Roll Portent",
@@ -601,7 +605,6 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
       isWildShape: kind === "wild-shape-form",
       isPactTome: kind === "pact-of-the-tome",
       isReplaceCantrip: kind === "replace-cantrip",
-      isReplacePreparedSpell: kind === "replace-prepared-spell",
       isSpellMastery: kind === "spell-mastery",
       isCosmicOmen: kind === "roll-cosmic-omen",
       isPortent: kind === "roll-portent",
@@ -697,6 +700,67 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
       }
     }
     this.#refreshApplyButton();
+  }
+
+  #refreshScribeCheckout() {
+    const root = this.element;
+    if (!root) return;
+    const checkout = root.querySelector("[data-scribe-checkout]");
+    if (!checkout) return;
+    const selected = root.querySelector('[name="keeper.scribe.sourceItemId"]:checked');
+    const card = selected?.closest?.("[data-scribe-source-id]") ?? null;
+    checkout.hidden = !card;
+    const applyLabel = root.querySelector("[data-scribe-apply-label]");
+    if (applyLabel) applyLabel.textContent = card ? `Confirm Scribing — ${card.dataset.costLabel ?? "0 GP"}` : "Select a Spell Scroll";
+    if (!card) return;
+    const set = (name, value) => {
+      const target = checkout.querySelector(`[data-scribe-summary="${name}"]`);
+      if (target) target.textContent = value ?? "";
+    };
+    set("spell", card.dataset.spellName);
+    set("level", card.dataset.levelLabel);
+    set("source", card.dataset.sourceItemName);
+    set("rules-cost", `${card.dataset.rulesCostGp} GP`);
+    set("effective-cost", card.dataset.costLabel);
+    set("available", card.dataset.availableGpLabel);
+    set("remaining", card.dataset.remainingGpLabel);
+    set("time", `${card.dataset.timeHours} hours`);
+    set("check", card.dataset.requireCheck === "true" ? `Intelligence (Arcana) ${card.dataset.arcanaBonusLabel} vs. DC ${card.dataset.arcanaDc}` : "No check — automatic success");
+    set("failure-cost", card.dataset.failureCostLabel);
+    checkout.classList.toggle("unaffordable", card.dataset.affordable !== "true");
+  }
+
+  async #confirmScribeCheckout(payload) {
+    const escaped = globalThis.CSS?.escape ? CSS.escape(payload?.sourceItemId ?? "") : payload?.sourceItemId ?? "";
+    const card = this.element?.querySelector?.(`[data-scribe-source-id="${escaped}"]`);
+    if (!card) throw new Error("Choose a written Wizard spell to scribe.");
+    if (card.dataset.affordable !== "true") throw new Error(`Not enough currency to pay ${card.dataset.effectiveCostGp ?? 0} GP.`);
+    const spell = foundry.utils.escapeHTML(card.dataset.spellName ?? "Selected Spell");
+    const source = foundry.utils.escapeHTML(card.dataset.sourceItemName ?? "Spell Scroll");
+    const cost = foundry.utils.escapeHTML(card.dataset.costLabel ?? "0 GP");
+    const remaining = foundry.utils.escapeHTML(card.dataset.remainingGpLabel ?? "");
+    const time = foundry.utils.escapeHTML(`${card.dataset.timeHours ?? 0} hours`);
+    const requireCheck = card.dataset.requireCheck === "true";
+    const check = requireCheck
+      ? `Intelligence (Arcana) ${foundry.utils.escapeHTML(card.dataset.arcanaBonusLabel ?? "+0")} vs. DC ${foundry.utils.escapeHTML(card.dataset.arcanaDc ?? "")}`
+      : "No Arcana check; the GM configured automatic success.";
+    const failure = requireCheck
+      ? `${foundry.utils.escapeHTML(card.dataset.failureCostLabel ?? "")} The Spell Scroll is destroyed and the spell is not added on a failed check.`
+      : "No failure is possible after the final eligibility validation.";
+    const timing = this.externalMode
+      ? "The attempt begins immediately after confirmation."
+      : `The attempt will run after the native ${this.restLabel} completes.`;
+    const content = `<section class="cb-scribe-confirm-dialog"><p><strong>${spell}</strong> from <strong>${source}</strong></p><dl><div><dt>Effective Cost</dt><dd>${cost}</dd></div><div><dt>Remaining Currency</dt><dd>${remaining}</dd></div><div><dt>Required Time</dt><dd>${time}</dd></div><div><dt>Resolution</dt><dd>${check}</dd></div></dl><p class="warning"><strong>Failure:</strong> ${failure}</p><p>${timing}</p></section>`;
+    const DialogV2 = foundry.applications.api.DialogV2;
+    if (DialogV2?.confirm) {
+      return DialogV2.confirm({
+        window: { title: "Confirm Scribing Attempt" },
+        content,
+        yes: { label: `Confirm Scribing — ${cost}`, icon: "fa-solid fa-book" },
+        no: { label: "Cancel", icon: "fa-solid fa-xmark" }
+      });
+    }
+    return Dialog.confirm({ title: "Confirm Scribing Attempt", content, defaultYes: false });
   }
 
   #refreshApplyButton() {

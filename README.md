@@ -9,7 +9,7 @@ Character Builder is a guided D&D 2024 character creation, Level Up, Epic Boon, 
 - Foundry VTT 14.364
 - D&D5e 5.3.3
 
-SRD 5.1 Legacy is not officially supported. Character Keeper is under active testing in version 0.9.7c as an experimental Short Rest, Long Rest, and Wizard spellbook-management capability.
+SRD 5.1 Legacy is not officially supported. Character Keeper is under active testing in version 0.9.7d as an experimental Short Rest, Long Rest, and Wizard spellbook-management capability.
 
 ## Level 1 creation
 
@@ -22,6 +22,21 @@ SRD 5.1 Legacy is not officially supported. Character Keeper is under active tes
 - Independent Class and Background starting equipment or starting-currency choices.
 - Transactional mundane Starting Equipment Shop with Checkout, exact purchase manifests, containers, quantity support, and GM Bonus Gold.
 - Review and recoverable application to the original Actor.
+
+## Character Builder 0.9.7d — Scribe Spell and Keeper cleanup patch
+
+Version 0.9.7d is a focused follow-up to 0.9.7c. It preserves the validated Wizard cantrip-replacement routine and the existing native D&D5e mechanics while correcting the Scribe Spell workflow, removing an unnecessary prepared-spell manager, and improving Weapon Mastery selection.
+
+- **Native prepared-spell management:** Character Keeper no longer creates `Replace Paladin Spell` or `Replace Ranger Spell` actions. Cleric, Druid, Paladin, Ranger, and Wizard prepare and unprepare their normal spells through the native D&D5e sheet. Keeper remains limited to permanent or feature-specific changes such as Wizard cantrip replacement, Spell Mastery, Scribe Spell, Pact of the Tome, and Circle of the Land ownership changes.
+- **Scribe Spell checkout:** selecting an eligible Spell Scroll now opens a complete review before any roll, currency payment, scroll consumption, or spell creation. It displays the spell, level, source, official and effective costs, current and remaining currency, required time, Arcana bonus, DC when applicable, and the configured success and failure consequences.
+- **Scribing settings:** `Allow Spell Scroll Scribing`, `Require Arcana Check for Spell Scroll Scribing`, and `Charge Scribing Cost on Failed Check` are GM checkboxes enabled by default. The existing `Charge Wizard Scribing Costs` setting remains authoritative for whether any GP is charged.
+- **Configurable outcome:** when the Arcana check is disabled, a confirmed eligible attempt succeeds automatically without an artificial roll. When enabled, the check uses Intelligence (Arcana) against DC 10 + spell level. The scroll is consumed on an actual attempt; a failed attempt charges GP only when both general cost charging and failed-check charging are enabled.
+- **Compact chat result:** Scribe Spell results use a Character Builder namespaced card with a small header icon, readable spell information, roll or automatic-success status, currency result, required time, and final outcome. It no longer allows the spell image to expand across the chat card or compress the title vertically.
+- **Scribe visual identity:** the sheet shortcut and Scribe panel use only the image asset of the official Comprehend Languages spell as a noninteractive placeholder, preferring PHB 2024 and then SRD 5.2 Modern before a neutral fallback. No spell document, tooltip, or mechanics are attached to the image.
+- **Sheet-control frame:** the alignment grid remains invisible. The gold frame, dimensions, and finish are applied only to the Scribe Spell button, matching the Level Up control while preserving the approved upper-right placement.
+- **Weapon Mastery lists:** current and replacement weapons are grouped by enabled source priority and sorted alphabetically inside each source. Options and the replacement summary use `Weapon — Mastery`, with mastery read from the official weapon data and duplicate source copies suppressed by priority.
+
+Wizard Replace Cantrip remains unchanged from its successful runtime test. Signature Spell clickable badges, final custom assets, global PHB-to-SRD fallback, and new Character Keeper actions remain future work.
 
 ## Character Builder 0.9.7c — Character Keeper runtime correction patch
 
@@ -68,7 +83,6 @@ The test build includes:
 - replacement of one Known Wild Shape form using only finite numeric CR data and the class's actual Wild Shape CR scale; null, blank, missing, or nonnumeric CR values are rejected.
 - Pact of the Tome maintenance using the same Book of Shadows, with current cantrips and rituals preselected and no duplicate book creation.
 - Fiendish Resilience, Hunter's Prey, and Defensive Tactics state management.
-- Paladin and Ranger replacement of one normal class-prepared spell after a Long Rest.
 - Wizard cantrip replacement and Spell Mastery replacement.
 - public Cosmic Omen and Portent rolls, with visible chat results and persistent active-state badges.
 - guided native use for War Bond, plus source-native surfacing for Star Map replacement and Primal Companion without reimplementing their native Activities.
@@ -80,9 +94,11 @@ Every feature commit blocks duplicate clicks immediately, uses an idempotency to
 
 ### Wizard scribing
 
-The setting **Charge Wizard Scribing Costs** controls whether the module charges the official 50 GP per spell level. The interface also reports the required 2 hours per spell level. A Spell Scroll must contain an eligible level 1+ Wizard spell that the Actor can currently add and does not already have in the spellbook. The added spell is resolved from the highest-priority enabled source, prioritizing PHB 2024 over SRD 5.2 Modern.
+Four GM settings control the routine. **Allow Spell Scroll Scribing**, **Require Arcana Check for Spell Scroll Scribing**, and **Charge Scribing Cost on Failed Check** are enabled by default. The existing **Charge Wizard Scribing Costs** setting controls whether the official 50 GP per spell level is actually charged. The interface also reports the required 2 hours per spell level.
 
-The routine performs the Intelligence (Arcana) check against DC 10 + spell level and posts the result to chat. The scroll is destroyed on success or failure. When cost charging is enabled, D&D5e's native Currency Manager pays the cost and makes change without converting the entire wallet unnecessarily.
+A Spell Scroll must contain an eligible level 1+ Wizard spell that the Actor can currently add and does not already have in the spellbook. The spell is resolved from the highest-priority enabled source, prioritizing PHB 2024 over SRD 5.2 Modern. Before committing, the checkout shows rule cost, effective cost, wallet balance, remaining currency, required time, Arcana bonus and DC when applicable, and the configured consequences of success or failure.
+
+When the Arcana check is enabled, the routine rolls Intelligence (Arcana) against DC 10 + spell level and posts a compact result to chat. When disabled, the confirmed eligible attempt succeeds automatically without a roll. The scroll is destroyed by an actual attempt. A failed check charges GP only when both general cost charging and failed-check charging are enabled. D&D5e's native Currency Manager pays enabled costs and makes change without converting the entire wallet unnecessarily.
 
 ### Stable 0.9.6 baseline
 
@@ -198,7 +214,7 @@ This README is the consolidated project and release document. Static validation 
 
 https://github.com/hammer-PvP/DnD-5e-Character-Builder
 
-## 0.9.7c validation checklist
+## 0.9.7d validation checklist
 
 - Existing 0.9.5k Character Creation and Level Up flows remain unchanged.
 - The Epic Boon setting saves and reloads correctly.
@@ -225,8 +241,11 @@ https://github.com/hammer-PvP/DnD-5e-Character-Builder
 - Change Land replaces only the Land-owned spells and activates exactly one matching official Nature's Ward effect.
 - Known Wild Shape Forms rejects `null`, blank, missing, nonnumeric, over-limit, and premature flying forms. PHB and SRD copies of the same name and CR cannot coexist as duplicate known forms.
 - Pact of the Tome preselects the current five spells, preserves the same Book of Shadows, and safely remaps dependent cantrip augments when a permitted cantrip changes.
-- Paladin, Ranger, Wizard cantrip, and Spell Mastery replacements preserve official source and ownership metadata. Spell Mastery keeps the native `, Mastered` behavior and moves only the Character Builder badge.
+- Paladin and Ranger prepared-spell replacement actions are absent. Cleric, Druid, Paladin, Ranger, and Wizard normal spell preparation remains native D&D5e behavior.
+- Wizard cantrip replacement remains unchanged and preserves official source and ownership metadata. Spell Mastery keeps the native `, Mastered` behavior and moves only the Character Builder badge.
 - Cosmic Omen and Portent rolls are public, persist after closing, and cannot be rerolled in the same pending rest.
 - War Bond displays noninteractive instructions and two visual header assets without opening a feature; Star Map and Primal Companion continue to call their source-native Activities.
-- Scribe Spell uses the same routine from Long Rest and the Wizard sheet icon, recognizes native D&D5e Spell Scroll Items even when they have no cast Activity UUID, prioritizes PHB 2024, optionally charges gold, consumes the scroll, and records success or failure in chat.
+- Scribe Spell uses the same routine from Long Rest and the Wizard sheet icon, recognizes native D&D5e Spell Scroll Items even when they have no cast Activity UUID, presents checkout before commitment, honors all four scribing settings, consumes the scroll only after a confirmed attempt, and records a readable roll or automatic-success result in chat.
+- Weapon Mastery options are grouped by source priority, alphabetical inside each source, deduplicated across equivalent sources, and displayed as `Weapon — Mastery`.
+- The sheet-control grid has no visible frame; only the Scribe Spell button carries the Level Up-style gold border.
 - Character Creation, Level Up, Epic Boon gifts, normal equipment drag-and-drop, and existing Actor histories remain unchanged from stable 0.9.6.

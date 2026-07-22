@@ -3348,7 +3348,7 @@
   transform: none;
 }
 .dnd5e2.sheet.actor.character .sheet-header-buttons.cb-sheet-control-grid > .cb-scribe-spell-sheet-button {
-  position: static;
+  position: relative;
   inset: auto;
   grid-column: 3;
   grid-row: 1;
@@ -3375,4 +3375,220 @@
 
 .dnd5e2.sheet.actor.character .sheet-header-buttons.cb-sheet-control-grid > .cb-scribe-spell-sheet-button::after {
   pointer-events: none;
+}
+
+
+/* 0.9.7d — Scribe Spell checkout, compact chat result, and isolated sheet button frame */
+.dnd5e2.sheet.actor.character .sheet-header-buttons .cb-scribe-spell-sheet-button > .cb-scribe-spell-sheet-icon {
+  display: block;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  border: 0;
+  border-radius: 2px;
+  object-fit: cover;
+  pointer-events: none;
+  user-select: none;
+}
+.dnd5e2.sheet.actor.character .sheet-header-buttons.cb-sheet-control-grid {
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+.dnd5e2.sheet.actor.character .sheet-header-buttons.cb-sheet-control-grid > .cb-scribe-spell-sheet-button {
+  position: relative !important;
+  overflow: hidden;
+}
+
+.character-builder .cb-scribe-workflow {
+  display: grid;
+  gap: 16px;
+}
+.character-builder .cb-scribe-source-list {
+  max-height: 270px;
+}
+.character-builder .cb-keeper-scribe-card > label > span > small + small {
+  margin-top: 2px;
+  opacity: .62;
+}
+.character-builder .cb-keeper-scribe-card.unaffordable {
+  border-color: rgba(197, 89, 73, .48);
+  background: rgba(116, 48, 39, .08);
+}
+.character-builder .cb-keeper-scribe-card.unaffordable small:first-of-type::after {
+  content: " · Insufficient currency";
+  color: #e09586;
+}
+.character-builder .cb-scribe-checkout {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(211, 177, 91, .52);
+  border-radius: 7px;
+  background: linear-gradient(180deg, rgba(68, 53, 26, .24), rgba(19, 18, 17, .58));
+  box-shadow: inset 0 1px rgba(255, 255, 255, .035);
+}
+.character-builder .cb-scribe-checkout[hidden] { display: none; }
+.character-builder .cb-scribe-checkout.unaffordable {
+  border-color: rgba(197, 89, 73, .65);
+}
+.character-builder .cb-scribe-checkout > header {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+.character-builder .cb-scribe-checkout > header > img {
+  width: 54px;
+  height: 54px;
+  object-fit: cover;
+  border: 1px solid rgba(211, 177, 91, .58);
+  border-radius: 6px;
+  pointer-events: none;
+}
+.character-builder .cb-scribe-checkout > header h3,
+.character-builder .cb-scribe-checkout > header p { margin: 0; }
+.character-builder .cb-scribe-checkout > header p { margin-top: 3px; opacity: .7; }
+.character-builder .cb-scribe-budget-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.character-builder .cb-scribe-budget-grid > div {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(211, 177, 91, .18);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, .025);
+}
+.character-builder .cb-scribe-budget-grid span,
+.character-builder .cb-scribe-budget-grid strong { display: block; }
+.character-builder .cb-scribe-budget-grid span {
+  margin-bottom: 4px;
+  color: rgba(240, 229, 206, .68);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.character-builder .cb-scribe-budget-grid strong {
+  overflow-wrap: anywhere;
+  color: #f1e5ca;
+}
+.character-builder .cb-scribe-outcomes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+.character-builder .cb-scribe-outcomes.automatic { grid-template-columns: 1fr; }
+.character-builder .cb-scribe-outcomes > article {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 9px;
+  padding: 10px 12px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, .1);
+}
+.character-builder .cb-scribe-outcomes > article.success {
+  border-color: rgba(86, 158, 101, .46);
+  background: rgba(43, 101, 55, .13);
+}
+.character-builder .cb-scribe-outcomes > article.failure {
+  border-color: rgba(186, 88, 72, .46);
+  background: rgba(116, 48, 39, .13);
+}
+.character-builder .cb-scribe-outcomes i { margin-top: 2px; font-size: 17px; }
+.character-builder .cb-scribe-outcomes .success i { color: #75c786; }
+.character-builder .cb-scribe-outcomes .failure i { color: #d98a7c; }
+.character-builder .cb-scribe-outcomes strong,
+.character-builder .cb-scribe-outcomes p { display: block; margin: 0; }
+.character-builder .cb-scribe-outcomes p { margin-top: 3px; opacity: .76; }
+
+.cb-scribe-confirm-dialog dl {
+  display: grid;
+  gap: 5px;
+  margin: 12px 0;
+}
+.cb-scribe-confirm-dialog dl > div {
+  display: grid;
+  grid-template-columns: 145px minmax(0, 1fr);
+  gap: 10px;
+}
+.cb-scribe-confirm-dialog dt { font-weight: 700; }
+.cb-scribe-confirm-dialog dd { margin: 0; }
+.cb-scribe-confirm-dialog .warning {
+  padding: 8px 10px;
+  border-left: 3px solid #b45f4d;
+  background: rgba(180, 95, 77, .12);
+}
+
+.cb-scribe-chat-card {
+  overflow: hidden;
+  border: 1px solid rgba(110, 83, 34, .72);
+  border-radius: 6px;
+  background: linear-gradient(180deg, rgba(45, 38, 25, .97), rgba(24, 22, 20, .98));
+  color: #eee4cf;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .25);
+}
+.cb-scribe-chat-card > header {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(211, 177, 91, .24);
+  background: rgba(211, 177, 91, .065);
+}
+.cb-scribe-chat-card > header img {
+  width: 42px;
+  height: 42px;
+  margin: 0;
+  border: 1px solid rgba(211, 177, 91, .48);
+  border-radius: 4px;
+  object-fit: cover;
+}
+.cb-scribe-chat-card > header span,
+.cb-scribe-chat-card > header h3,
+.cb-scribe-chat-card > header small { display: block; margin: 0; }
+.cb-scribe-chat-card > header span {
+  color: #d7bd7c;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.cb-scribe-chat-card > header h3 {
+  margin-top: 2px;
+  color: #f5ead2;
+  font-size: 17px;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+.cb-scribe-chat-card > header small { margin-top: 2px; opacity: .7; }
+.cb-scribe-chat-check {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(211, 177, 91, .16);
+}
+.cb-scribe-chat-check span { opacity: .68; font-size: 11px; }
+.cb-scribe-chat-check strong { color: #f1d994; }
+.cb-scribe-chat-card > ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 12px 12px;
+  list-style: none;
+}
+.cb-scribe-chat-card > ul > li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 7px;
+  align-items: start;
+}
+.cb-scribe-chat-card > ul i { margin-top: 2px; color: #d1b06b; }
+
+@media (max-width: 900px) {
+  .character-builder .cb-scribe-budget-grid,
+  .character-builder .cb-scribe-outcomes { grid-template-columns: 1fr; }
 }

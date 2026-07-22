@@ -90,17 +90,6 @@ export class RuntimeFeatureService {
         order: 90
       });
 
-    if (type === "long") {
-      for (const classIdentifier of ["paladin", "ranger"]) {
-        const cls = this.#class(actor, classIdentifier);
-        const current = this.#normalClassSpells(actor, classIdentifier).filter(item => Number(item.system?.level ?? 0) > 0);
-        if (!cls || !current.length) continue;
-        const feature = this.#classFeature(actor, "spellcasting", classIdentifier);
-        add(`replace-${classIdentifier}-spell`, `Replace ${cls.name} Spell`, feature, "replace-prepared-spell",
-          `Replace one ${cls.name} spell prepared through the class Spellcasting feature.`, { order: classIdentifier === "paladin" ? 95 : 96 });
-      }
-    }
-
     const primalCompanion = this.#feature(actor, "primal-companion");
     if (type === "long" && primalCompanion) add("primal-companion", "Primal Companion", primalCompanion, "native-feature",
       "Open the source-native Summon Companion activity to choose a different primal beast.", {
@@ -118,9 +107,9 @@ export class RuntimeFeatureService {
         add("spell-mastery", "Spell Mastery", mastery, "spell-mastery",
           "Replace one mastered spell with another eligible spell of the same level.", { order: 110 });
       }
-      if ((await this.#scribeSources(actor, registry)).length) {
+      if (this.#settings().allowSpellScrollScribing !== false && (await this.#scribeSources(actor, registry)).length) {
         add("scribe-spell", "Scribe Spell to Spellbook", this.#classFeature(actor, "spellcasting", "wizard"), "scribe-spell",
-          "Copy an eligible written Wizard spell into the spellbook.", { img: "systems/dnd5e/icons/svg/ink-pot.svg", order: 140 });
+          "Copy an eligible written Wizard spell into the spellbook.", { img: this.#comprehendLanguagesIcon(registry), order: 140 });
       }
     }
 
@@ -156,10 +145,6 @@ export class RuntimeFeatureService {
         return { ...action, pactOfTheTome: tome };
       }
       case "replace-cantrip": return { ...action, replaceCantrip: await this.#replaceCantripContext(actor, registry, operation) };
-      case "replace-prepared-spell": return {
-        ...action,
-        replacePreparedSpell: await this.#replacePreparedSpellContext(actor, registry, action.id, operation)
-      };
       case "spell-mastery": return { ...action, spellMastery: this.#spellMasteryContext(actor, operation) };
       case "roll-cosmic-omen": return { ...action, rollContext: this.#cosmicOmenContext(actor, session) };
       case "roll-portent": return { ...action, rollContext: this.#portentContext(actor, session) };
@@ -275,6 +260,19 @@ export class RuntimeFeatureService {
         );
         return true;
       }
+      case "scribe-spell": {
+        const settings = this.#settings();
+        if (settings.allowSpellScrollScribing === false) throw new Error("Spell Scroll scribing is disabled by the GM.");
+        const sourceItem = actor.items.get(payload?.sourceItemId);
+        if (!sourceItem || Number(sourceItem.system?.quantity ?? 1) < 1) throw new Error("The selected Spell Scroll is no longer present in the inventory.");
+        const candidate = (await this.#scribeSources(actor, registry)).find(row =>
+          row.sourceItemId === sourceItem.id && row.spellUuid === payload?.spellUuid
+        );
+        if (!candidate) throw new Error("That Spell Scroll is no longer eligible for this Wizard.");
+        const effectiveCostGp = settings.chargeWizardScribingCosts === false ? 0 : Number(candidate.costGp ?? 0);
+        if (this.#currencyCp(actor) < effectiveCostGp * 100) throw new Error(`Not enough currency to pay ${effectiveCostGp} GP.`);
+        return true;
+      }
       default:
         return true;
     }
@@ -303,8 +301,6 @@ export class RuntimeFeatureService {
         return result;
       }
       case "replace-wizard-cantrip": return this.#applyCantripReplacement(actor, registry, payload, transactionId);
-      case "replace-paladin-spell": return this.#applyPreparedSpellReplacement(actor, registry, "paladin", payload, transactionId);
-      case "replace-ranger-spell": return this.#applyPreparedSpellReplacement(actor, registry, "ranger", payload, transactionId);
       case "spell-mastery": return this.#applySpellMastery(actor, payload, transactionId);
       case "cosmic-omen": return this.#applyRollState(actor, "cosmic-omen", payload, transactionId);
       case "portent": return this.#applyRollState(actor, "portent", payload, transactionId);
@@ -399,28 +395,49 @@ export class RuntimeFeatureService {
     const candidates = registry.optionsByType("weapon").flatMap(group => group.items)
       .filter(option => ["simpleM", "simpleR", "martialM", "martialR"].includes(option.system?.type?.value))
       .filter(option => option.system?.type?.baseItem || option.identifier)
-      .map(option => ({
-        ...option,
-        baseItem: option.system?.type?.baseItem || option.identifier,
-        category: String(option.system?.type?.value ?? "").startsWith("simple") ? "sim" : "mar"
-      }));
+      .map(option => {
+        const baseItem = option.system?.type?.baseItem || option.identifier;
+        const masteryId = String(option.system?.mastery ?? "");
+        const masteryLabel = this.#weaponMasteryLabel(masteryId);
+        return {
+          ...option,
+          baseItem,
+          category: String(option.system?.type?.value ?? "").startsWith("simple") ? "sim" : "mar",
+          masteryId,
+          masteryLabel,
+          displayLabel: masteryLabel ? `${option.name} — ${masteryLabel}` : option.name
+        };
+      });
     const unique = new Map();
     for (const option of candidates) if (!unique.has(option.baseItem)) unique.set(option.baseItem, option);
-    return [...unique.values()];
+    return [...unique.values()].sort((a, b) =>
+      Number(a.sourceRank ?? 999) - Number(b.sourceRank ?? 999)
+      || a.name.localeCompare(b.name, game.i18n.lang)
+    );
   }
 
   static async #masteryContext(actor, registry, operation) {
     const classRows = this.#masteryClasses(actor);
     const currentAll = new Set(actor.system?.traits?.weaponProf?.mastery?.value ?? []);
     const candidates = this.#weaponCandidates(registry);
+    const candidateByBase = new Map(candidates.map(option => [String(option.baseItem), option]));
     const savedChanges = operation?.changes ?? [];
     return classRows.map(({ cls, rows, rule }) => {
-      const currentChoices = rows.flatMap(row => (row.value?.chosen ?? []).map(key => ({
-        key,
-        advancementId: row.id,
-        baseItem: String(key).split(":").at(-1),
-        label: this.#weaponLabel(key)
-      })));
+      const currentChoices = rows.flatMap(row => (row.value?.chosen ?? []).map(key => {
+        const baseItem = String(key).split(":").at(-1);
+        const option = candidateByBase.get(baseItem);
+        return {
+          key,
+          advancementId: row.id,
+          baseItem,
+          name: option?.name ?? this.#weaponLabel(key),
+          masteryLabel: option?.masteryLabel ?? "",
+          label: option?.displayLabel ?? this.#weaponLabel(key),
+          sourceId: option?.sourceId ?? "current",
+          sourceLabel: option?.sourceLabel ?? "Current Choices",
+          sourceRank: option?.sourceRank ?? 999
+        };
+      }));
       const saved = savedChanges.filter(change => change.classItemId === cls.id).slice(0, rule.maxChanges);
       const changeSlots = Array.from({ length: rule.maxChanges }, (_unused, index) => ({
         index,
@@ -438,13 +455,36 @@ export class RuntimeFeatureService {
         className: cls.name,
         classLevel: Number(cls.system?.levels ?? 0),
         currentChoices,
+        currentChoiceGroups: this.#groupMasteryOptions(currentChoices),
         currentCount: currentChoices.length,
         maxChanges: rule.maxChanges,
         oneChange: rule.maxChanges === 1,
         changeSlots,
-        options
+        options,
+        optionGroups: this.#groupMasteryOptions(options)
       };
     });
+  }
+
+  static #groupMasteryOptions(options) {
+    const groups = new Map();
+    for (const option of options ?? []) {
+      const id = String(option.sourceId ?? "current");
+      const group = groups.get(id) ?? {
+        id,
+        label: option.sourceLabel ?? "Current Choices",
+        rank: Number(option.sourceRank ?? 999),
+        items: []
+      };
+      group.items.push(option);
+      groups.set(id, group);
+    }
+    return [...groups.values()]
+      .sort((a, b) => a.rank - b.rank || a.label.localeCompare(b.label, game.i18n.lang))
+      .map(group => ({
+        ...group,
+        items: group.items.sort((a, b) => String(a.name ?? a.label).localeCompare(String(b.name ?? b.label), game.i18n.lang))
+      }));
   }
 
   static #effectChoiceContext(feature, operation) {
@@ -563,40 +603,6 @@ export class RuntimeFeatureService {
     };
   }
 
-  static async #replacePreparedSpellContext(actor, registry, actionId, operation) {
-    const classIdentifier = actionId === "replace-paladin-spell" ? "paladin"
-      : actionId === "replace-ranger-spell" ? "ranger" : null;
-    if (!classIdentifier) throw new Error("The class spell replacement context is invalid.");
-    const cls = this.#class(actor, classIdentifier);
-    if (!cls) throw new Error(`The ${this.#humanize(classIdentifier)} class Item is missing.`);
-    const current = this.#normalClassSpells(actor, classIdentifier)
-      .filter(item => Number(item.system?.level ?? 0) > 0)
-      .map(item => ({
-        id: item.id, name: item.name, img: item.img, identifier: item.system?.identifier,
-        level: Number(item.system?.level ?? 0), levelLabel: `Level ${Number(item.system?.level ?? 0)}`,
-        sourceUuid: item.getFlag("dnd5e", "sourceId") ?? item._stats?.compendiumSource ?? null
-      }));
-    const maxLevel = this.#maximumSpellLevel(cls.system?.spellcasting?.progression, Number(cls.system?.levels ?? 0));
-    const pool = (await this.#classSpellPool(classIdentifier, registry))
-      .filter(option => {
-        const level = Number(option.system?.level ?? 0);
-        return level >= 1 && level <= maxLevel;
-      });
-    const owned = new Set(current.map(item => item.identifier));
-    const oldId = operation?.oldItemId ?? "";
-    const oldIdentifier = current.find(row => row.id === oldId)?.identifier;
-    return {
-      classIdentifier, className: cls.name, classItemId: cls.id, maxLevel, current,
-      oldItemId: oldId, newUuid: operation?.newUuid ?? "",
-      options: pool.map(option => ({
-        ...option,
-        level: Number(option.system?.level ?? 0),
-        levelLabel: `Level ${Number(option.system?.level ?? 0)}`,
-        disabled: owned.has(option.identifier) && option.identifier !== oldIdentifier
-      }))
-    };
-  }
-
   static #spellMasteryContext(actor, operation) {
     const feature = this.#feature(actor, "spell-mastery");
     const current = this.#spellMasterySpells(actor).map(item => ({ id: item.id, name: item.name, img: item.img, level: Number(item.system?.level ?? 0) }));
@@ -627,28 +633,62 @@ export class RuntimeFeatureService {
   }
 
   static async #scribeContext(actor, registry, operation) {
-    const rawSources = await this.#scribeSources(actor, registry);
-    const chargeCosts = this.#settings().chargeWizardScribingCosts !== false;
+    const settings = this.#settings();
+    const enabled = settings.allowSpellScrollScribing !== false;
+    const rawSources = enabled ? await this.#scribeSources(actor, registry) : [];
+    const chargeCosts = settings.chargeWizardScribingCosts !== false;
+    const requireArcanaCheck = settings.requireArcanaCheckForSpellScrollScribing !== false;
+    const chargeOnFailedCheck = settings.chargeScribingCostOnFailedCheck !== false;
     const availableCp = this.#currencyCp(actor);
-    const sources = rawSources.map(row => ({
-      ...row,
-      displayCostGp: chargeCosts ? Number(row.costGp ?? 0) : 0,
-      costLabel: chargeCosts ? `${Number(row.costGp ?? 0)} GP` : "Cost waived",
-      affordable: !chargeCosts || availableCp >= Number(row.costGp ?? 0) * 100
-    }));
-    const selected = sources.find(row => row.sourceItemId === operation?.sourceItemId) ?? null;
-    const level = Number(selected?.level ?? 0);
-    const costGp = level * 50;
+    const arcanaBonus = this.#arcanaBonus(actor);
+    const sources = rawSources.map(row => {
+      const rulesCostGp = Number(row.costGp ?? 0);
+      const effectiveCostGp = chargeCosts ? rulesCostGp : 0;
+      const remainingCp = availableCp - (effectiveCostGp * 100);
+      return {
+        ...row,
+        rulesCostGp,
+        effectiveCostGp,
+        displayCostGp: effectiveCostGp,
+        costLabel: chargeCosts ? `${effectiveCostGp} GP` : `0 GP (rules cost ${rulesCostGp} GP waived)`,
+        affordable: remainingCp >= 0,
+        availableGpLabel: this.#formatGpFromCp(availableCp),
+        remainingGpLabel: remainingCp >= 0 ? this.#formatGpFromCp(remainingCp) : "Insufficient currency",
+        requireArcanaCheck,
+        arcanaBonus,
+        arcanaBonusLabel: arcanaBonus >= 0 ? `+${arcanaBonus}` : String(arcanaBonus),
+        chargeOnFailedCheck,
+        failureCostLabel: !requireArcanaCheck
+          ? "No failure is possible"
+          : !chargeCosts
+            ? "No GP is charged because scribing costs are disabled"
+            : chargeOnFailedCheck
+              ? `${effectiveCostGp} GP is charged on failure`
+              : "Currency is preserved on failure"
+      };
+    });
+    const selected = sources.find(row => row.sourceItemId === operation?.sourceItemId
+      && (!operation?.spellUuid || row.spellUuid === operation.spellUuid)) ?? null;
     return {
+      enabled,
       sources,
       selectedSourceItemId: operation?.sourceItemId ?? "",
       selected,
       chargeCosts,
-      costGp,
-      timeHours: level * 2,
-      availableGp: Math.floor(availableCp / 100),
-      affordable: !chargeCosts || availableCp >= costGp * 100,
-      emptyMessage: sources.length ? "" : await this.#scribeEmptyMessage(actor, registry)
+      requireArcanaCheck,
+      chargeOnFailedCheck,
+      rulesCostGp: Number(selected?.rulesCostGp ?? 0),
+      effectiveCostGp: Number(selected?.effectiveCostGp ?? 0),
+      timeHours: Number(selected?.timeHours ?? 0),
+      availableGpLabel: this.#formatGpFromCp(availableCp),
+      remainingGpLabel: selected?.remainingGpLabel ?? this.#formatGpFromCp(availableCp),
+      arcanaBonus,
+      arcanaBonusLabel: arcanaBonus >= 0 ? `+${arcanaBonus}` : String(arcanaBonus),
+      affordable: selected?.affordable ?? true,
+      icon: this.#comprehendLanguagesIcon(registry),
+      emptyMessage: enabled
+        ? (sources.length ? "" : await this.#scribeEmptyMessage(actor, registry))
+        : "Spell Scroll scribing is disabled by the GM."
     };
   }
 
@@ -682,7 +722,7 @@ export class RuntimeFeatureService {
         const baseItem = String(change.newKey).split(":").at(-1);
         const option = candidateByBase.get(baseItem);
         if (!option || !this.#weaponAllowedForMastery(actor, classRow.rule, option)) {
-          throw new Error(`${this.#weaponLabel(change.newKey)} is not an eligible Weapon Mastery choice for ${classRow.cls.name}.`);
+          throw new Error(`${option?.displayLabel ?? this.#weaponLabel(change.newKey)} is not an eligible Weapon Mastery choice for ${classRow.cls.name}.`);
         }
         const expected = `weapon:${option.category}:${option.baseItem}`;
         if (change.newKey !== expected) throw new Error("The selected Weapon Mastery key does not match its official weapon document.");
@@ -739,7 +779,10 @@ export class RuntimeFeatureService {
     for (const { cls, rows } of this.#masteryClasses(actor)) {
       const feature = this.#classFeature(actor, "weapon-mastery", cls.system?.identifier);
       if (!feature) continue;
-      const values = rows.flatMap(row => (row.value?.chosen ?? []).map(value => this.#weaponLabel(value)));
+      const values = rows.flatMap(row => (row.value?.chosen ?? []).map(value => {
+        const baseItem = String(value).split(":").at(-1);
+        return candidateByBase.get(baseItem)?.displayLabel ?? this.#weaponLabel(value);
+      }));
       await this.#reconcileWeaponMasteryBadge(actor, cls, feature, values, transactionId);
     }
     return { changed: true, changes: requested };
@@ -924,50 +967,6 @@ export class RuntimeFeatureService {
     return { changed: true, deletedItemId: oldSpell.id, createdItemId: created.id };
   }
 
-  static async #applyPreparedSpellReplacement(actor, registry, classIdentifier, payload, transactionId) {
-    if (!["paladin", "ranger"].includes(classIdentifier)) throw new Error("Unsupported prepared-spell replacement class.");
-    const cls = this.#class(actor, classIdentifier);
-    const oldSpell = actor.items.get(payload?.oldItemId);
-    if (!cls || !oldSpell || oldSpell.type !== "spell" || Number(oldSpell.system?.level ?? 0) < 1
-      || !this.#isNormalClassSpell(oldSpell, classIdentifier)) {
-      throw new Error(`Choose a valid ${this.#humanize(classIdentifier)} spell to replace.`);
-    }
-    const maxLevel = this.#maximumSpellLevel(cls.system?.spellcasting?.progression, Number(cls.system?.levels ?? 0));
-    const option = registry.findOption(payload?.newUuid) ?? registry.sourceForUuid(payload?.newUuid);
-    const source = option ? await fromUuid(option.uuid) : await fromUuid(payload?.newUuid);
-    if (!source || source.type !== "spell") throw new Error("Choose a valid replacement spell.");
-    const level = Number(source.system?.level ?? 0);
-    if (level < 1 || level > maxLevel) throw new Error(`The replacement must be a level 1–${maxLevel} ${cls.name} spell.`);
-    const pool = await this.#classSpellPool(classIdentifier, registry);
-    if (!pool.some(row => row.uuid === source.uuid)) throw new Error(`The replacement must be a ${cls.name} spell from an enabled source.`);
-    if (this.#normalClassSpells(actor, classIdentifier).some(item => item.id !== oldSpell.id
-      && item.system?.identifier === source.system?.identifier)) {
-      throw new Error(`This Actor already has ${source.name} as a normal ${cls.name} spell.`);
-    }
-    const data = source.toObject();
-    delete data._id;
-    data.system ??= {};
-    data.system.ability = cls.system?.spellcasting?.ability ?? (classIdentifier === "paladin" ? "cha" : "wis");
-    data.system.method = "spell";
-    data.system.prepared = 1;
-    data.system.sourceItem = `class:${classIdentifier}`;
-    data.flags ??= {};
-    data.flags.dnd5e ??= {};
-    data.flags.dnd5e.sourceId = source.uuid;
-    data.flags[MODULE_ID] = {
-      ...(data.flags[MODULE_ID] ?? {}),
-      classSpellAccess: true, classIdentifier, classItemId: cls.id, accessModel: "limited", category: "limited",
-      sourceLabel: option?.sourceLabel ?? registry.sourceForUuid(source.uuid)?.sourceLabel ?? "Enabled Source",
-      runtimeManagementSpell: {
-        transactionId, category: "prepared-spell-replacement", classIdentifier,
-        replacedItemId: oldSpell.id, replacedIdentifier: oldSpell.system?.identifier, sourceUuid: source.uuid
-      }
-    };
-    await actor.deleteEmbeddedDocuments("Item", [oldSpell.id], { characterBuilderRuntimeManagement: true, deleteContents: false });
-    const [created] = await actor.createEmbeddedDocuments("Item", [data], { characterBuilderRuntimeManagement: true });
-    return { changed: true, classIdentifier, deletedItemId: oldSpell.id, createdItemId: created.id };
-  }
-
   static async #applySpellMastery(actor, payload, transactionId) {
     const oldSpell = actor.items.get(payload?.oldItemId);
     const newSpell = actor.items.get(payload?.newItemId);
@@ -1007,17 +1006,34 @@ export class RuntimeFeatureService {
   }
 
   static async #applyScribeSpell(actor, registry, payload, transactionId) {
+    const settings = this.#settings();
+    if (settings.allowSpellScrollScribing === false) {
+      throw new Error("Spell Scroll scribing is disabled by the GM.");
+    }
+
     const sourceItem = actor.items.get(payload?.sourceItemId);
-    if (!sourceItem) throw new Error("The written spell source is no longer present.");
+    if (!sourceItem) throw new Error("The selected Spell Scroll is no longer present in the inventory.");
+    if (Number(sourceItem.system?.quantity ?? 1) < 1) throw new Error("The selected Spell Scroll has no remaining quantity.");
+
     const sources = await this.#scribeSources(actor, registry);
     const candidate = sources.find(row => row.sourceItemId === sourceItem.id && row.spellUuid === payload?.spellUuid);
-    if (!candidate) throw new Error("That written spell is not eligible for this Wizard.");
+    if (!candidate) throw new Error("That Spell Scroll is no longer eligible for this Wizard.");
 
     const cls = this.#class(actor, "wizard");
+    if (!cls) throw new Error("Scribe Spell requires at least one Wizard class level.");
     const level = Number(candidate.level ?? 0);
-    const costGp = this.#settings().chargeWizardScribingCosts === false ? 0 : level * 50;
-    const costCp = costGp * 100;
-    if (this.#currencyCp(actor) < costCp) throw new Error(`Not enough currency to pay ${costGp} GP.`);
+    const maxLevel = Math.min(9, Math.ceil(Number(cls.system?.levels ?? 0) / 2));
+    if (level < 1 || level > maxLevel) {
+      throw new Error(`This Wizard can prepare spells only up to level ${maxLevel}; the selected scroll is level ${level}.`);
+    }
+
+    const rulesCostGp = level * 50;
+    const chargeCosts = settings.chargeWizardScribingCosts !== false;
+    const effectiveCostGp = chargeCosts ? rulesCostGp : 0;
+    const requireArcanaCheck = settings.requireArcanaCheckForSpellScrollScribing !== false;
+    const chargeOnFailedCheck = settings.chargeScribingCostOnFailedCheck !== false;
+    const costCp = effectiveCostGp * 100;
+    if (this.#currencyCp(actor) < costCp) throw new Error(`Not enough currency to pay ${effectiveCostGp} GP.`);
 
     const preferred = registry?.preferredOption?.("spell", candidate.identifier) ?? null;
     if (!preferred || preferred.uuid !== candidate.spellUuid) {
@@ -1031,21 +1047,32 @@ export class RuntimeFeatureService {
     if (Number(source.system?.level ?? -1) !== level) {
       throw new Error("The written spell level no longer matches the selected official spell source.");
     }
+    if (!(await this.#spellOnClassList(candidate.identifier, "wizard"))) {
+      throw new Error("The selected written spell is not on the Wizard spell list.");
+    }
     if (this.#normalClassSpells(actor, "wizard").some(item => item.system?.identifier === source.system?.identifier)) {
-      throw new Error("That spell is already in this Wizard's spellbook.");
+      throw new Error("That spell is already present in this Wizard's spellbook.");
     }
 
     const arcanaDc = 10 + level;
-    const rolls = await actor.rollSkill({ skill: "arc", ability: "int" }, { configure: false });
-    const roll = rolls?.[0] ?? null;
-    if (!roll) throw new Error("The Intelligence (Arcana) check was cancelled; no scribing attempt was applied.");
-    const arcanaTotal = Number(roll.total ?? 0);
-    const success = arcanaTotal >= arcanaDc;
+    let arcanaTotal = null;
+    let success = true;
+    if (requireArcanaCheck) {
+      const rolls = await actor.rollSkill({ skill: "arc", ability: "int" }, { configure: false });
+      const roll = rolls?.[0] ?? null;
+      if (!roll) throw new Error("The Intelligence (Arcana) check was cancelled; no scribing attempt was applied.");
+      arcanaTotal = Number(roll.total ?? 0);
+      success = arcanaTotal >= arcanaDc;
+    }
 
-    if (costGp) {
-      const updates = this.#currencyDeductionUpdates(actor, costGp, "gp");
+    const chargedGp = success
+      ? effectiveCostGp
+      : (requireArcanaCheck && chargeOnFailedCheck ? effectiveCostGp : 0);
+    if (chargedGp) {
+      const updates = this.#currencyDeductionUpdates(actor, chargedGp, "gp");
       await actor.update(updates, { characterBuilderRuntimeManagement: true });
     }
+
     const quantity = Number(sourceItem.system?.quantity ?? 1);
     if (quantity > 1) await sourceItem.update({ "system.quantity": quantity - 1 }, { characterBuilderRuntimeManagement: true });
     else await actor.deleteEmbeddedDocuments("Item", [sourceItem.id], { characterBuilderRuntimeManagement: true, deleteContents: true });
@@ -1066,7 +1093,7 @@ export class RuntimeFeatureService {
         ...(data.flags[MODULE_ID] ?? {}),
         classSpellAccess: true,
         classIdentifier: "wizard",
-        classItemId: cls?.id ?? null,
+        classItemId: cls.id,
         accessModel: "spellbook",
         category: "spellbook",
         runtimeManagementSpell: {
@@ -1076,35 +1103,50 @@ export class RuntimeFeatureService {
           sourceUuid: source.uuid,
           writtenSourceUuid: candidate.writtenSpellUuid,
           scribedAt: Date.now(),
-          costGp,
+          rulesCostGp,
+          chargedGp,
           timeHours: level * 2,
-          arcanaDc,
+          checkRequired: requireArcanaCheck,
+          arcanaDc: requireArcanaCheck ? arcanaDc : null,
           arcanaTotal
         }
       };
       [created] = await actor.createEmbeddedDocuments("Item", [data], { characterBuilderRuntimeManagement: true });
     }
 
+    const icon = this.#escapeHtml(this.#comprehendLanguagesIcon(registry));
+    const spellName = this.#escapeHtml(source.name);
+    const resultLabel = success ? (requireArcanaCheck ? "Success" : "Automatic Success") : "Failure";
+    const checkMarkup = requireArcanaCheck
+      ? `<div class="cb-scribe-chat-check"><span>Intelligence (Arcana)</span><strong>${arcanaTotal} vs. DC ${arcanaDc} — ${resultLabel}</strong></div>`
+      : `<div class="cb-scribe-chat-check"><span>Resolution</span><strong>Automatic Success — Arcana check disabled by the GM</strong></div>`;
+    const currencyText = chargedGp
+      ? `${chargedGp} GP spent`
+      : (!chargeCosts ? "GP cost waived by the GM" : (!success ? "Currency preserved on failure" : "No GP spent"));
     await ChatMessage.create({
       speaker: ChatMessage.getSpeaker({ actor }),
-      content: `<div class="dnd5e chat-card"><header class="card-header flexrow"><img src="${source.img}" alt=""><h3>Scribe Spell to Spellbook</h3></header><div class="card-content"><p><strong>${source.name}</strong>: Intelligence (Arcana) ${arcanaTotal} vs. DC ${arcanaDc} — <strong>${success ? "Success" : "Failure"}</strong>.</p><p>The Spell Scroll is destroyed${costGp ? ` and ${costGp} GP is spent` : ""}.${success ? " The spell is added to the spellbook." : " The spell is not copied."}</p></div></div>`
+      content: `<article class="cb-scribe-chat-card"><header><img src="${icon}" alt=""><div><span>Scribe Spell to Spellbook</span><h3>${spellName}</h3><small>Level ${level} spell · ${level * 2} hours</small></div></header>${checkMarkup}<ul><li><i class="fa-solid fa-scroll"></i><span>Spell Scroll destroyed</span></li><li><i class="fa-solid fa-coins"></i><span>${this.#escapeHtml(currencyText)}</span></li><li><i class="fa-solid fa-book"></i><span>${success ? `${spellName} added to the spellbook` : `${spellName} was not copied`}</span></li></ul></article>`
     });
 
     return {
       changed: true,
       success,
+      automaticSuccess: !requireArcanaCheck,
       createdItemId: created?.id ?? null,
       consumedSourceItemId: sourceItem.id,
       sourceUuid: source.uuid,
       writtenSourceUuid: candidate.writtenSpellUuid,
-      costGp,
+      rulesCostGp,
+      chargedGp,
       timeHours: level * 2,
-      arcanaDc,
+      checkRequired: requireArcanaCheck,
+      arcanaDc: requireArcanaCheck ? arcanaDc : null,
       arcanaTotal
     };
   }
 
   static async #scribeEmptyMessage(actor, registry) {
+    if (this.#settings().allowSpellScrollScribing === false) return "Spell Scroll scribing is disabled by the GM.";
     const cls = this.#class(actor, "wizard");
     if (!cls) return "Scribe Spell requires at least one Wizard class level.";
     const scrolls = actor.items.filter(item => item.type === "consumable"
@@ -1138,6 +1180,7 @@ export class RuntimeFeatureService {
   }
 
   static async #scribeSources(actor, registry) {
+    if (this.#settings().allowSpellScrollScribing === false) return [];
     const cls = this.#class(actor, "wizard");
     if (!cls || !registry) return [];
     const maxLevel = Math.min(9, Math.ceil(Number(cls.system?.levels ?? 0) / 2));
@@ -1320,6 +1363,39 @@ export class RuntimeFeatureService {
       && (this.#normalizeName(option.name) === "mordenkainens sword"
         || this.#normalizeName(option.identifier) === "mordenkainens sword"));
     return match?.img ?? "icons/weapons/swords/sword-runed-glowing.webp";
+  }
+
+  static #comprehendLanguagesIcon(registry) {
+    const direct = registry?.optionsForKey?.("spell", "comprehend-languages") ?? [];
+    const named = this.#registrySpellOptions(registry).filter(option =>
+      this.#normalizeName(option.name) === "comprehend languages"
+      || this.#normalizeName(option.identifier) === "comprehend languages"
+    );
+    const options = direct.length ? direct : named;
+    return options.find(option => option.sourceId === "phb2024")?.img
+      ?? options.find(option => option.sourceId === "srd52")?.img
+      ?? options[0]?.img
+      ?? "systems/dnd5e/icons/svg/ink-pot.svg";
+  }
+
+  static #arcanaBonus(actor) {
+    const derived = Number(actor.system?.skills?.arc?.total ?? actor.system?.skills?.arc?.mod);
+    if (Number.isFinite(derived)) return derived;
+    const intelligence = Number(actor.system?.abilities?.int?.value ?? 10);
+    const abilityModifier = Math.floor((intelligence - 10) / 2);
+    const proficiencyMultiplier = Number(actor.system?.skills?.arc?.value ?? 0);
+    const proficiencyBonus = Number(actor.system?.attributes?.prof
+      ?? Math.ceil(Math.max(1, this.#actorLevel(actor)) / 4) + 1);
+    return abilityModifier + Math.floor(proficiencyMultiplier * proficiencyBonus);
+  }
+
+  static #formatGpFromCp(cp) {
+    const value = Number(cp ?? 0) / 100;
+    return Number.isInteger(value) ? `${value} GP` : `${value.toFixed(2).replace(/\.00$/, "")} GP equivalent`;
+  }
+
+  static #escapeHtml(value) {
+    return foundry.utils.escapeHTML(String(value ?? ""));
   }
 
   static async #reconcileWeaponMasteryBadge(actor, cls, feature, values, transactionId) {
@@ -1559,7 +1635,14 @@ export class RuntimeFeatureService {
   }
 
   static #itemSummary(item) { return item ? { id: item.id, name: item.name, img: item.img, identifier: item.system?.identifier, uuid: item.uuid } : null; }
-  static #settings() { return foundry.utils.mergeObject({ chargeWizardScribingCosts: true }, game.settings.get(MODULE_ID, "settings") ?? {}, { inplace: false }); }
+  static #settings() {
+    return foundry.utils.mergeObject({
+      allowSpellScrollScribing: true,
+      chargeWizardScribingCosts: true,
+      requireArcanaCheckForSpellScrollScribing: true,
+      chargeScribingCostOnFailedCheck: true
+    }, game.settings.get(MODULE_ID, "settings") ?? {}, { inplace: false });
+  }
   static #currencyCp(actor) { return Object.entries(actor.system?.currency ?? {}).reduce((sum, [key, value]) => sum + Number(value ?? 0) * Number(CURRENCY_CP[key] ?? 0), 0); }
   static #currencyDeductionUpdates(actor, amount, denomination = "gp") {
     const manager = globalThis.dnd5e?.applications?.CurrencyManager;
@@ -1590,6 +1673,11 @@ export class RuntimeFeatureService {
       remaining %= value || 1;
     }
     return { system: { currency } };
+  }
+  static #weaponMasteryLabel(value) {
+    const key = String(value ?? "");
+    const label = CONFIG.DND5E.weaponMasteries?.[key]?.label;
+    return label ? game.i18n.localize(label) : (key ? this.#humanize(key) : "");
   }
   static #weaponLabel(value) { const key = String(value ?? "").split(":").at(-1); return CONFIG.DND5E.weaponIds?.[key]?.label ? game.i18n.localize(CONFIG.DND5E.weaponIds[key].label) : this.#humanize(key); }
   static #humanize(value) { return String(value ?? "").replace(/[-_]+/g, " ").replace(/\b\w/g, match => match.toUpperCase()); }
