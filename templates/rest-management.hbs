@@ -149,11 +149,16 @@
           <header class="cb-choice-section-header"><div><h3>Choose Active Option</h3><p>Current: <strong>{{selected.effectChoice.current}}</strong></p></div></header>
           <div class="cb-keeper-option-grid">
             {{#each selected.effectChoice.options}}
-            <article class="cb-keeper-radio-card {{#if active}}current{{/if}}" data-document-card>
-              <label>
+            <article class="cb-keeper-radio-card {{#if active}}current{{/if}}">
+              <label class="cb-keeper-select-zone" title="Select {{label}}">
                 <input type="radio" name="keeper.effectId" value="{{id}}" {{#if (eq id ../selected.effectChoice.selected)}}checked{{/if}}>
-                <img src="{{img}}" alt=""><span><strong>{{label}}</strong><small>{{#if active}}Currently active{{else}}Available after rest{{/if}}</small></span>
+                <img src="{{img}}" alt="">
               </label>
+              <button type="button" class="cb-keeper-detail-zone" data-action="open-document" data-uuid="{{referenceUuid}}"
+                title="Open {{label}} details" {{#unless referenceUuid}}disabled{{/unless}}>
+                <span><strong>{{label}}</strong><small>{{#if active}}Currently active{{else}}Available after rest{{/if}}</small></span>
+                <i class="fa-solid fa-book-open" aria-hidden="true"></i>
+              </button>
             </article>
             {{/each}}
           </div>
@@ -166,10 +171,15 @@
           <div class="cb-keeper-option-grid">
             {{#each selected.activityChoice.options}}
             <article class="cb-keeper-radio-card {{#if (eq value ../selected.activityChoice.current)}}current{{/if}}">
-              <label>
+              <label class="cb-keeper-select-zone" title="Select {{label}}">
                 <input type="radio" name="keeper.activityValue" value="{{value}}" {{#if (eq value ../selected.activityChoice.selected)}}checked{{/if}}>
-                <img src="{{img}}" alt=""><span><strong>{{label}}</strong><small>{{#if (eq value ../selected.activityChoice.current)}}Current choice{{else}}Available choice{{/if}}</small></span>
+                <img src="{{img}}" alt="">
               </label>
+              <button type="button" class="cb-keeper-detail-zone" data-action="open-document" data-uuid="{{referenceUuid}}"
+                title="Open {{label}} details" {{#unless referenceUuid}}disabled{{/unless}}>
+                <span><strong>{{label}}</strong><small>{{#if (eq value ../selected.activityChoice.current)}}Current choice{{else}}Available choice{{/if}}</small></span>
+                <i class="fa-solid fa-book-open" aria-hidden="true"></i>
+              </button>
             </article>
             {{/each}}
           </div>
@@ -182,11 +192,18 @@
           <div class="cb-keeper-land-list">
             {{#each selected.landContext.lands}}
             <article class="cb-keeper-land-card {{#if current}}current{{/if}} {{#if selected}}selected{{/if}}">
-              <label class="cb-keeper-land-selector">
-                <input type="radio" name="keeper.land" value="{{id}}" {{#if selected}}checked{{/if}}>
-                <span><strong>{{label}}</strong><small>Nature's Ward: {{resistance}} resistance</small></span>
-                {{#if current}}<em>Current</em>{{/if}}
-              </label>
+              <div class="cb-keeper-radio-card cb-keeper-land-choice {{#if current}}current{{/if}}">
+                <label class="cb-keeper-select-zone" title="Select {{label}} Land">
+                  <input type="radio" name="keeper.land" value="{{id}}" {{#if selected}}checked{{/if}}>
+                  <img src="{{img}}" alt="">
+                </label>
+                <button type="button" class="cb-keeper-detail-zone" data-action="open-document" data-uuid="{{referenceUuid}}"
+                  title="Open Circle of the Land details" {{#unless referenceUuid}}disabled{{/unless}}>
+                  <span><strong>{{label}}</strong><small>Nature's Ward: {{resistance}} resistance</small></span>
+                  {{#if current}}<em>Current</em>{{/if}}
+                  <i class="fa-solid fa-book-open" aria-hidden="true"></i>
+                </button>
+              </div>
               <div class="cb-keeper-land-spells">
                 {{#each spellGroups}}
                 <section class="{{#unless unlocked}}locked{{/unless}}">
@@ -214,8 +231,14 @@
             <div class="cb-keeper-card-list">
               {{#each selected.wildShapeContext.current}}
               <article class="cb-keeper-radio-card">
-                <label><input type="radio" name="keeper.wildShape.oldUuid" value="{{uuid}}" {{#if (eq uuid ../selected.wildShapeContext.replacingId)}}checked{{/if}}>
-                  <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>CR {{cr}}{{#if fly}} · Fly{{/if}}</small></span></label>
+                <label class="cb-keeper-select-zone" title="Select {{name}}">
+                  <input type="radio" name="keeper.wildShape.oldUuid" value="{{uuid}}" {{#if (eq uuid ../selected.wildShapeContext.replacingId)}}checked{{/if}}>
+                  <img src="{{img}}" alt="">
+                </label>
+                <button type="button" class="cb-keeper-detail-zone" data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}} details">
+                  <span><strong>{{name}}</strong><small>CR {{cr}}{{#if fly}} · Fly{{/if}}</small></span>
+                  <i class="fa-solid fa-book-open" aria-hidden="true"></i>
+                </button>
               </article>
               {{/each}}
             </div>
@@ -225,9 +248,15 @@
             <input type="search" placeholder="Search eligible Beast forms" data-filter-target="#cb-keeper-wild-shape-options">
             <div id="cb-keeper-wild-shape-options" class="cb-keeper-card-list tall">
               {{#each selected.wildShapeContext.options}}
-              <article class="cb-keeper-radio-card {{#if disabled}}disabled{{/if}}" data-search="{{name}} {{sourceLabel}}">
-                <label title="{{#if disabled}}Already known{{else}}Select {{name}}{{/if}}"><input type="radio" name="keeper.wildShape.newUuid" value="{{uuid}}" {{#if (eq uuid ../selected.wildShapeContext.selectedUuid)}}checked{{/if}} {{#if disabled}}disabled{{/if}}>
-                  <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>CR {{crLabel}}{{#if fly}} · Fly{{/if}} · {{sourceLabel}}</small></span></label>
+              <article class="cb-keeper-radio-card {{#if disabled}}disabled{{/if}}" data-search="{{name}} {{sourceLabel}}" {{#if disabled}}aria-disabled="true"{{/if}}>
+                <label class="cb-keeper-select-zone" title="{{#if disabled}}Already known{{else}}Select {{name}}{{/if}}">
+                  <input type="radio" name="keeper.wildShape.newUuid" value="{{uuid}}" {{#if (eq uuid ../selected.wildShapeContext.selectedUuid)}}checked{{/if}} {{#if disabled}}disabled{{/if}}>
+                  <img src="{{img}}" alt="">
+                </label>
+                <button type="button" class="cb-keeper-detail-zone" data-action="open-document" data-uuid="{{uuid}}" title="{{#if disabled}}Already known{{else}}Open {{name}} details{{/if}}" {{#if disabled}}disabled{{/if}}>
+                  <span><strong>{{name}}</strong><small>CR {{crLabel}}{{#if fly}} · Fly{{/if}} · {{sourceLabel}}</small></span>
+                  <i class="fa-solid fa-book-open" aria-hidden="true"></i>
+                </button>
               </article>
               {{/each}}
             </div>
@@ -249,9 +278,16 @@
             <header class="cb-choice-section-header"><div><h3>Current Wizard Cantrip</h3><p>Select exactly one cantrip learned through Wizard Spellcasting.</p></div></header>
             <div class="cb-keeper-card-list">
               {{#each selected.replaceCantrip.current}}
-              <article class="cb-keeper-radio-card {{#if disabled}}disabled{{/if}}" title="{{disabledReason}}">
-                <label><input type="radio" name="keeper.cantrip.oldItemId" value="{{id}}" {{#if (eq id ../selected.replaceCantrip.oldItemId)}}checked{{/if}} {{#if disabled}}disabled{{/if}}>
-                  <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{#if disabled}}{{disabledReason}}{{else}}Known Wizard cantrip{{/if}}</small></span></label>
+              <article class="cb-keeper-radio-card {{#if disabled}}disabled{{/if}}" title="{{disabledReason}}" {{#if disabled}}aria-disabled="true"{{/if}}>
+                <label class="cb-keeper-select-zone" title="{{#if disabled}}{{disabledReason}}{{else}}Select {{name}}{{/if}}">
+                  <input type="radio" name="keeper.cantrip.oldItemId" value="{{id}}" {{#if (eq id ../selected.replaceCantrip.oldItemId)}}checked{{/if}} {{#if disabled}}disabled{{/if}}>
+                  <img src="{{img}}" alt="">
+                </label>
+                <button type="button" class="cb-keeper-detail-zone" data-action="open-document" data-uuid="{{sourceUuid}}"
+                  title="{{#if disabled}}{{disabledReason}}{{else}}Open {{name}} details{{/if}}" {{#if disabled}}disabled{{else}}{{#unless sourceUuid}}disabled{{/unless}}{{/if}}>
+                  <span><strong>{{name}}</strong><small>{{#if disabled}}{{disabledReason}}{{else}}Known Wizard cantrip{{/if}}</small></span>
+                  <i class="fa-solid fa-book-open" aria-hidden="true"></i>
+                </button>
               </article>
               {{/each}}
             </div>
@@ -261,10 +297,16 @@
             <input type="search" placeholder="Search Wizard cantrips" data-filter-target="#cb-keeper-cantrip-options">
             <div id="cb-keeper-cantrip-options" class="cb-keeper-card-list tall">
               {{#each selected.replaceCantrip.options}}
-              <article class="cb-keeper-radio-card {{#if disabled}}disabled{{/if}}" data-search="{{name}} {{sourceLabel}}" data-document-card>
-                <label><input type="radio" name="keeper.cantrip.newUuid" value="{{uuid}}" {{#if (eq uuid ../selected.replaceCantrip.newUuid)}}checked{{/if}} {{#if disabled}}disabled{{/if}}>
-                  <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{sourceLabel}}</small></span></label>
-                <button type="button" class="cb-keeper-open-document" data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}} details"><i class="fa-solid fa-book-open"></i></button>
+              <article class="cb-keeper-radio-card {{#if disabled}}disabled{{/if}}" data-search="{{name}} {{sourceLabel}}" {{#if disabled}}aria-disabled="true"{{/if}}>
+                <label class="cb-keeper-select-zone" title="{{#if disabled}}Already known{{else}}Select {{name}}{{/if}}">
+                  <input type="radio" name="keeper.cantrip.newUuid" value="{{uuid}}" {{#if (eq uuid ../selected.replaceCantrip.newUuid)}}checked{{/if}} {{#if disabled}}disabled{{/if}}>
+                  <img src="{{img}}" alt="">
+                </label>
+                <button type="button" class="cb-keeper-detail-zone" data-action="open-document" data-uuid="{{uuid}}"
+                  title="{{#if disabled}}Already known{{else}}Open {{name}} details{{/if}}" {{#if disabled}}disabled{{/if}}>
+                  <span><strong>{{name}}</strong><small>{{sourceLabel}}</small></span>
+                  <i class="fa-solid fa-book-open" aria-hidden="true"></i>
+                </button>
               </article>
               {{/each}}
             </div>
@@ -279,8 +321,14 @@
             <div class="cb-keeper-card-list">
               {{#each selected.spellMastery.current}}
               <article class="cb-keeper-radio-card">
-                <label><input type="radio" name="keeper.spellMastery.oldItemId" value="{{id}}" data-level="{{level}}" {{#if (eq id ../selected.spellMastery.oldItemId)}}checked{{/if}}>
-                  <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>Level {{level}}</small></span></label>
+                <label class="cb-keeper-select-zone" title="Select {{name}}">
+                  <input type="radio" name="keeper.spellMastery.oldItemId" value="{{id}}" data-level="{{level}}" {{#if (eq id ../selected.spellMastery.oldItemId)}}checked{{/if}}>
+                  <img src="{{img}}" alt="">
+                </label>
+                <button type="button" class="cb-keeper-detail-zone" data-action="open-document" data-uuid="{{referenceUuid}}" title="Open {{name}} details" {{#unless referenceUuid}}disabled{{/unless}}>
+                  <span><strong>{{name}}</strong><small>Level {{level}}</small></span>
+                  <i class="fa-solid fa-book-open" aria-hidden="true"></i>
+                </button>
               </article>
               {{/each}}
             </div>
@@ -290,8 +338,14 @@
             <div class="cb-keeper-card-list tall">
               {{#each selected.spellMastery.candidates}}
               <article class="cb-keeper-radio-card" data-spell-mastery-candidate data-item-id="{{id}}" data-level="{{level}}">
-                <label><input type="radio" name="keeper.spellMastery.newItemId" value="{{id}}" {{#if (eq id ../selected.spellMastery.newItemId)}}checked{{/if}}>
-                  <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}}</small></span></label>
+                <label class="cb-keeper-select-zone" title="Select {{name}}">
+                  <input type="radio" name="keeper.spellMastery.newItemId" value="{{id}}" {{#if (eq id ../selected.spellMastery.newItemId)}}checked{{/if}}>
+                  <img src="{{img}}" alt="">
+                </label>
+                <button type="button" class="cb-keeper-detail-zone" data-action="open-document" data-uuid="{{referenceUuid}}" title="Open {{name}} details" {{#unless referenceUuid}}disabled{{/unless}}>
+                  <span><strong>{{name}}</strong><small>{{levelLabel}}</small></span>
+                  <i class="fa-solid fa-book-open" aria-hidden="true"></i>
+                </button>
               </article>
               {{/each}}
             </div>
@@ -345,20 +399,21 @@
               data-arcana-dc="{{arcanaDc}}"
               data-charge-on-failed-check="{{#if chargeOnFailedCheck}}true{{else}}false{{/if}}"
               data-failure-cost-label="{{failureCostLabel}}"
-              data-affordable="{{#if affordable}}true{{else}}false{{/if}}"
-              data-document-card>
-              <label>
+              data-affordable="{{#if affordable}}true{{else}}false{{/if}}">
+              <label class="cb-keeper-select-zone" title="Select {{spellName}}">
                 <input type="radio" name="keeper.scribe.sourceItemId" value="{{sourceItemId}}"
                   data-affordable="{{#if affordable}}true{{else}}false{{/if}}"
                   {{#if (eq sourceItemId ../selected.scribeContext.selectedSourceItemId)}}checked{{/if}}>
                 <img src="{{spellImg}}" alt="">
+              </label>
+              <button type="button" class="cb-keeper-detail-zone" data-action="open-document" data-uuid="{{sourceUuid}}" title="Open {{spellName}} details" {{#unless sourceUuid}}disabled{{/unless}}>
                 <span>
                   <strong>{{spellName}}</strong>
                   <small>{{levelLabel}} · {{costLabel}} · {{timeHours}} hours{{#if requireArcanaCheck}} · Arcana DC {{arcanaDc}}{{else}} · Automatic success{{/if}}</small>
                   <small>Source: {{sourceItemName}}</small>
                 </span>
-              </label>
-              {{#if sourceUuid}}<button type="button" class="cb-keeper-open-document" data-action="open-document" data-uuid="{{sourceUuid}}" title="Open {{spellName}} details"><i class="fa-solid fa-book-open"></i></button>{{/if}}
+                <i class="fa-solid fa-book-open" aria-hidden="true"></i>
+              </button>
             </article>
             {{/each}}
           </div>

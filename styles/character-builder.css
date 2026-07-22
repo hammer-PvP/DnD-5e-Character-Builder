@@ -2993,64 +2993,146 @@
   overflow-y: auto;
   padding-right: 3px;
 }
+/* Keeper selectable cards use two independent interaction zones.
+   The compact left square changes selection; the full right panel opens the
+   official/source document and never changes the checkbox or radio state. */
 .character-builder .cb-keeper-radio-card {
   position: relative;
-  display: flex;
+  display: grid;
+  grid-template-columns: 66px minmax(0, 1fr);
   align-items: stretch;
-  min-height: 58px;
+  min-width: 0;
+  min-height: 62px;
   border: 1px solid rgba(211, 177, 91, .25);
   border-radius: 4px;
   background: rgba(255, 255, 255, .025);
   overflow: hidden;
+  transition: border-color 120ms ease, background 120ms ease, filter 120ms ease, opacity 120ms ease;
 }
-.character-builder .cb-keeper-radio-card:hover,
-.character-builder .cb-keeper-radio-card:has(input:checked) {
-  border-color: rgba(231, 201, 121, .78);
+.character-builder .cb-keeper-radio-card:not(.disabled):has(input:checked) {
+  border-color: rgba(231, 201, 121, .82);
   background: rgba(211, 177, 91, .09);
+}
+.character-builder .cb-keeper-radio-card:not(.disabled):has(.cb-keeper-select-zone:hover),
+.character-builder .cb-keeper-radio-card:not(.disabled):has(.cb-keeper-select-zone:focus-within) {
+  border-color: rgba(231, 201, 121, .9);
+}
+.character-builder .cb-keeper-radio-card:not(.disabled):has(.cb-keeper-detail-zone:hover),
+.character-builder .cb-keeper-radio-card:not(.disabled):has(.cb-keeper-detail-zone:focus-visible) {
+  border-color: rgba(160, 188, 218, .75);
 }
 .character-builder .cb-keeper-radio-card.current {
   box-shadow: inset 3px 0 rgba(109, 155, 199, .8);
 }
-.character-builder .cb-keeper-radio-card.disabled {
-  opacity: .48;
-}
-.character-builder .cb-keeper-radio-card > label {
+.character-builder .cb-keeper-select-zone {
+  position: relative;
   display: grid;
-  grid-template-columns: auto 42px minmax(0, 1fr);
-  align-items: center;
-  gap: 9px;
-  width: 100%;
-  padding: 7px 42px 7px 8px;
+  place-items: center;
+  min-width: 0;
+  padding: 7px;
+  border-right: 1px solid rgba(211, 177, 91, .22);
+  background: rgba(0, 0, 0, .14);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.character-builder .cb-keeper-select-zone:hover,
+.character-builder .cb-keeper-select-zone:focus-within {
+  background: rgba(211, 177, 91, .14);
+}
+.character-builder .cb-keeper-select-zone > input {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  z-index: 2;
+  margin: 0;
   cursor: pointer;
 }
-.character-builder .cb-keeper-radio-card > label > img {
-  width: 42px;
-  height: 42px;
+.character-builder .cb-keeper-select-zone > img {
+  width: 46px;
+  height: 46px;
   object-fit: cover;
   border: 1px solid rgba(211, 177, 91, .38);
   border-radius: 3px;
+  pointer-events: none;
 }
-.character-builder .cb-keeper-radio-card > label > span {
+.character-builder .cb-keeper-detail-zone {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  min-height: 60px;
+  padding: 8px 10px 8px 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.character-builder .cb-keeper-detail-zone:hover,
+.character-builder .cb-keeper-detail-zone:focus-visible {
+  background: rgba(109, 155, 199, .11);
+  outline: 1px solid rgba(160, 188, 218, .42);
+  outline-offset: -2px;
+}
+.character-builder .cb-keeper-detail-zone > span {
   display: flex;
   flex-direction: column;
   min-width: 0;
   gap: 3px;
 }
-.character-builder .cb-keeper-radio-card > label small {
+.character-builder .cb-keeper-detail-zone strong,
+.character-builder .cb-keeper-detail-zone small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.character-builder .cb-keeper-detail-zone small {
   opacity: .68;
 }
-.character-builder .cb-keeper-open-document {
-  position: absolute;
-  top: 50%;
-  right: 6px;
-  width: 30px;
-  height: 30px;
-  min-height: 0;
-  padding: 0;
-  transform: translateY(-50%);
-  border: 0;
-  background: transparent;
+.character-builder .cb-keeper-detail-zone > i {
   color: var(--dnd5e-color-gold, #d1b06b);
+  opacity: .72;
+}
+.character-builder .cb-keeper-detail-zone > em {
+  justify-self: end;
+  padding: 2px 6px;
+  border: 1px solid rgba(109, 155, 199, .5);
+  border-radius: 999px;
+  font-size: 11px;
+  font-style: normal;
+}
+.character-builder .cb-keeper-radio-card.disabled,
+.character-builder .cb-keeper-radio-card[aria-disabled="true"] {
+  opacity: .38;
+  filter: grayscale(1) saturate(0);
+  border-color: rgba(255, 255, 255, .055);
+  background: rgba(255, 255, 255, .012);
+  box-shadow: none;
+}
+.character-builder .cb-keeper-radio-card.disabled .cb-keeper-select-zone,
+.character-builder .cb-keeper-radio-card.disabled .cb-keeper-detail-zone,
+.character-builder .cb-keeper-radio-card[aria-disabled="true"] .cb-keeper-select-zone,
+.character-builder .cb-keeper-radio-card[aria-disabled="true"] .cb-keeper-detail-zone {
+  cursor: not-allowed;
+  pointer-events: none;
+  background: transparent;
+}
+.character-builder .cb-keeper-radio-card.disabled .cb-keeper-detail-zone > i,
+.character-builder .cb-keeper-radio-card[aria-disabled="true"] .cb-keeper-detail-zone > i {
+  color: inherit;
+  opacity: .38;
+}
+.character-builder .cb-keeper-radio-card .cb-keeper-detail-zone:disabled:not(.disabled) {
+  cursor: default;
+  opacity: .68;
+}
+.character-builder .cb-keeper-tome-card {
+  min-height: 58px;
 }
 .character-builder .cb-keeper-land-list {
   display: grid;
@@ -3063,25 +3145,15 @@
 .character-builder .cb-keeper-land-card.selected {
   border-color: rgba(231, 201, 121, .78);
 }
-.character-builder .cb-keeper-land-selector {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  padding: 11px 12px;
+.character-builder .cb-keeper-land-choice {
+  grid-template-columns: 66px minmax(0, 1fr);
+  border: 0;
   border-bottom: 1px solid rgba(211, 177, 91, .2);
-  cursor: pointer;
+  border-radius: 0;
+  background: rgba(211, 177, 91, .035);
 }
-.character-builder .cb-keeper-land-selector > span {
-  display: flex;
-  flex-direction: column;
-}
-.character-builder .cb-keeper-land-selector em {
-  padding: 2px 6px;
-  border: 1px solid rgba(109, 155, 199, .5);
-  border-radius: 999px;
-  font-size: 11px;
-  font-style: normal;
+.character-builder .cb-keeper-land-choice .cb-keeper-detail-zone {
+  grid-template-columns: minmax(0, 1fr) auto auto;
 }
 .character-builder .cb-keeper-land-spells {
   display: flex;
@@ -3408,7 +3480,7 @@
 .character-builder .cb-scribe-source-list {
   max-height: 270px;
 }
-.character-builder .cb-keeper-scribe-card > label > span > small + small {
+.character-builder .cb-keeper-scribe-card .cb-keeper-detail-zone small + small {
   margin-top: 2px;
   opacity: .62;
 }

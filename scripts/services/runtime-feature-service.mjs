@@ -489,6 +489,7 @@ export class RuntimeFeatureService {
 
   static #effectChoiceContext(feature, operation) {
     if (!feature) return { options: [], selected: "" };
+    const featureSummary = this.#itemSummary(feature);
     const options = feature.effects.map(effect => {
       const change = effect.system?.changes?.find(row => ["system.traits.dr.value", "attributes.senses.darkvision", "system.attributes.movement.speed"].includes(row.key));
       const label = String(effect.name ?? "").replace(/^.*?:\s*/, "").replace(/^Aspect of the\s+/i, "");
@@ -497,11 +498,12 @@ export class RuntimeFeatureService {
         label,
         img: effect.img ?? feature.img,
         active: !effect.disabled,
-        value: change?.value ?? label.toLowerCase()
+        value: change?.value ?? label.toLowerCase(),
+        referenceUuid: featureSummary?.referenceUuid ?? featureSummary?.uuid ?? null
       };
     });
     return {
-      feature: this.#itemSummary(feature),
+      feature: featureSummary,
       current: options.find(option => option.active)?.label ?? "None",
       selected: operation?.effectId ?? options.find(option => option.active)?.id ?? "",
       options
@@ -510,6 +512,7 @@ export class RuntimeFeatureService {
 
   static #activityChoiceContext(feature, operation) {
     if (!feature) return { options: [], selected: "", current: "" };
+    const featureSummary = this.#itemSummary(feature);
     const definitions = feature.system?.identifier === "hunters-prey"
       ? [
           { value: "colossus-slayer", label: "Colossus Slayer" },
@@ -528,12 +531,13 @@ export class RuntimeFeatureService {
       return {
         ...definition,
         id: activity?.id ?? activity?._id ?? null,
-        img: activity?.img || feature.img
+        img: activity?.img || feature.img,
+        referenceUuid: featureSummary?.referenceUuid ?? featureSummary?.uuid ?? null
       };
     });
     const current = feature.getFlag(MODULE_ID, "managedFeatureChoice") ?? {};
     return {
-      feature: this.#itemSummary(feature),
+      feature: featureSummary,
       current: current.value ?? "",
       currentLabel: current.label ?? options.find(option => option.value === current.value)?.label ?? "Not recorded",
       selected: operation?.value ?? operation?.label ?? current.value ?? "",
@@ -556,7 +560,18 @@ export class RuntimeFeatureService {
       }
       lands.push({ id, label, resistance: this.#humanize(LAND_RESISTANCES[id]), selected: id === selected, current: id === current, spellGroups });
     }
-    return { current, currentLabel: LAND_LABELS[current] ?? "Not recorded", selected, lands, druidLevel };
+    return {
+      feature: this.#itemSummary(feature),
+      current,
+      currentLabel: LAND_LABELS[current] ?? "Not recorded",
+      selected,
+      lands: lands.map(land => ({
+        ...land,
+        img: feature?.img ?? "icons/svg/leaf.svg",
+        referenceUuid: this.#itemReferenceUuid(feature)
+      })),
+      druidLevel
+    };
   }
 
   static async #wildShapeContext(actor, operation) {
@@ -587,7 +602,8 @@ export class RuntimeFeatureService {
       const dependent = this.#cantripDependencyReason(actor, item);
       return {
         id: item.id, name: item.name, img: item.img, identifier: item.system?.identifier,
-        sourceUuid: item.getFlag("dnd5e", "sourceId") ?? item._stats?.compendiumSource ?? null,
+        uuid: item.uuid,
+        sourceUuid: this.#itemReferenceUuid(item),
         disabled: Boolean(dependent), disabledReason: dependent
       };
     });
@@ -605,7 +621,14 @@ export class RuntimeFeatureService {
 
   static #spellMasteryContext(actor, operation) {
     const feature = this.#feature(actor, "spell-mastery");
-    const current = this.#spellMasterySpells(actor).map(item => ({ id: item.id, name: item.name, img: item.img, level: Number(item.system?.level ?? 0) }));
+    const current = this.#spellMasterySpells(actor).map(item => ({
+      id: item.id,
+      name: item.name,
+      img: item.img,
+      level: Number(item.system?.level ?? 0),
+      uuid: item.uuid,
+      referenceUuid: this.#itemReferenceUuid(item)
+    }));
     const oldId = operation?.oldItemId ?? "";
     const old = current.find(row => row.id === oldId);
     const candidates = this.#normalClassSpells(actor, "wizard")
@@ -613,7 +636,15 @@ export class RuntimeFeatureService {
       .filter(item => this.#isActionSpell(item))
       .filter(item => !current.some(row => row.id === item.id) || item.id === oldId)
       .filter(item => !old || Number(item.system?.level ?? 0) === old.level)
-      .map(item => ({ id: item.id, name: item.name, img: item.img, level: Number(item.system?.level ?? 0), levelLabel: `Level ${item.system.level}` }));
+      .map(item => ({
+        id: item.id,
+        name: item.name,
+        img: item.img,
+        level: Number(item.system?.level ?? 0),
+        levelLabel: `Level ${item.system.level}`,
+        uuid: item.uuid,
+        referenceUuid: this.#itemReferenceUuid(item)
+      }));
     return { feature: this.#itemSummary(feature), current, oldItemId: oldId, newItemId: operation?.newItemId ?? "", candidates };
   }
 
@@ -1634,7 +1665,23 @@ export class RuntimeFeatureService {
     }
   }
 
-  static #itemSummary(item) { return item ? { id: item.id, name: item.name, img: item.img, identifier: item.system?.identifier, uuid: item.uuid } : null; }
+  static #itemReferenceUuid(item) {
+    return item?.getFlag?.("dnd5e", "sourceId")
+      ?? item?._stats?.compendiumSource
+      ?? item?.uuid
+      ?? null;
+  }
+
+  static #itemSummary(item) {
+    return item ? {
+      id: item.id,
+      name: item.name,
+      img: item.img,
+      identifier: item.system?.identifier,
+      uuid: item.uuid,
+      referenceUuid: this.#itemReferenceUuid(item)
+    } : null;
+  }
   static #settings() {
     return foundry.utils.mergeObject({
       allowSpellScrollScribing: true,

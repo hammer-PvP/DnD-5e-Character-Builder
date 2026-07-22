@@ -92,9 +92,11 @@ export class RestSessionService {
       throw new Error("The native rest already completed. Use recovery to discard only the pending Character Keeper changes.");
     }
 
-    // Do not use update()/mergeObject here. Merging an empty object does not
-    // delete its existing nested keys, so confirmed operations would survive
-    // the reset and reappear after the interface rendered again.
+    // Do not use update()/mergeObject or setFlag directly over the existing
+    // session. Foundry recursively merges object-valued flags, so writing an
+    // empty operations object does not delete the confirmed operation keys.
+    // Remove the complete session flag first, then write the clean session as
+    // a new value so the reset is a true replacement rather than a merge.
     const next = foundry.utils.deepClone(current);
     next.operations = {};
     next.completedActionIds = [];
@@ -103,6 +105,10 @@ export class RestSessionService {
       : {};
     next.status = "pending";
 
+    await actor.unsetFlag(MODULE_ID, this.FLAG);
+    if (actor.getFlag(MODULE_ID, this.FLAG) != null) {
+      throw new Error("Character Keeper could not clear the saved rest session before rebuilding it.");
+    }
     await actor.setFlag(MODULE_ID, this.FLAG, next);
     const saved = this.get(actor);
     const operationsRemain = Object.keys(saved?.operations ?? {}).length > 0;

@@ -23,15 +23,16 @@ SRD 5.1 Legacy is not officially supported. Character Keeper is under active tes
 - Transactional mundane Starting Equipment Shop with Checkout, exact purchase manifests, containers, quantity support, and GM Bonus Gold.
 - Review and recoverable application to the original Actor.
 
-## Character Builder 0.9.7f — Rest reset correction patch
+## Character Builder 0.9.7f — Character Keeper reset and selectable-card patch
 
-Version 0.9.7f preserves the 0.9.7e confirmation flow and fixes the confirmed-choice reset path discovered during live Character Keeper testing.
+Version 0.9.7f preserves the 0.9.7e confirmation flow and consolidates the next live-test corrections without changing the validated Character Creation or Level Up mechanics.
 
-- **Confirmed choices now reset completely:** `Discard Rest Changes` explicitly replaces the saved operation map and completed-action list instead of recursively merging empty objects into them. This prevents confirmed Weapon Mastery, Change Land, Replace Cantrip, and every other staged rest operation from reappearing after the reset.
-- **All rest action kinds share the correction:** the reset operates on the session-level staging state, so it applies uniformly to Short Rest and Long Rest actions rather than requiring action-specific cleanup.
-- **Unconfirmed and confirmed state return to baseline:** current form edits are discarded by the rerender, green checks are removed, and each action is rebuilt from the live Actor state. The Actor remains unchanged because the native rest has not started.
-- **Anti-reroll locks remain protected:** public Cosmic Omen and Portent chat rolls are still not rerollable within the same pending rest. Their staged application is discarded, while the separate roll lock remains as documented.
-- **Runtime postcondition:** the reset verifies that no staged operations or completed-action IDs remain before reporting success.
+- **Definitive `Discard Rest Changes`:** the complete `restManagementSession` flag is removed with `unsetFlag` before a clean session is written again. This avoids Foundry's recursive object-flag merge and guarantees that confirmed `operations` and `completedActionIds` cannot survive the reset.
+- **Complete session rollback before rest:** confirmed and unconfirmed Weapon Mastery, Change Land, Replace Cantrip, Pact, Wild Shape, Spell Mastery, and every other staged Short/Long Rest operation return to the live Actor baseline. Green checks and form edits are rebuilt from the Actor; the Actor itself remains untouched until the final rest commit.
+- **Protected public-roll locks:** Cosmic Omen and Portent operation payloads are discarded, but their public-chat roll locks remain for the pending rest so closing, reopening, or resetting cannot create a reroll exploit.
+- **Keeper-wide two-zone selectable cards:** every selectable option card in the right panel now separates interaction into a compact left selection square and a larger right details panel. The left zone only changes the radio/checkbox; the right zone only opens the source document. This applies to Aspect of the Wilds, Ranger feature choices, Circle Land, Wild Shape forms, Pact of the Tome, Wizard Replace Cantrip, Spell Mastery, and Scribe Spell options.
+- **Unavailable options are unambiguous:** blocked or ineligible cards are fully greyed out, including image, checkbox, text, border, background, and source-detail control. They cannot be selected or opened until they become eligible.
+- **Clear hover and keyboard focus:** selection and source-detail zones use different hover/focus feedback, while the Keeper's left action column remains simple event navigation with no document-opening behavior.
 
 ## Character Builder 0.9.7e — Rest confirmation and legacy Item compatibility patch
 
@@ -257,6 +258,9 @@ https://github.com/hammer-PvP/DnD-5e-Character-Builder
 - Confirm Weapon Mastery, Change Land, Replace Cantrip, and another available Keeper action; `Discard Rest Changes` removes every green check and restores every panel to the live Actor state.
 - Close and reopen Character Keeper after discarding; none of the previously confirmed payloads return.
 - Continue the native rest after discarding; no discarded operation is applied.
+- In every Keeper selectable card, clicking the left square changes only the radio/checkbox and clicking the right panel opens only the source document.
+- Verify Aspect of the Wilds, Circle Land, Wild Shape, Pact of the Tome, Replace Cantrip, Spell Mastery, and Scribe Spell cards use the same two-zone behavior.
+- Verify disabled or ineligible options are fully greyed out and neither zone is interactive.
 - A Level Up succeeds with pre-existing GM/homebrew inventory Items whose saved source metadata points to disabled SRD 5.1 content.
 - The same Level Up still blocks a new class feature, feat, spell, or other document actually granted from a disabled source when no enabled equivalent exists.
 - Existing Items are not deleted, replaced, renamed, relinked, or source-cleaned during the draft or final commit.

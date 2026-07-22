@@ -215,12 +215,6 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     for (const input of root.querySelectorAll("[data-filter-target]")) {
       input.addEventListener("input", event => this.#filterCards(event));
     }
-    for (const card of root.querySelectorAll("[data-document-card]")) {
-      card.addEventListener("click", event => {
-        if (event.target.closest("button, input, select, label, a")) return;
-        card.querySelector('[data-action="open-document"]')?.click();
-      });
-    }
     root.querySelectorAll('[name="keeper.mastery.oldKey"], [name="keeper.mastery.newKey"]').forEach(select => {
       select.addEventListener("change", () => this.#refreshMasteryOptions());
     });
@@ -736,13 +730,18 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     const level = oldInput?.dataset.level ?? "";
     const currentId = oldInput?.value ?? "";
     for (const card of this.element.querySelectorAll("[data-spell-mastery-candidate]")) {
-      const hidden = Boolean(level && card.dataset.level !== level) || card.dataset.itemId === currentId;
-      card.hidden = hidden;
+      const unavailable = Boolean(level && card.dataset.level !== level) || card.dataset.itemId === currentId;
+      card.hidden = false;
+      card.classList.toggle("disabled", unavailable);
+      if (unavailable) card.setAttribute("aria-disabled", "true");
+      else card.removeAttribute("aria-disabled");
       const input = card.querySelector('[name="keeper.spellMastery.newItemId"]');
       if (input) {
-        input.disabled = hidden;
-        if (hidden && input.checked) input.checked = false;
+        input.disabled = unavailable;
+        if (unavailable && input.checked) input.checked = false;
       }
+      const details = card.querySelector('.cb-keeper-detail-zone[data-action="open-document"]');
+      if (details) details.disabled = unavailable || !details.dataset.uuid;
     }
     this.#refreshApplyButton();
   }
@@ -762,6 +761,16 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
         for (const input of section.querySelectorAll('input[type="checkbox"]')) {
           input.disabled = input.dataset.baseDisabled === "true";
         }
+      }
+      for (const input of section.querySelectorAll('input[type="checkbox"]')) {
+        const card = input.closest(".cb-keeper-tome-card");
+        if (!card) continue;
+        const unavailable = Boolean(input.disabled);
+        card.classList.toggle("disabled", unavailable);
+        if (unavailable) card.setAttribute("aria-disabled", "true");
+        else card.removeAttribute("aria-disabled");
+        const details = card.querySelector('.cb-keeper-detail-zone[data-action="open-document"]');
+        if (details) details.disabled = unavailable || !details.dataset.uuid;
       }
     }
     this.#refreshApplyButton();
