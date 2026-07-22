@@ -46,6 +46,8 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     this.busy = false;
     this.busyLabel = "";
     this.operationToken = null;
+    this.formBaseline = null;
+    this.unconfirmedActionId = null;
   }
 
   static DEFAULT_OPTIONS = {
@@ -194,6 +196,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
       busy: this.busy,
       busyLabel: this.busyLabel,
       nativeRestCompleted: Boolean(this.session?.nativeRestCompleted),
+      hasRestChanges: Boolean(Object.keys(this.session?.operations ?? {}).length),
       continueLabel: this.session?.nativeRestCompleted
         ? "Apply Pending Changes"
         : `Continue ${this.restType === "short" ? "Short" : "Long"} Rest`,
@@ -235,10 +238,19 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
       input.addEventListener("change", () => this.#refreshScribeCheckout());
     });
     root.querySelectorAll("input, select").forEach(input => {
-      input.addEventListener("change", () => this.#refreshApplyButton());
+      input.addEventListener("change", () => {
+        this.#refreshApplyButton();
+        if (input.matches('[name^="keeper."]')) this.#handleFormMutation();
+      });
+      if (input.matches('[name^="keeper."]')) {
+        input.addEventListener("input", () => this.#handleFormMutation());
+      }
     });
     this.#refreshScribeCheckout();
     this.#refreshApplyButton();
+    this.formBaseline = this.#serializeCurrentActionForm();
+    this.unconfirmedActionId = null;
+    this.#refreshRestFlowState();
   }
 
   async #onAction(event) {
@@ -264,6 +276,9 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
         case "continue-rest":
           await this.#continueRest();
           break;
+        case "discard-rest-changes":
+          await this.#discardRestChanges();
+          break;
         case "cancel-rest-management":
           await this.#cancelManagement();
           break;
@@ -284,6 +299,12 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
 
   async #selectAction(actionId) {
     if (!this.actions.some(action => action.id === actionId)) return;
+    const current = this.#selectedAction();
+    if (actionId === current?.id) return;
+    if (!this.externalMode && this.#hasUnconfirmedChanges()) {
+      ui.notifications.warn(`Confirm or discard the unconfirmed ${current?.label ?? "Character Keeper"} changes before opening another action.`);
+      return;
+    }
     if (!this.externalMode) this.session = await RestSessionService.selectAction(this.actor, actionId);
     await this.render({ force: true });
   }
@@ -367,6 +388,11 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
 
   async #continueRest() {
     if (this.busy || this.externalMode) return;
+    if (this.#hasUnconfirmedChanges()) {
+      const action = this.#selectedAction();
+      ui.notifications.warn(`Confirm or discard the unconfirmed ${action?.label ?? "Character Keeper"} changes before continuing the ${this.restLabel}.`);
+      return;
+    }
     if (this.actor.getFlag(MODULE_ID, "runtimeManagementSafetyLock")) {
       throw new Error("This Actor is safety-locked after a failed Character Keeper rollback. A GM must inspect it before another management transaction.");
     }
@@ -449,6 +475,42 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
       if (this.operationToken === token) this.operationToken = null;
       this.#setBusy(false);
     }
+  }
+
+  async #discardRestChanges() {
+    if (this.busy || this.externalMode || this.session?.nativeRestCompleted) return;
+    this.session = RestSessionService.get(this.actor) ?? this.session;
+    const hasConfirmed = Boolean(Object.keys(this.session?.operations ?? {}).length);
+    const hasUnconfirmed = this.#hasUnconfirmedChanges();
+    if (!hasConfirmed && !hasUnconfirmed) return;
+
+    const lockedRolls = Object.keys(this.session?.rollLocks ?? {}).length;
+    const rollNotice = lockedRolls
+      ? "<p>Public roll results already posted to chat will not be applied, but their roll locks remain for this pending rest to prevent rerolls.</p>"
+      : "";
+    const title = "Discard Rest Changes";
+    const content = `<p>Discard every confirmed and unconfirmed Character Keeper choice for this ${this.restLabel}?</p>${rollNotice}<p>The native rest has not started and the Actor will not be changed.</p>`;
+    const DialogV2 = foundry.applications.api.DialogV2;
+    const confirmed = DialogV2?.confirm
+      ? await DialogV2.confirm({
+        window: { title },
+        content,
+        yes: { label: "Discard Rest Changes", icon: "fa-solid fa-rotate-left" },
+        no: { label: "Keep Changes", icon: "fa-solid fa-xmark" }
+      })
+      : await Dialog.confirm({ title, content, defaultYes: false });
+    if (!confirmed) return;
+
+    this.#setBusy(true, "Discarding rest changes…");
+    try {
+      this.session = await RestSessionService.discardChanges(this.actor, { preserveRollLocks: true });
+      this.formBaseline = null;
+      this.unconfirmedActionId = null;
+      ui.notifications.info("All pending Character Keeper choices were discarded.");
+    } finally {
+      this.#setBusy(false);
+    }
+    await this.render({ force: true });
   }
 
   async #cancelManagement() {
@@ -711,7 +773,9 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     const card = selected?.closest?.("[data-scribe-source-id]") ?? null;
     checkout.hidden = !card;
     const applyLabel = root.querySelector("[data-scribe-apply-label]");
-    if (applyLabel) applyLabel.textContent = card ? `Confirm Scribing — ${card.dataset.costLabel ?? "0 GP"}` : "Select a Spell Scroll";
+    const applyCost = root.querySelector("[data-scribe-apply-cost]");
+    if (applyLabel) applyLabel.textContent = card ? "Confirm Scribing" : "Select a Spell Scroll";
+    if (applyCost) applyCost.textContent = card ? (card.dataset.costLabel ?? "0 GP") : "Select to review cost";
     if (!card) return;
     const set = (name, value) => {
       const target = checkout.querySelector(`[data-scribe-summary="${name}"]`);
@@ -802,6 +866,81 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
       if (copy) copy.textContent = this.busyLabel || "Applying Character Keeper changes…";
     }
     if (!this.busy) this.#refreshApplyButton();
+    this.#refreshRestFlowState();
+  }
+
+  #serializeCurrentActionForm() {
+    const root = this.element;
+    if (!root) return "[]";
+    const controls = [...root.querySelectorAll('input[name^="keeper."], select[name^="keeper."]')];
+    const state = controls.map((control, index) => ({
+      index,
+      name: control.name,
+      type: control.type ?? control.tagName.toLowerCase(),
+      value: String(control.value ?? ""),
+      checked: "checked" in control ? Boolean(control.checked) : null
+    }));
+    return JSON.stringify(state);
+  }
+
+  #hasUnconfirmedChanges() {
+    if (this.externalMode || this.formBaseline == null) return false;
+    return this.#serializeCurrentActionForm() !== this.formBaseline;
+  }
+
+  #handleFormMutation() {
+    if (this.externalMode || this.busy) return;
+    const dirty = this.#hasUnconfirmedChanges();
+    this.unconfirmedActionId = dirty ? this.#selectedAction()?.id ?? null : null;
+    this.#refreshRestFlowState();
+  }
+
+  #refreshRestFlowState() {
+    const root = this.element;
+    if (!root || this.externalMode) return;
+    const dirty = this.#hasUnconfirmedChanges();
+    const selected = this.#selectedAction();
+    this.unconfirmedActionId = dirty ? selected?.id ?? null : null;
+    const operations = RestSessionService.get(this.actor)?.operations ?? this.session?.operations ?? {};
+    const hasConfirmed = Boolean(Object.keys(operations).length);
+    const hasChanges = dirty || hasConfirmed;
+
+    root.classList.toggle("has-unconfirmed-changes", dirty);
+    for (const row of root.querySelectorAll("[data-action-id]")) {
+      const isDirty = dirty && row.dataset.actionId === this.unconfirmedActionId;
+      row.classList.toggle("unconfirmed", isDirty);
+      const status = row.querySelector("[data-keeper-action-status]");
+      if (status) status.textContent = isDirty
+        ? "Unconfirmed changes"
+        : (row.classList.contains("complete") ? "Choice ready" : (status.dataset.defaultText ?? ""));
+      const indicator = row.querySelector("[data-keeper-action-indicator]");
+      if (indicator) {
+        indicator.className = isDirty
+          ? "fa-solid fa-triangle-exclamation"
+          : (row.classList.contains("complete") ? "fa-solid fa-circle-check" : "fa-solid fa-chevron-right");
+      }
+    }
+
+    const kicker = root.querySelector("[data-keeper-feature-kicker]");
+    if (kicker) kicker.textContent = dirty
+      ? "Unconfirmed Changes"
+      : (selected?.complete ? "Choice Ready" : "Optional Rest Action");
+    const notice = root.querySelector("[data-keeper-unconfirmed-notice]");
+    if (notice) notice.hidden = !dirty;
+
+    const continueButton = root.querySelector('[data-action="continue-rest"]');
+    if (continueButton) {
+      continueButton.disabled = this.busy || dirty;
+      const hint = continueButton.querySelector("small");
+      if (hint) hint.textContent = dirty
+        ? "Confirm or discard the current edits before resting"
+        : (hint.dataset.defaultHint ?? hint.textContent);
+    }
+    const discardButton = root.querySelector('[data-action="discard-rest-changes"]');
+    if (discardButton) {
+      discardButton.hidden = !hasChanges;
+      discardButton.disabled = this.busy || !hasChanges;
+    }
   }
 
   #actorLevel(actor) {

@@ -33,9 +33,9 @@
           <img src="{{img}}" alt="">
           <span>
             <strong>{{label}}</strong>
-            <small>{{#if complete}}Choice ready{{else}}{{description}}{{/if}}</small>
+            <small data-keeper-action-status data-default-text="{{description}}">{{#if complete}}Choice ready{{else}}{{description}}{{/if}}</small>
           </span>
-          {{#if complete}}<i class="fa-solid fa-circle-check" aria-label="Choice ready"></i>{{else}}<i class="fa-solid fa-chevron-right"></i>{{/if}}
+          {{#if complete}}<i data-keeper-action-indicator class="fa-solid fa-circle-check" aria-label="Choice ready"></i>{{else}}<i data-keeper-action-indicator class="fa-solid fa-chevron-right"></i>{{/if}}
         </button>
         {{/each}}
       </nav>
@@ -56,7 +56,7 @@
             {{#if selected.secondaryImg}}<img class="cb-keeper-feature-icon-secondary" src="{{selected.secondaryImg}}" alt="" draggable="false">{{/if}}
           </span>
           <div>
-            <span class="cb-kicker">{{#if selected.complete}}Choice Ready{{else}}Optional Rest Action{{/if}}</span>
+            <span class="cb-kicker" data-keeper-feature-kicker>{{#if selected.complete}}Choice Ready{{else}}Optional Rest Action{{/if}}</span>
             <h2>{{selected.label}}</h2>
             <p>{{selected.description}}</p>
           </div>
@@ -76,7 +76,7 @@
           {{else if selected.isScribe}}
           <button type="button" class="cb-primary-confirm" data-action="apply-current-action" {{#if busy}}disabled{{/if}}>
             <i class="fa-solid fa-book"></i>
-            <span><strong data-scribe-apply-label>Select a Spell Scroll</strong><small>Review the complete cost and consequences before confirmation</small></span>
+            <span class="cb-scribe-confirm-copy"><strong data-scribe-apply-label>Select a Spell Scroll</strong><small data-scribe-apply-cost>Select to review cost</small></span>
           </button>
           {{else}}
           <button type="button" class="cb-primary-confirm" data-action="apply-current-action" {{#if busy}}disabled{{/if}}>
@@ -89,6 +89,7 @@
       </header>
 
       <div class="cb-keeper-scroll">
+        <p class="cb-notice warning cb-keeper-unconfirmed-notice" data-keeper-unconfirmed-notice hidden><i class="fa-solid fa-triangle-exclamation"></i> These edits are not confirmed. Confirm them above or use <strong>{{#if nativeRestCompleted}}Discard Pending Changes{{else}}Discard Rest Changes{{/if}}</strong> before continuing.</p>
         {{#if selected.complete}}
         <p class="cb-notice success"><i class="fa-solid fa-circle-check"></i> This action has a confirmed choice ready for the current {{restLabel}}. You can reopen it and replace that pending choice before continuing.</p>
         {{/if}}
@@ -432,9 +433,15 @@
     </button>
     {{/if}}
     {{#unless externalMode}}
+    {{#unless nativeRestCompleted}}
+    <button type="button" class="cb-keeper-discard" data-action="discard-rest-changes" {{#unless hasRestChanges}}hidden{{/unless}} {{#if busy}}disabled{{/if}}>
+      <i class="fa-solid fa-rotate-left"></i>
+      <span><strong>Discard Rest Changes</strong><small>Reset every pending Keeper choice</small></span>
+    </button>
+    {{/unless}}
     <button type="button" class="cb-primary-confirm" data-action="continue-rest" {{#if busy}}disabled{{/if}}>
       <i class="fa-solid {{#if nativeRestCompleted}}fa-gears{{else}}fa-bed{{/if}}"></i>
-      <span><strong>{{continueLabel}}</strong><small>{{continueHint}}</small></span>
+      <span><strong>{{continueLabel}}</strong><small data-default-hint="{{continueHint}}">{{continueHint}}</small></span>
     </button>
     {{/unless}}
   </footer>

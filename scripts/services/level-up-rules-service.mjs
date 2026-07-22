@@ -548,7 +548,10 @@ export class LevelUpRulesService {
       createdInvocationIds.push(...(tomeResult.createdItemIds ?? []));
       deleted += Number(tomeResult.deletedItemIds?.length ?? 0);
     }
-    await SourceResolver.enforceAllowedSources(draft, registry);
+    await SourceResolver.enforceAllowedSources(draft, registry, {
+      beforeItemIds: new Set(rollbackSnapshot.items.map(item => item._id)),
+      context: "current Level Up choices"
+    });
     await this.#rebindCreatedInvocationTargets(draft, cls, createdInvocationTargetBindings, {
       preferredCantripItemIds: createdSpellIds,
       transactionId: state.transactionId

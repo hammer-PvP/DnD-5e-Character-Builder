@@ -3592,3 +3592,64 @@
   .character-builder .cb-scribe-budget-grid,
   .character-builder .cb-scribe-outcomes { grid-template-columns: 1fr; }
 }
+
+/* 0.9.7e — confirmed-per-action Rest flow and compact Scribe confirmation */
+.character-builder button.cb-keeper-action.unconfirmed {
+  border-color: rgba(224, 166, 70, .9);
+  background: linear-gradient(90deg, rgba(135, 83, 21, .42), rgba(76, 50, 24, .22));
+  box-shadow: inset 3px 0 #e0a646;
+}
+.character-builder button.cb-keeper-action.unconfirmed > i,
+.character-builder button.cb-keeper-action.unconfirmed small {
+  color: #f0bd62;
+  opacity: 1;
+}
+.character-builder .cb-keeper-unconfirmed-notice[hidden] {
+  display: none !important;
+}
+.character-builder .cb-keeper-footer .cb-keeper-discard {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  min-height: 50px;
+  margin-left: auto;
+  padding: 7px 12px;
+  border: 1px solid rgba(211, 177, 91, .52);
+  border-radius: 6px;
+  background: linear-gradient(180deg, rgba(112, 82, 34, .24), rgba(70, 50, 24, .16));
+  color: #e8d5aa;
+  text-align: left;
+}
+.character-builder .cb-keeper-footer .cb-keeper-discard:hover:not(:disabled) {
+  border-color: rgba(225, 190, 111, .8);
+  background: linear-gradient(180deg, rgba(135, 99, 40, .34), rgba(83, 59, 27, .22));
+}
+.character-builder .cb-keeper-footer .cb-keeper-discard[hidden] {
+  display: none !important;
+}
+.character-builder .cb-keeper-footer .cb-keeper-discard > i {
+  color: #e0b45f;
+  font-size: 19px;
+}
+.character-builder .cb-keeper-footer .cb-keeper-discard span,
+.character-builder .cb-keeper-footer .cb-keeper-discard strong,
+.character-builder .cb-keeper-footer .cb-keeper-discard small {
+  display: block;
+  min-width: 0;
+}
+.character-builder .cb-keeper-footer .cb-keeper-discard small {
+  margin-top: 3px;
+  opacity: .72;
+  white-space: nowrap;
+}
+.character-builder .cb-scribe-confirm-copy strong,
+.character-builder .cb-scribe-confirm-copy small {
+  white-space: nowrap;
+  text-align: center;
+}
+.character-builder .cb-scribe-confirm-copy small {
+  color: #f0d18c;
+  font-size: 13px;
+  opacity: .92;
+}

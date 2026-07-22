@@ -71,9 +71,12 @@ export class LevelUpAdvancementService {
         return result;
       }
 
-      await SourceResolver.enforceAllowedSources(draft, registry);
+      await SourceResolver.enforceAllowedSources(draft, registry, {
+        beforeItemIds,
+        context: "current Level Up"
+      });
       await ItemChoiceReplacementIntegrityService.reconcile(draft);
-      await AdvancementService.dedupe(draft);
+      await AdvancementService.dedupe(draft, { beforeItemIds });
       const integrityResult = await ItemGrantIntegrityService.reconcile(draft, registry, {
         context: "levelUp",
         state,

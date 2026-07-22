@@ -9,7 +9,7 @@ Character Builder is a guided D&D 2024 character creation, Level Up, Epic Boon, 
 - Foundry VTT 14.364
 - D&D5e 5.3.3
 
-SRD 5.1 Legacy is not officially supported. Character Keeper is under active testing in version 0.9.7d as an experimental Short Rest, Long Rest, and Wizard spellbook-management capability.
+SRD 5.1 Legacy is not officially supported. Character Keeper is under active testing in version 0.9.7e as an experimental Short Rest, Long Rest, and Wizard spellbook-management capability.
 
 ## Level 1 creation
 
@@ -22,6 +22,19 @@ SRD 5.1 Legacy is not officially supported. Character Keeper is under active tes
 - Independent Class and Background starting equipment or starting-currency choices.
 - Transactional mundane Starting Equipment Shop with Checkout, exact purchase manifests, containers, quantity support, and GM Bonus Gold.
 - Review and recoverable application to the original Actor.
+
+## Character Builder 0.9.7e — Rest confirmation and legacy Item compatibility patch
+
+Version 0.9.7e preserves the validated 0.9.7d runtime routines while improving the Character Keeper confirmation flow and preventing legacy or GM-granted Items from blocking an otherwise valid Level Up.
+
+- **Transaction-scoped source validation:** Level Up source enforcement now validates only documents created by the current progression transaction. Existing Class and other Actor documents are treated as legacy input unless the transaction replaces them with a new embedded document. Existing Actor Items are preserved without source revalidation, including homebrew and GM-granted weapons, armor, equipment, tools, potions, Spell Scrolls, consumables, ammunition, containers, loot, and magic Items whose historical `sourceId` or `compendiumSource` still points to SRD 5.1 or another disabled package.
+- **No legacy inventory mutation:** pre-existing Items are copied to the completed Actor unchanged. Character Builder does not delete, replace, relink, or automatically clean their source metadata. Normal inventory changes such as quantity, uses, equipped state, attunement, identification, container, and sort order do not make those Items newly granted content.
+- **New content remains protected:** Classes, subclasses, features, feats, spells, and other documents actually granted by the current Character Builder or native Advancement transaction are still checked against enabled sources. Error messages list only the new transaction content that could not be resolved safely.
+- **Confirmed-per-action Rest flow:** editing a Character Keeper action creates an explicit amber `Unconfirmed Changes` state. The player must confirm that action with its top button before opening another action or continuing the Short or Long Rest. Confirmed actions retain the existing green check and remain staged until the final rest commit.
+- **Discard Rest Changes:** before the native rest begins, the footer provides a dedicated reset action whenever confirmed or unconfirmed Keeper choices exist. It clears staged operations, checks, and the current form edit while leaving the Actor untouched. Public roll locks remain for the pending rest so discarded Cosmic Omen or Portent rolls cannot be rerolled.
+- **Single final commit:** individual confirmation buttons stage choices only. `Continue Short Rest` or `Continue Long Rest` performs the native D&D5e rest exactly once and then applies all confirmed Character Keeper operations through the existing rollback-protected transaction.
+- **Scribe confirmation layout:** the Scribe Spell button now uses two fixed lines: `Confirm Scribing` and the complete GP cost. The amount and `GP` remain together instead of wrapping independently.
+- **Foundry module title:** the manifest title is now `Character Builder (DnD 5e - 2024)`, which is the name shown in the Foundry module browser.
 
 ## Character Builder 0.9.7d — Scribe Spell and Keeper cleanup patch
 
@@ -214,7 +227,7 @@ This README is the consolidated project and release document. Static validation 
 
 https://github.com/hammer-PvP/DnD-5e-Character-Builder
 
-## 0.9.7d validation checklist
+## 0.9.7e validation checklist
 
 - Existing 0.9.5k Character Creation and Level Up flows remain unchanged.
 - The Epic Boon setting saves and reloads correctly.
@@ -228,6 +241,19 @@ https://github.com/hammer-PvP/DnD-5e-Character-Builder
 - Native class, subclass, and class-feature insertion is blocked without affecting equipment, potion, spell, or other normal drops.
 - Invalid Ability Score Improvement feat text matches the approved wording.
 
+
+### 0.9.7e focused regression checklist
+
+- A Level Up succeeds with pre-existing GM/homebrew inventory Items whose saved source metadata points to disabled SRD 5.1 content.
+- The same Level Up still blocks a new class feature, feat, spell, or other document actually granted from a disabled source when no enabled equivalent exists.
+- Existing Items are not deleted, replaced, renamed, relinked, or source-cleaned during the draft or final commit.
+- Editing any Character Keeper choice changes its sidebar state to `Unconfirmed Changes`, blocks action navigation, and disables the final rest button.
+- Confirming the selected action restores normal navigation and adds the existing green check without changing the live Actor.
+- `Discard Rest Changes` clears confirmed and unconfirmed choices before the native rest and leaves the Actor unchanged.
+- Discarding a public Cosmic Omen or Portent result removes its staged operation but keeps the anti-reroll lock for that pending rest.
+- The final rest executes natively exactly once and applies only confirmed operations.
+- The Scribe Spell top button displays `Confirm Scribing` and the full `<cost> GP` value on separate fixed lines.
+- Foundry displays `Character Builder (DnD 5e - 2024)` as the module title.
 
 ### Character Keeper runtime checklist
 

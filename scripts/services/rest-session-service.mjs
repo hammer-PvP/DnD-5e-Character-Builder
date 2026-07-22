@@ -85,6 +85,20 @@ export class RestSessionService {
     });
   }
 
+  static async discardChanges(actor, { preserveRollLocks = true } = {}) {
+    const current = this.get(actor);
+    if (!current?.id) throw new Error("No Character Keeper rest session is active.");
+    if (current.nativeRestCompleted) {
+      throw new Error("The native rest already completed. Use recovery to discard only the pending Character Keeper changes.");
+    }
+    return this.update(actor, {
+      operations: {},
+      completedActionIds: [],
+      rollLocks: preserveRollLocks ? foundry.utils.deepClone(current.rollLocks ?? {}) : {},
+      status: "pending"
+    });
+  }
+
   static async clear(actor) {
     if (!actor?.getFlag(MODULE_ID, this.FLAG)) return;
     await actor.unsetFlag(MODULE_ID, this.FLAG);

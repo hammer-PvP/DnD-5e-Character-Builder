@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.7d";
-export const MODULE_BUILD = "community-beta-097d-keeper-scribe-and-mastery-polish";
+export const MODULE_VERSION = "0.9.7e";
+export const MODULE_BUILD = "community-beta-097e-rest-flow-and-source-delta";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {

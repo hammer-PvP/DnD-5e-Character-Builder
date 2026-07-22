@@ -163,7 +163,8 @@ export class AdvancementService {
     return false;
   }
 
-  static async dedupe(actor) {
+  static async dedupe(actor, { beforeItemIds = null } = {}) {
+    const protectedIds = beforeItemIds == null ? null : new Set(beforeItemIds);
     const deletions = [];
     const redirects = [];
     const groups = new Map();
@@ -194,8 +195,16 @@ export class AdvancementService {
 
     for (const bucket of groups.values()) {
       if (bucket.length < 2) continue;
-      const keeper = bucket[0];
-      for (const duplicate of bucket.slice(1)) {
+      // During Level Up, Items that existed before the transaction are
+      // immutable input. Dedupe may remove only newly created technical
+      // duplicates; it never collapses two legacy or GM-granted documents.
+      const mutable = protectedIds ? bucket.filter(item => !protectedIds.has(item.id)) : bucket;
+      if (!mutable.length) continue;
+      const keeper = protectedIds
+        ? (bucket.find(item => protectedIds.has(item.id)) ?? mutable[0])
+        : bucket[0];
+      for (const duplicate of mutable) {
+        if (duplicate.id === keeper.id) continue;
         deletions.push(duplicate.id);
         redirects.push({ from: duplicate.id, to: keeper.id });
       }

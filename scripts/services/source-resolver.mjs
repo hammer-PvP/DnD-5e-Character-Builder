@@ -31,12 +31,22 @@ export class SourceResolver {
     return data;
   }
 
-  static async enforceAllowedSources(actor, registry) {
+  static async enforceAllowedSources(actor, registry, {
+    beforeItemIds = null,
+    includeItemIds = [],
+    context = "current transaction"
+  } = {}) {
     const updates = [];
     const deletions = [];
     const blocked = [];
+    const baselineIds = beforeItemIds == null ? null : new Set(beforeItemIds);
+    const explicitIds = new Set(includeItemIds ?? []);
 
     for (const item of actor.items) {
+      // Level Up must validate only the transaction delta. Existing inventory,
+      // consumables, homebrew, and GM-granted Items are copied unchanged even
+      // when their historical source metadata points at a disabled compendium.
+      if (baselineIds?.has(item.id) && !explicitIds.has(item.id)) continue;
       if (item.getFlag(MODULE_ID, "customBackground")) continue;
       const currentSource = item.getFlag("dnd5e", "sourceId") ?? item._stats?.compendiumSource;
       if (!currentSource || !String(currentSource).startsWith("Compendium.")) continue;
@@ -63,13 +73,13 @@ export class SourceResolver {
     if (deletions.length) await actor.deleteEmbeddedDocuments("Item", deletions, { deleteContents: true });
 
     if (blocked.length) {
-      throw new Error(`Disabled content sources attempted to grant: ${blocked.join(", ")}. Enable a compatible source or choose another option.`);
+      throw new Error(`The ${context} attempted to grant content from disabled sources: ${blocked.join(", ")}. Enable a compatible source or choose another option.`);
     }
     return updates.length;
   }
 
-  static async normalizeSpells(actor, registry) {
-    return this.enforceAllowedSources(actor, registry);
+  static async normalizeSpells(actor, registry, options = {}) {
+    return this.enforceAllowedSources(actor, registry, options);
   }
 
   static #replacementUpdate(item, document, option) {
