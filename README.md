@@ -9,7 +9,7 @@ Character Builder is a guided D&D 2024 character creation, Level Up, Epic Boon, 
 - Foundry VTT 14.364
 - D&D5e 5.3.3
 
-SRD 5.1 Legacy is not officially supported. Character Keeper is under active testing in version 0.9.7e as an experimental Short Rest, Long Rest, and Wizard spellbook-management capability.
+SRD 5.1 Legacy is not officially supported. Character Keeper is under active testing in version 0.9.7f as an experimental Short Rest, Long Rest, and Wizard spellbook-management capability.
 
 ## Level 1 creation
 
@@ -22,6 +22,16 @@ SRD 5.1 Legacy is not officially supported. Character Keeper is under active tes
 - Independent Class and Background starting equipment or starting-currency choices.
 - Transactional mundane Starting Equipment Shop with Checkout, exact purchase manifests, containers, quantity support, and GM Bonus Gold.
 - Review and recoverable application to the original Actor.
+
+## Character Builder 0.9.7f — Rest reset correction patch
+
+Version 0.9.7f preserves the 0.9.7e confirmation flow and fixes the confirmed-choice reset path discovered during live Character Keeper testing.
+
+- **Confirmed choices now reset completely:** `Discard Rest Changes` explicitly replaces the saved operation map and completed-action list instead of recursively merging empty objects into them. This prevents confirmed Weapon Mastery, Change Land, Replace Cantrip, and every other staged rest operation from reappearing after the reset.
+- **All rest action kinds share the correction:** the reset operates on the session-level staging state, so it applies uniformly to Short Rest and Long Rest actions rather than requiring action-specific cleanup.
+- **Unconfirmed and confirmed state return to baseline:** current form edits are discarded by the rerender, green checks are removed, and each action is rebuilt from the live Actor state. The Actor remains unchanged because the native rest has not started.
+- **Anti-reroll locks remain protected:** public Cosmic Omen and Portent chat rolls are still not rerollable within the same pending rest. Their staged application is discarded, while the separate roll lock remains as documented.
+- **Runtime postcondition:** the reset verifies that no staged operations or completed-action IDs remain before reporting success.
 
 ## Character Builder 0.9.7e — Rest confirmation and legacy Item compatibility patch
 
@@ -227,7 +237,7 @@ This README is the consolidated project and release document. Static validation 
 
 https://github.com/hammer-PvP/DnD-5e-Character-Builder
 
-## 0.9.7e validation checklist
+## 0.9.7f validation checklist
 
 - Existing 0.9.5k Character Creation and Level Up flows remain unchanged.
 - The Epic Boon setting saves and reloads correctly.
@@ -242,8 +252,11 @@ https://github.com/hammer-PvP/DnD-5e-Character-Builder
 - Invalid Ability Score Improvement feat text matches the approved wording.
 
 
-### 0.9.7e focused regression checklist
+### 0.9.7f focused regression checklist
 
+- Confirm Weapon Mastery, Change Land, Replace Cantrip, and another available Keeper action; `Discard Rest Changes` removes every green check and restores every panel to the live Actor state.
+- Close and reopen Character Keeper after discarding; none of the previously confirmed payloads return.
+- Continue the native rest after discarding; no discarded operation is applied.
 - A Level Up succeeds with pre-existing GM/homebrew inventory Items whose saved source metadata points to disabled SRD 5.1 content.
 - The same Level Up still blocks a new class feature, feat, spell, or other document actually granted from a disabled source when no enabled equivalent exists.
 - Existing Items are not deleted, replaced, renamed, relinked, or source-cleaned during the draft or final commit.

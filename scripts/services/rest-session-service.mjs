@@ -91,12 +91,26 @@ export class RestSessionService {
     if (current.nativeRestCompleted) {
       throw new Error("The native rest already completed. Use recovery to discard only the pending Character Keeper changes.");
     }
-    return this.update(actor, {
-      operations: {},
-      completedActionIds: [],
-      rollLocks: preserveRollLocks ? foundry.utils.deepClone(current.rollLocks ?? {}) : {},
-      status: "pending"
-    });
+
+    // Do not use update()/mergeObject here. Merging an empty object does not
+    // delete its existing nested keys, so confirmed operations would survive
+    // the reset and reappear after the interface rendered again.
+    const next = foundry.utils.deepClone(current);
+    next.operations = {};
+    next.completedActionIds = [];
+    next.rollLocks = preserveRollLocks
+      ? foundry.utils.deepClone(current.rollLocks ?? {})
+      : {};
+    next.status = "pending";
+
+    await actor.setFlag(MODULE_ID, this.FLAG, next);
+    const saved = this.get(actor);
+    const operationsRemain = Object.keys(saved?.operations ?? {}).length > 0;
+    const completedRemain = (saved?.completedActionIds ?? []).length > 0;
+    if (operationsRemain || completedRemain) {
+      throw new Error("Character Keeper could not fully discard the pending rest changes.");
+    }
+    return saved;
   }
 
   static async clear(actor) {

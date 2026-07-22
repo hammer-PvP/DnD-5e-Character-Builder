@@ -504,6 +504,9 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     this.#setBusy(true, "Discarding rest changes…");
     try {
       this.session = await RestSessionService.discardChanges(this.actor, { preserveRollLocks: true });
+      if (Object.keys(this.session?.operations ?? {}).length || (this.session?.completedActionIds ?? []).length) {
+        throw new Error("Character Keeper could not fully discard the pending rest changes.");
+      }
       this.formBaseline = null;
       this.unconfirmedActionId = null;
       ui.notifications.info("All pending Character Keeper choices were discarded.");
