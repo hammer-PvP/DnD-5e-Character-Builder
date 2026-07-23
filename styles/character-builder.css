@@ -3725,3 +3725,356 @@
   font-size: 13px;
   opacity: .92;
 }
+/* 0.9.7f Visual Review — Project_Standarts presentation layer
+   Presentation only: templates and CSS. No rules, filters, services, flags,
+   Advancements, transactions, handlers, ownership, or commit logic changed. */
+
+/* Shared visual tokens: Character Creation is the canonical identity. */
+.character-builder {
+  --cb-bg: #111113;
+  --cb-panel: #17171a;
+  --cb-panel-soft: rgba(255,255,255,.025);
+  --cb-panel-hover: rgba(255,255,255,.06);
+  --cb-text: #eee9df;
+  --cb-text-muted: rgba(238,233,223,.68);
+  --cb-heading: #c44a50;
+  --cb-gold: #d1b06b;
+  --cb-gold-bright: #efd18d;
+  --cb-border: rgba(209,176,107,.35);
+  --cb-border-soft: rgba(255,255,255,.09);
+  --cb-success: #6fd18a;
+  --cb-danger-text: #ffb4b4;
+  --cb-font-body: var(--dnd5e-font-roboto, "Roboto", sans-serif);
+  --cb-font-heading: var(--dnd5e-font-roboto-slab, "Roboto Slab", serif);
+  font-family: var(--cb-font-body);
+  color: var(--cb-text);
+}
+.character-builder button,
+.character-builder input,
+.character-builder select,
+.character-builder textarea {
+  font-family: var(--cb-font-body);
+}
+.character-builder h1,
+.character-builder h2,
+.character-builder h3,
+.character-builder h4,
+.character-builder h5,
+.character-builder legend {
+  font-family: var(--cb-font-heading);
+}
+.character-builder small,
+.character-builder .hint {
+  color: var(--cb-text-muted);
+}
+
+/* Consistent form controls without changing their values or event bindings. */
+.character-builder input[type="text"],
+.character-builder input[type="search"],
+.character-builder input[type="number"],
+.character-builder select,
+.character-builder textarea {
+  box-sizing: border-box;
+  border: 1px solid var(--cb-border);
+  border-radius: 5px;
+  background: rgba(0,0,0,.24);
+  color: var(--cb-text);
+}
+.character-builder input[type="text"]:focus,
+.character-builder input[type="search"]:focus,
+.character-builder input[type="number"]:focus,
+.character-builder select:focus,
+.character-builder textarea:focus {
+  border-color: var(--cb-gold-bright);
+  outline: 2px solid rgba(209,176,107,.18);
+  outline-offset: 1px;
+}
+.character-builder button {
+  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+}
+.character-builder button:focus-visible {
+  outline: 2px solid var(--cb-gold-bright);
+  outline-offset: 2px;
+}
+
+/* Character Creation: retain the correct card identity and add the Level Up
+   fixed-header behavior. Only the body below this header scrolls. */
+.character-builder .cb-step-content > .cb-section-header {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  margin: -22px -22px 16px;
+  padding: 22px 22px 12px;
+  background: linear-gradient(180deg, #111113 76%, rgba(17,17,19,.97));
+  box-shadow: 0 7px 14px rgba(0,0,0,.24);
+}
+.character-builder .cb-step-content > .cb-section-header h2,
+.character-builder .cb-section-heading h2,
+.character-builder .cb-keeper-feature-header h2 {
+  color: var(--cb-heading);
+}
+
+/* One square checkbox language for Character Creation, Level Up, and Keeper.
+   Radio semantics remain native where the rules require single choice; only
+   their visual identity is standardized. */
+.character-builder .cb-spell-toggle input,
+.character-builder .cb-choice-toggle input,
+.character-builder .cb-keeper-select-zone input {
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  display: grid;
+  place-content: center;
+  width: 23px;
+  height: 23px;
+  margin: 0;
+  border: 2px solid #d9ba79;
+  border-radius: 5px;
+  background: rgba(0,0,0,.32);
+  cursor: pointer;
+  box-shadow: 0 0 0 2px rgba(209,176,107,.08);
+}
+.character-builder .cb-spell-toggle input::before,
+.character-builder .cb-choice-toggle input::before,
+.character-builder .cb-keeper-select-zone input::before {
+  content: "✓";
+  color: #102016;
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1;
+  transform: scale(0);
+  transition: transform 80ms ease-out;
+}
+.character-builder .cb-spell-toggle input:checked,
+.character-builder .cb-choice-toggle input:checked,
+.character-builder .cb-keeper-select-zone input:checked {
+  border-color: #81d99a;
+  background: var(--cb-success);
+  box-shadow: 0 0 0 3px rgba(111,209,138,.16);
+}
+.character-builder .cb-spell-toggle input:checked::before,
+.character-builder .cb-choice-toggle input:checked::before,
+.character-builder .cb-keeper-select-zone input:checked::before {
+  transform: scale(1);
+}
+.character-builder .cb-spell-toggle input:focus-visible,
+.character-builder .cb-choice-toggle input:focus-visible,
+.character-builder .cb-keeper-select-zone input:focus-visible {
+  outline: 2px solid #f4dfad;
+  outline-offset: 2px;
+}
+.character-builder .cb-spell-toggle input:disabled,
+.character-builder .cb-choice-toggle input:disabled,
+.character-builder .cb-keeper-select-zone input:disabled {
+  border-color: rgba(255,255,255,.24);
+  background: rgba(255,255,255,.05);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+/* Character Creation selectable cards remain the canonical two-zone model. */
+.character-builder .cb-spell-option {
+  grid-template-columns: 48px minmax(0,1fr);
+  gap: 0;
+  min-height: 54px;
+  padding: 0;
+  border: 1px solid var(--cb-border-soft);
+  border-radius: 5px;
+  background: var(--cb-panel-soft);
+}
+.character-builder .cb-spell-toggle {
+  min-height: 52px;
+  border-right: 1px solid var(--cb-border-soft);
+}
+.character-builder .cb-spell-details {
+  min-height: 52px;
+  padding: 7px 10px;
+}
+.character-builder .cb-spell-option:has(input:checked) {
+  border-color: rgba(98,185,121,.6);
+  background: rgba(98,185,121,.08);
+}
+
+/* Level Up cards now use the same full-height left selection block used by
+   Character Creation. The right card continues to open source details only. */
+.character-builder .cb-choice-card.cb-spell-choice-card {
+  display: grid;
+  grid-template-columns: 48px minmax(0,1fr);
+  gap: 0;
+  min-height: 54px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--cb-border-soft);
+  border-radius: 5px;
+  background: var(--cb-panel-soft);
+}
+.character-builder .cb-choice-toggle {
+  display: grid;
+  place-items: center;
+  align-self: stretch;
+  min-width: 0;
+  min-height: 52px;
+  border-right: 1px solid var(--cb-border-soft);
+  background: rgba(0,0,0,.14);
+  cursor: pointer;
+}
+.character-builder .cb-choice-toggle:hover,
+.character-builder .cb-choice-toggle:focus-within {
+  background: rgba(209,176,107,.12);
+}
+.character-builder .cb-choice-card.cb-spell-choice-card .cb-spell-choice-preview {
+  min-height: 52px;
+  padding: 6px 9px;
+}
+.character-builder .cb-choice-card.cb-spell-choice-card:has(input:checked) {
+  border-color: rgba(98,185,121,.6);
+  background: rgba(98,185,121,.08);
+}
+
+/* The active section counter remains visible while scrolling through the
+   section. The parent section bounds prevent one header from covering the next. */
+.character-builder .cb-level-up-choices-scroll > .cb-choice-section > .cb-choice-section-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin: -14px -14px 12px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--cb-border);
+  background: rgba(23,23,26,.98);
+  box-shadow: 0 5px 10px rgba(0,0,0,.2);
+}
+.character-builder .cb-choice-section-header > strong,
+.character-builder [data-selection-count],
+.character-builder [data-managed-selection-count],
+.character-builder [data-invocation-count] {
+  color: var(--cb-gold);
+  font-weight: 800;
+}
+
+/* Character Keeper inherits the Character Creation palette and typography. */
+.character-builder .cb-keeper-shell {
+  color: var(--cb-text);
+  background: var(--cb-bg);
+}
+.character-builder .cb-keeper-header,
+.character-builder .cb-keeper-sidebar,
+.character-builder .cb-keeper-feature-header {
+  background: var(--cb-panel);
+  border-color: var(--cb-border);
+}
+.character-builder .cb-keeper-header,
+.character-builder .cb-keeper-feature-header {
+  box-shadow: 0 5px 14px rgba(0,0,0,.28);
+}
+.character-builder .cb-keeper-actor > img,
+.character-builder .cb-keeper-feature-title > img,
+.character-builder button.cb-keeper-action img {
+  border-color: var(--cb-border);
+}
+.character-builder button.cb-keeper-action {
+  border-color: var(--cb-border-soft);
+  background: var(--cb-panel-soft);
+  border-left: 3px solid transparent;
+}
+.character-builder button.cb-keeper-action:hover,
+.character-builder button.cb-keeper-action:focus-visible {
+  border-color: rgba(209,176,107,.52);
+  background: var(--cb-panel-hover);
+}
+.character-builder button.cb-keeper-action.selected {
+  border-color: rgba(196,74,80,.55);
+  border-left-color: var(--cb-heading);
+  background: rgba(196,74,80,.12);
+  box-shadow: none;
+}
+
+/* Keeper selectable cards: empty checkbox column + icon and information in the
+   right details card, matching Character Creation exactly. */
+.character-builder .cb-keeper-radio-card,
+.character-builder .cb-keeper-land-choice {
+  grid-template-columns: 48px minmax(0,1fr);
+  min-height: 58px;
+  border: 1px solid var(--cb-border-soft);
+  border-radius: 5px;
+  background: var(--cb-panel-soft);
+}
+.character-builder .cb-keeper-select-zone {
+  min-height: 56px;
+  padding: 0;
+  border-right: 1px solid var(--cb-border-soft);
+  background: rgba(0,0,0,.14);
+}
+.character-builder .cb-keeper-select-zone > input {
+  position: static;
+  inset: auto;
+  z-index: auto;
+}
+.character-builder .cb-keeper-select-zone > img {
+  display: none;
+}
+.character-builder .cb-keeper-detail-zone,
+.character-builder .cb-keeper-land-choice .cb-keeper-detail-zone {
+  grid-template-columns: 42px minmax(0,1fr) auto auto;
+  min-height: 56px;
+  padding: 6px 9px;
+}
+.character-builder .cb-keeper-detail-zone > img {
+  width: 38px;
+  height: 38px;
+  object-fit: cover;
+  border: 1px solid var(--cb-border-soft);
+  border-radius: 4px;
+}
+.character-builder .cb-keeper-radio-card:not(.disabled):has(input:checked) {
+  border-color: rgba(98,185,121,.6);
+  background: rgba(98,185,121,.08);
+}
+.character-builder .cb-keeper-scroll .cb-keeper-section > .cb-choice-section-header,
+.character-builder .cb-keeper-scroll .cb-keeper-two-column > div > .cb-choice-section-header {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  margin: 0 0 10px;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--cb-border);
+  border-radius: 4px 4px 0 0;
+  background: rgba(23,23,26,.98);
+  box-shadow: 0 4px 9px rgba(0,0,0,.18);
+}
+
+/* Full grey-out means the whole unavailable card communicates one state. */
+.character-builder .cb-spell-option.duplicate-disabled,
+.character-builder .cb-spell-option[data-disabled="true"],
+.character-builder .cb-spell-choice-card.duplicate-disabled,
+.character-builder .cb-spell-option:has(input:disabled):not(:has(input:checked)),
+.character-builder .cb-choice-card.cb-spell-choice-card:has(input:disabled):not(:has(input:checked)),
+.character-builder .cb-keeper-radio-card.disabled,
+.character-builder .cb-keeper-radio-card[aria-disabled="true"] {
+  opacity: .34;
+  filter: grayscale(1) saturate(0);
+  border-color: rgba(255,255,255,.055);
+  background: rgba(255,255,255,.012);
+  box-shadow: none;
+}
+.character-builder .cb-spell-option.duplicate-disabled,
+.character-builder .cb-spell-option[data-disabled="true"],
+.character-builder .cb-spell-choice-card.duplicate-disabled,
+.character-builder .cb-keeper-radio-card.disabled,
+.character-builder .cb-keeper-radio-card[aria-disabled="true"] {
+  pointer-events: none;
+}
+
+/* Consistent scrollbar treatment for every module-owned scrolling surface. */
+.character-builder .cb-step-content,
+.character-builder .cb-option-groups,
+.character-builder .cb-spell-groups,
+.character-builder .cb-level-up-main,
+.character-builder .cb-level-up-choices-scroll,
+.character-builder .cb-keeper-actions,
+.character-builder .cb-keeper-scroll,
+.character-builder .cb-keeper-card-list.tall,
+.character-builder .cb-settings-body {
+  scrollbar-color: rgba(209,176,107,.58) rgba(0,0,0,.2);
+  scrollbar-width: thin;
+}
+

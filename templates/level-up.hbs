@@ -309,7 +309,9 @@
             <div class="cb-choice-grid">
               {{#each items}}
               <article class="cb-choice-card cb-spell-choice-card {{#if disabled}}duplicate-disabled{{/if}}" data-spell-option title="{{disabledReason}}">
-                <input type="checkbox" name="levelUp.cantrips" value="{{identifier}}" data-spell-selection-control data-spell-identifier="{{identifier}}" data-selection-channel="cantrip" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{checked checked}} {{#if disabled}}disabled{{/if}}>
+                <label class="cb-choice-toggle" title="Select {{name}}">
+                  <input type="checkbox" name="levelUp.cantrips" value="{{identifier}}" data-spell-selection-control data-spell-identifier="{{identifier}}" data-selection-channel="cantrip" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{checked checked}} {{#if disabled}}disabled{{/if}}>
+                </label>
                 <button type="button" class="cb-spell-choice-preview" data-action="open-document" data-uuid="{{uuid}}" aria-label="Open {{name}} details"><img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}}{{#if eligibilityBadge}} · <em class="cb-eligibility-badge">{{eligibilityBadge}}</em>{{/if}}</small></span></button>
               </article>
               {{/each}}
@@ -335,7 +337,9 @@
             <div class="cb-choice-grid">
               {{#each items}}
               <article class="cb-choice-card cb-spell-choice-card {{#if disabled}}duplicate-disabled{{/if}}" data-spell-option title="{{disabledReason}}">
-                <input type="checkbox" name="levelUp.spells" value="{{identifier}}" data-spell-selection-control data-spell-identifier="{{identifier}}" data-selection-channel="class-spell" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{checked checked}} {{#if disabled}}disabled{{/if}}>
+                <label class="cb-choice-toggle" title="Select {{name}}">
+                  <input type="checkbox" name="levelUp.spells" value="{{identifier}}" data-spell-selection-control data-spell-identifier="{{identifier}}" data-selection-channel="class-spell" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{checked checked}} {{#if disabled}}disabled{{/if}}>
+                </label>
                 <button type="button" class="cb-spell-choice-preview" data-action="open-document" data-uuid="{{uuid}}" aria-label="Open {{name}} details"><img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}}{{#if eligibilityBadge}} · <em class="cb-eligibility-badge">{{eligibilityBadge}}</em>{{/if}}</small></span></button>
               </article>
               {{/each}}
@@ -377,7 +381,9 @@
             <div class="cb-choice-grid">
               {{#each items}}
               <article class="cb-choice-card cb-spell-choice-card {{#if disabled}}duplicate-disabled{{/if}}" data-spell-option title="{{disabledReason}}">
-                <input type="checkbox" name="levelUp.savantSpells" value="{{identifier}}" data-spell-selection-control data-spell-identifier="{{identifier}}" data-selection-channel="savant" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{checked checked}} {{#if disabled}}disabled{{/if}}>
+                <label class="cb-choice-toggle" title="Select {{name}}">
+                  <input type="checkbox" name="levelUp.savantSpells" value="{{identifier}}" data-spell-selection-control data-spell-identifier="{{identifier}}" data-selection-channel="savant" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{checked checked}} {{#if disabled}}disabled{{/if}}>
+                </label>
                 <button type="button" class="cb-spell-choice-preview" data-action="open-document" data-uuid="{{uuid}}" aria-label="Open {{name}} details"><img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}}{{#if eligibilityBadge}} · <em class="cb-eligibility-badge">{{eligibilityBadge}}</em>{{/if}}</small></span></button>
               </article>
               {{/each}}
@@ -460,16 +466,18 @@
             data-metamagic-option
             data-spell-option
             title="{{disabledReason}}">
-            <input type="checkbox"
-              name="levelUp.metamagic"
-              value="{{uuid}}"
-              data-managed-selection-control
-              data-metamagic-control
-              data-metamagic-uuid="{{uuid}}"
-              data-metamagic-identifier="{{identifier}}"
-              data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}"
-              {{checked checked}}
-              {{#if disabled}}disabled{{/if}}>
+            <label class="cb-choice-toggle" title="Select {{name}}">
+              <input type="checkbox"
+                name="levelUp.metamagic"
+                value="{{uuid}}"
+                data-managed-selection-control
+                data-metamagic-control
+                data-metamagic-uuid="{{uuid}}"
+                data-metamagic-identifier="{{identifier}}"
+                data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}"
+                {{checked checked}}
+                {{#if disabled}}disabled{{/if}}>
+            </label>
             <button type="button" class="cb-spell-choice-preview" data-action="open-document" data-uuid="{{uuid}}" aria-label="Open {{name}} details">
               <img src="{{img}}" alt="">
               <span><strong>{{name}}</strong><small>Metamagic · {{sourceLabel}}{{#if disabledReason}} · {{disabledReason}}{{/if}}</small></span>
@@ -569,7 +577,9 @@
             <div class="cb-choice-grid">
               {{#each items}}
               <article class="cb-choice-card cb-spell-choice-card" data-spell-option>
-                <input type="checkbox" name="levelUp.featureSpell.{{../../../id}}" value="{{identifier}}" data-managed-selection-control data-managed-spell-identifier="{{identifier}}" {{checked checked}}>
+                <label class="cb-choice-toggle" title="Select {{name}}">
+                  <input type="checkbox" name="levelUp.featureSpell.{{../../../id}}" value="{{identifier}}" data-managed-selection-control data-managed-spell-identifier="{{identifier}}" {{checked checked}}>
+                </label>
                 <button type="button" class="cb-spell-choice-preview" data-action="open-document" data-uuid="{{uuid}}"><img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}}</small></span></button>
               </article>
               {{/each}}
@@ -587,7 +597,9 @@
         <div class="cb-choice-grid">
           {{#each items}}
           <article class="cb-choice-card cb-spell-choice-card" data-spell-option>
-            <input type="checkbox" name="levelUp.featureTarget.{{../id}}" value="{{id}}" data-managed-selection-control data-feature-target="{{../id}}" data-managed-target-identifier="{{identifier}}" data-pending="{{pending}}" {{checked checked}}>
+            <label class="cb-choice-toggle" title="Select {{name}}">
+              <input type="checkbox" name="levelUp.featureTarget.{{../id}}" value="{{id}}" data-managed-selection-control data-feature-target="{{../id}}" data-managed-target-identifier="{{identifier}}" data-pending="{{pending}}" {{checked checked}}>
+            </label>
             <button type="button" class="cb-spell-choice-preview" data-action="open-document" data-uuid="{{sourceUuid}}" {{#unless sourceUuid}}disabled{{/unless}}><img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}}{{#if pending}} · selected above{{/if}}</small></span></button>
           </article>
           {{/each}}
@@ -638,7 +650,9 @@
         <div class="cb-choice-grid">
           {{#each items}}
           <article class="cb-choice-card cb-spell-choice-card">
-            <input type="checkbox" name="levelUp.wildShapeForms" value="{{uuid}}" data-managed-selection-control {{checked checked}}>
+            <label class="cb-choice-toggle" title="Select {{name}}">
+              <input type="checkbox" name="levelUp.wildShapeForms" value="{{uuid}}" data-managed-selection-control {{checked checked}}>
+            </label>
             <button type="button" class="cb-spell-choice-preview" data-action="open-document" data-uuid="{{uuid}}"><img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>CR {{crLabel}}{{#if fly}} · Fly{{/if}}</small></span></button>
           </article>
           {{/each}}
