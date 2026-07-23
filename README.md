@@ -9,7 +9,7 @@ Character Builder is a guided D&D 2024 character creation, Level Up, Epic Boon, 
 - Foundry VTT 14.364
 - D&D5e 5.3.3
 
-SRD 5.1 Legacy is not officially supported. Character Keeper is under active testing in version 0.9.7f as an experimental Short Rest, Long Rest, and Wizard spellbook-management capability.
+SRD 5.1 Legacy is not officially supported. Character Keeper is under active testing in version 0.9.7g as an experimental Short Rest, Long Rest, and Wizard spellbook-management capability.
 
 ## Level 1 creation
 
@@ -22,6 +22,16 @@ SRD 5.1 Legacy is not officially supported. Character Keeper is under active tes
 - Independent Class and Background starting equipment or starting-currency choices.
 - Transactional mundane Starting Equipment Shop with Checkout, exact purchase manifests, containers, quantity support, and GM Bonus Gold.
 - Review and recoverable application to the original Actor.
+
+## Character Builder 0.9.7g — Visual standardization follow-up
+
+Version 0.9.7g consolidates the approved visual-standardization work from 0.9.7f and the complete live-review corrections. It does not change Character Creation rules, Level Up rules, Character Keeper operations, source filters, Advancements, ownership, transactions, commit behavior, rollback, or Actor data handling.
+
+- **Foundry window controls restored:** module typography is now scoped to the window content only. Foundry's native title-bar controls retain their original icon font in Character Creation, Level Up, Character Keeper, Scribe Spell, and the other module windows.
+- **Character Creation fixed header stack:** the stage title, search/context area, Confirm button, and Continue button remain together at the top while only the stage body scrolls. The exposed strip above the previous sticky header and the overlap over the top actions are removed.
+- **Live selection counters remain visible:** Spell Selection choice headings and their current/required counters remain below the fixed stage controls while the relevant selection section is active.
+- **Single clean checkbox mark:** Character Creation checkboxes suppress the additional native D&D5e checked square, leaving one outlined square and one green check. The approved large left selection zone and separate right source-details zone remain unchanged.
+- **Preserved 0.9.7f visual fixes:** Level Up typography and sticky choice counters, Keeper two-zone cards, Keeper square selection controls, fully greyed-out unavailable choices, dark Weapon Mastery dropdowns, and the approved Bardo/Wizard Level Up layouts are retained.
 
 ## Character Builder 0.9.7f — Character Keeper reset and selectable-card patch
 

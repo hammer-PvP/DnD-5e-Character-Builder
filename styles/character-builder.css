@@ -3746,25 +3746,27 @@
   --cb-danger-text: #ffb4b4;
   --cb-font-body: var(--dnd5e-font-roboto, "Roboto", sans-serif);
   --cb-font-heading: var(--dnd5e-font-roboto-slab, "Roboto Slab", serif);
+}
+.character-builder .window-content {
   font-family: var(--cb-font-body);
   color: var(--cb-text);
 }
-.character-builder button,
-.character-builder input,
-.character-builder select,
-.character-builder textarea {
+.character-builder .window-content button,
+.character-builder .window-content input,
+.character-builder .window-content select,
+.character-builder .window-content textarea {
   font-family: var(--cb-font-body);
 }
-.character-builder h1,
-.character-builder h2,
-.character-builder h3,
-.character-builder h4,
-.character-builder h5,
-.character-builder legend {
+.character-builder .window-content h1,
+.character-builder .window-content h2,
+.character-builder .window-content h3,
+.character-builder .window-content h4,
+.character-builder .window-content h5,
+.character-builder .window-content legend {
   font-family: var(--cb-font-heading);
 }
-.character-builder small,
-.character-builder .hint {
+.character-builder .window-content small,
+.character-builder .window-content .hint {
   color: var(--cb-text-muted);
 }
 
@@ -3789,25 +3791,26 @@
   outline: 2px solid rgba(209,176,107,.18);
   outline-offset: 1px;
 }
-.character-builder button {
+/* Keep native dropdown popups readable in Chromium/Foundry. */
+.character-builder .window-content select {
+  color-scheme: dark;
+}
+.character-builder .window-content select option,
+.character-builder .window-content select optgroup {
+  background: #17171a;
+  color: #eee9df;
+}
+.character-builder .window-content select option:disabled {
+  color: rgba(238,233,223,.42);
+}
+.character-builder .window-content button {
   transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
 }
-.character-builder button:focus-visible {
+.character-builder .window-content button:focus-visible {
   outline: 2px solid var(--cb-gold-bright);
   outline-offset: 2px;
 }
 
-/* Character Creation: retain the correct card identity and add the Level Up
-   fixed-header behavior. Only the body below this header scrolls. */
-.character-builder .cb-step-content > .cb-section-header {
-  position: sticky;
-  top: 0;
-  z-index: 12;
-  margin: -22px -22px 16px;
-  padding: 22px 22px 12px;
-  background: linear-gradient(180deg, #111113 76%, rgba(17,17,19,.97));
-  box-shadow: 0 7px 14px rgba(0,0,0,.24);
-}
 .character-builder .cb-step-content > .cb-section-header h2,
 .character-builder .cb-section-heading h2,
 .character-builder .cb-keeper-feature-header h2 {
@@ -3870,6 +3873,28 @@
   background: rgba(255,255,255,.05);
   box-shadow: none;
   cursor: not-allowed;
+}
+/* D&D5e restores native radio appearance with equal/later specificity.
+   Keeper choices intentionally use square checkbox visuals, so force the
+   native radio glyph and its pseudo-elements off. */
+.character-builder.dnd5e2 .window-content .cb-keeper-select-zone input[type="radio"],
+.character-builder .window-content .cb-keeper-select-zone input[type="radio"] {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  border-radius: 5px !important;
+  background-image: none !important;
+  accent-color: transparent;
+}
+.character-builder.dnd5e2 .window-content .cb-keeper-select-zone input[type="radio"]::before,
+.character-builder .window-content .cb-keeper-select-zone input[type="radio"]::before {
+  content: "✓" !important;
+}
+.character-builder.dnd5e2 .window-content .cb-keeper-select-zone input[type="radio"]::after,
+.character-builder .window-content .cb-keeper-select-zone input[type="radio"]::after {
+  content: none !important;
+  display: none !important;
+  background: none !important;
 }
 
 /* Character Creation selectable cards remain the canonical two-zone model. */
@@ -4076,5 +4101,113 @@
 .character-builder .cb-settings-body {
   scrollbar-color: rgba(209,176,107,.58) rgba(0,0,0,.2);
   scrollbar-width: thin;
+}
+
+/* 0.9.7g — Character Creation visual follow-up
+   Keeps the approved typography, palette, Level Up, and Keeper layouts intact.
+   These rules only repair window chrome isolation, creation checkmarks, and the
+   fixed creation header/selection-counter stack. */
+
+/* Character Creation uses one solid sticky stack for its title, search/context,
+   confirmation, and Continue controls. This removes the exposed strip above the
+   old header and prevents the scrolling body from passing over the buttons. */
+.character-builder .cb-step-content > .cb-creation-fixed-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  box-sizing: border-box;
+  margin: -22px -22px 18px;
+  padding: 13px 22px 14px;
+  border-bottom: 1px solid var(--cb-border);
+  background: #111113;
+  box-shadow: 0 7px 16px rgba(0,0,0,.34);
+  isolation: isolate;
+}
+.character-builder .cb-creation-fixed-header > .cb-section-header {
+  position: static;
+  z-index: auto;
+  margin: 0 0 11px;
+  padding: 0 0 10px;
+  background: transparent;
+  box-shadow: none;
+}
+.character-builder .cb-creation-fixed-header > .cb-step-toolbar {
+  margin: 0;
+}
+.character-builder .cb-creation-fixed-header-compact > .cb-section-header {
+  margin-bottom: 0;
+}
+
+/* In Spell Selection, each active choice title and its live N/N counter remains
+   below the fixed global controls while the containing page continues to scroll. */
+.character-builder .spells-step {
+  --cb-creation-fixed-offset: 151px;
+}
+.character-builder .spells-step > .cb-spell-section > .cb-inline-heading,
+.character-builder .spells-step > .cb-pact-tome-section .cb-pact-tome-list > .cb-inline-heading {
+  position: sticky;
+  top: var(--cb-creation-fixed-offset);
+  z-index: 22;
+  margin: -1px -1px 10px;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--cb-border);
+  background: rgba(23,23,26,.985);
+  box-shadow: 0 4px 10px rgba(0,0,0,.24);
+}
+
+/* Foundry/D&D5e can paint an additional native checked square on top of custom
+   checkboxes. Reset that native layer so creation cards display one outlined
+   square and one checkmark only. */
+.character-builder .window-content .cb-primary-toggle input,
+.character-builder .window-content .cb-spell-toggle input,
+.character-builder .window-content .cb-choice-toggle input,
+.character-builder .window-content .cb-keeper-select-zone input {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  background-image: none !important;
+  mask-image: none !important;
+  accent-color: transparent;
+  --checkbox-background-color: transparent;
+  --checkbox-checked-color: transparent;
+}
+.character-builder .window-content .cb-primary-toggle input::after,
+.character-builder .window-content .cb-spell-toggle input::after,
+.character-builder .window-content .cb-choice-toggle input::after,
+.character-builder .window-content .cb-keeper-select-zone input::after {
+  content: none !important;
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: none !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  mask: none !important;
+}
+.character-builder .window-content .cb-primary-toggle input::before,
+.character-builder .window-content .cb-spell-toggle input::before,
+.character-builder .window-content .cb-choice-toggle input::before,
+.character-builder .window-content .cb-keeper-select-zone input::before {
+  width: auto !important;
+  height: auto !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  mask: none !important;
+}
+
+/* Character Creation specifically uses a clean green check inside the outlined
+   square, without a second orange filled square. */
+.character-builder .window-content .cb-primary-toggle input:checked,
+.character-builder .window-content .cb-spell-toggle input:checked {
+  border-color: #81d99a !important;
+  background: rgba(111,209,138,.08) !important;
+  background-image: none !important;
+}
+.character-builder .window-content .cb-primary-toggle input:checked::before,
+.character-builder .window-content .cb-spell-toggle input:checked::before {
+  color: #81d99a !important;
 }
 

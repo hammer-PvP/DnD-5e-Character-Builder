@@ -85,7 +85,8 @@
   <main class="cb-main">
     {{#if (eq step "abilitiesBackground")}}
     <section class="cb-step-content abilities-background-step">
-      <header class="cb-section-header">
+            <div class="cb-creation-fixed-header">
+<header class="cb-section-header">
         <div>
           <h2>Ability Scores & Background</h2>
           <p>Build the base Ability Scores and choose the character's Background.</p>
@@ -112,6 +113,7 @@
             <span>Continue</span><i class="fa-solid fa-chevron-right"></i>
           </button>
         </div>
+      </div>
       </div>
 
       {{#if (eq abilityMethod "roll")}}
@@ -228,7 +230,8 @@
 
     {{#if (eq step "species")}}
     <section class="cb-step-content species-step">
-      <header class="cb-section-header">
+            <div class="cb-creation-fixed-header">
+<header class="cb-section-header">
         <div><h2>Select Species</h2><p>Choose one Species, review its details, then confirm the selection.</p></div>
       </header>
 
@@ -244,6 +247,7 @@
             <span>Continue</span><i class="fa-solid fa-chevron-right"></i>
           </button>
         </div>
+      </div>
       </div>
 
       <div class="cb-browser-layout">
@@ -274,7 +278,8 @@
 
     {{#if (eq step "class")}}
     <section class="cb-step-content class-step">
-      <header class="cb-section-header">
+            <div class="cb-creation-fixed-header">
+<header class="cb-section-header">
         <div><h2>Select Class</h2><p>Choose one Class, review its level 1 features, then confirm the selection.</p></div>
       </header>
 
@@ -290,6 +295,7 @@
             <span>Continue</span><i class="fa-solid fa-chevron-right"></i>
           </button>
         </div>
+      </div>
       </div>
 
       <div class="cb-browser-layout">
@@ -320,7 +326,8 @@
 
     {{#if (eq step "spells")}}
     <section class="cb-step-content spells-step">
-      <header class="cb-section-header">
+            <div class="cb-creation-fixed-header">
+<header class="cb-section-header">
         <div>
           <h2>Spell Selection</h2>
           <p>Select the spells granted by the Class, confirm the choices, then continue.</p>
@@ -341,6 +348,7 @@
             <span>Continue</span><i class="fa-solid fa-chevron-right"></i>
           </button>
         </div>
+      </div>
       </div>
 
       <p class="cb-spell-note">{{spellAccess.note}}</p>
@@ -476,7 +484,8 @@
 
     {{#if (eq step "equipment")}}
     <section class="cb-step-content equipment-step">
-      <header class="cb-section-header">
+            <div class="cb-creation-fixed-header">
+<header class="cb-section-header">
         <div><h2>Starting Equipment</h2><p>Choose Class and Background equipment, then use the Shop for additional mundane items.</p></div>
       </header>
 
@@ -493,6 +502,7 @@
             <i class="fa-solid fa-circle-check"></i><span>Confirm Equipment</span>
           </button>
         </div>
+      </div>
       </div>
 
       <section class="cb-main-shopping-cart {{#unless shoppingCart.hasCartItems}}empty{{/unless}}">
@@ -566,7 +576,9 @@
 
     {{#if (eq step "review")}}
     <section class="cb-step-content review-step">
-      <header class="cb-section-header"><div><h2>Review Character</h2><p>The original Actor remains unchanged until Finish Character is pressed.</p></div></header>
+            <div class="cb-creation-fixed-header cb-creation-fixed-header-compact">
+<header class="cb-section-header"><div><h2>Review Character</h2><p>The original Actor remains unchanged until Finish Character is pressed.</p></div></header>
+      </div>
       <div class="cb-review-grid">
         <section><h3>Origins and Class</h3>
           <p><strong>Background:</strong> {{review.background}}</p>
