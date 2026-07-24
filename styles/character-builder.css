@@ -4394,3 +4394,114 @@
   opacity: .68;
   line-height: 1.15;
 }
+
+
+/* 0.9.8b — live-test detail corrections on the frozen 0.9.8 visual baseline. */
+
+/* A protected transaction confirmation owns the complete Foundry foreground,
+   including Character Keeper and the native rest application below it. */
+.cb-protected-transaction-backdrop {
+  position: fixed;
+  inset: 0;
+  display: block;
+  pointer-events: auto;
+  background: rgba(5, 8, 12, .58);
+  backdrop-filter: blur(2px);
+}
+.cb-protected-transaction-blocked {
+  pointer-events: none !important;
+  user-select: none !important;
+}
+.cb-scribe-transaction-dialog {
+  isolation: isolate;
+}
+
+/* Creation and Level Up use the same read-only spell-card proportions. */
+.character-builder .cb-readonly-spell-grid {
+  margin-top: 7px;
+}
+.character-builder .cb-readonly-spell-grid .cb-spell-option.readonly {
+  opacity: 1;
+}
+
+/* Native deterministic progression is an informational result, not a link. */
+.character-builder .cb-automatic-advancement-card {
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+}
+.character-builder .cb-automatic-advancement-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+  padding: 5px 6px;
+  line-height: 1.25;
+}
+.character-builder .cb-automatic-advancement-copy strong,
+.character-builder .cb-automatic-advancement-copy span,
+.character-builder .cb-automatic-advancement-copy small {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.character-builder .cb-automatic-advancement-copy span {
+  color: var(--color-text-light-primary, #f2f3f4);
+}
+.character-builder .cb-automatic-advancement-copy small {
+  opacity: .62;
+}
+
+/* Circle of the Land keeps character-level grouping. Druid level 3 receives a
+   stable Cantrip / spell-circle hierarchy; every card keeps a canonical width
+   instead of stretching to fill unused Land space. */
+.character-builder .cb-keeper-land-level {
+  min-width: 0;
+}
+.character-builder .cb-keeper-spell-circle-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 205px));
+  gap: 8px 10px;
+  align-items: start;
+}
+.character-builder .cb-keeper-spell-circle {
+  min-width: 0;
+}
+.character-builder .cb-keeper-spell-circle.cantrip {
+  grid-column: 1 / -1;
+}
+.character-builder .cb-keeper-spell-circle h6 {
+  margin: 0 0 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .055em;
+  opacity: .62;
+}
+.character-builder .cb-keeper-spell-chip-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 205px));
+  gap: 6px;
+  justify-content: start;
+}
+.character-builder .cb-keeper-spell-circle .cb-keeper-spell-chip-list {
+  grid-template-columns: minmax(0, 205px);
+}
+.character-builder .cb-keeper-spell-chip-list > button {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 205px;
+  min-width: 0;
+  min-height: 42px;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 8px;
+  padding: 4px 8px 4px 4px;
+}
+
+@media (max-width: 920px) {
+  .character-builder .cb-keeper-spell-circle-grid,
+  .character-builder .cb-keeper-spell-chip-list {
+    grid-template-columns: minmax(0, 205px);
+  }
+  .character-builder .cb-keeper-spell-circle.cantrip {
+    grid-column: auto;
+  }
+}

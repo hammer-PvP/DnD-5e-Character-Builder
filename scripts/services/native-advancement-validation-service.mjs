@@ -72,6 +72,7 @@ export class NativeAdvancementValidationService {
 
       const duplicate = draft.items.find(other => {
         if (other.id === item.id || other.type !== item.type) return false;
+        if (this.#isIndependentMulticlassFeature(draft, item, other)) return false;
         const otherSource = NativeFeatChoiceGuard.sourceUuid(other);
         if (sourceUuid && otherSource && sourceUuid === otherSource) return true;
         if (!identifier || identifier !== String(other.system?.identifier ?? "").trim()) return false;
@@ -93,6 +94,42 @@ export class NativeAdvancementValidationService {
         }
       );
     }
+  }
+
+
+  static #isIndependentMulticlassFeature(draft, item, other) {
+    if (item.type !== "feat" || other.type !== "feat") return false;
+    const itemCategory = String(item.system?.type?.value ?? "").trim();
+    const otherCategory = String(other.system?.type?.value ?? "").trim();
+    // Player-selectable Feats (including every +1 half-feat and Epic Boon)
+    // remain globally non-repeatable. This exception is only for class-owned
+    // progression resources such as each class's legitimate Spellcasting Item.
+    if (itemCategory === "feat" || otherCategory === "feat") return false;
+    const itemClass = this.#acquisitionClassIdentifier(draft, item);
+    const otherClass = this.#acquisitionClassIdentifier(draft, other);
+    return Boolean(itemClass && otherClass && itemClass !== otherClass);
+  }
+
+  static #acquisitionClassIdentifier(draft, item) {
+    let current = item;
+    const visited = new Set();
+    while (current && !visited.has(current.id)) {
+      visited.add(current.id);
+      if (current.type === "class") return String(current.system?.identifier ?? "") || null;
+      if (current.type === "subclass") {
+        const parent = current.system?.classIdentifier ?? current.system?.class?.identifier ?? current.system?.class;
+        return parent ? String(parent) : null;
+      }
+      const grantOwnerId = current.getFlag(MODULE_ID, "itemGrantInstance")?.ownerItemId;
+      const root = current.getFlag("dnd5e", "advancementRoot") ?? current.getFlag("dnd5e", "advancementOrigin");
+      const [rootId] = String(root ?? "").split(".");
+      const nextId = grantOwnerId || rootId;
+      if (!nextId || nextId === current.id) break;
+      current = draft.items.get(nextId);
+    }
+    const sourceItem = String(item.system?.sourceItem ?? "");
+    const match = /^class:([^:]+)$/i.exec(sourceItem);
+    return match?.[1] ?? null;
   }
 
   static #validateProgressionChoicePolicy(draft, added, state, workflow) {

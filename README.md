@@ -9,7 +9,7 @@ Character Builder is a guided D&D 2024 character creation, Level Up, Epic Boon, 
 - Foundry VTT 14.364
 - D&D5e 5.3.3
 
-SRD 5.1 Legacy is not officially supported. Character Keeper is treated as stable for its currently implemented Short Rest, Long Rest, and Wizard spellbook-management routines; version 0.9.8a limits Keeper changes to visual or minor cross-cutting corrections.
+SRD 5.1 Legacy is not officially supported. Character Keeper is treated as stable for its currently implemented Short Rest, Long Rest, and Wizard spellbook-management routines; version 0.9.8b limits Keeper changes to visual or minor cross-cutting corrections.
 
 ## Level 1 creation
 
@@ -22,6 +22,19 @@ SRD 5.1 Legacy is not officially supported. Character Keeper is treated as stabl
 - Independent Class and Background starting equipment or starting-currency choices.
 - Transactional mundane Starting Equipment Shop with Checkout, exact purchase manifests, containers, quantity support, and GM Bonus Gold.
 - Review and recoverable application to the original Actor.
+
+## Character Builder 0.9.8b — Live-test detail corrections
+
+Version 0.9.8b keeps the approved 0.9.8 visual baseline frozen and applies the next confirmed live-test corrections without migrations or unrelated redesign.
+
+### 0.9.8b corrections
+
+- Scribe Spell final confirmation now uses a protected global modal with one instance, foreground priority, background blocking, and single-submit cleanup.
+- Circle of the Land Change Land spells are ordered consistently by Druid level and, at Druid level 3, by Cantrip and spell circle; cards retain a fixed visual width.
+- Read-only automatic spell lists use the same icon/name/level card pattern in Character Creation and Level Up without repeating the source label inside every card.
+- Automatically Granted This Level is restricted to the selected class/subclass acquisition lineage while the underlying ItemGrant integrity audit remains Actor-wide.
+- Native deterministic progression cards are informational and no longer render a redundant document link or overlapping status copy.
+- Multiclass progression permits legitimate same-identifier class resources, such as independent Spellcasting features from different classes, while preserving non-repeatable Feat and same-origin duplicate protection.
 
 ## Character Builder 0.9.8a — Stability corrections
 
@@ -294,7 +307,7 @@ This README is the consolidated project and release document. Static validation 
 
 https://github.com/hammer-PvP/DnD-5e-Character-Builder
 
-## 0.9.8a validation checklist
+## 0.9.8b validation checklist
 
 - With all three progression-policy toggles enabled, Feat, generic ASI, and Epic Boon behavior matches the prior official flow.
 - With `Enable Feats` disabled, optional common Feats and +1 Ability Score Feats are rejected without altering the native browser; mandatory source grants remain intact.
@@ -312,7 +325,12 @@ https://github.com/hammer-PvP/DnD-5e-Character-Builder
 - Level Up sticky spell headers meet the fixed banner without exposing scrolling content through a gap.
 - Square checkbox marks are centered, and gold action title/subtitle text remains legible.
 - Scribe Spell shows `Confirm Scribing` and the full GP cost on separate lines.
-- Transaction confirmations remain modal and cannot be pushed behind Character Creation, Level Up, Character Keeper, or another module window.
+- Transaction confirmations remain modal and cannot be pushed behind Character Creation, Level Up, Character Keeper, the native Long Rest window, or another module window.
+- Reopening Scribe Spell while its final confirmation exists focuses the existing confirmation and never creates a second transaction prompt.
+- Circle of the Land always displays every Land spell in deterministic Cantrip / spell-circle order at Druid level 3 and fixed-width cards at later Druid levels.
+- Character Creation and Level Up automatic spell cards show icon, spell name, and `Cantrip` or `Level N` without repeating the source inside each card.
+- Automatically Granted This Level contains only the selected class/subclass acquisition lineage, while Actor-wide ItemGrant integrity remains unchanged.
+- Sorcerer to Paladin, Cleric, and Wizard multiclass tests permit each new class's legitimate Spellcasting feature; same-class and non-repeatable Feat duplicates remain blocked.
 - No Actor migration, historical spell repair, or homebrew reinterpretation is performed.
 
 ## 0.9.7f validation checklist

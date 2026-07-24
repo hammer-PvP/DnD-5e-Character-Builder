@@ -556,8 +556,29 @@ export class RuntimeFeatureService {
       const spellGroups = [];
       for (const [level, identifiers] of Object.entries(LAND_SPELLS[id])) {
         const spells = identifiers.map(identifier => registry.preferredOption("spell", identifier)).filter(Boolean)
-          .map(option => ({ ...option, level: Number(option.system?.level ?? 0), levelLabel: Number(option.system?.level ?? 0) ? `Level ${option.system.level}` : "Cantrip" }));
-        spellGroups.push({ druidLevel: Number(level), unlocked: druidLevel >= Number(level), spells });
+          .map(option => ({ ...option, level: Number(option.system?.level ?? 0), levelLabel: Number(option.system?.level ?? 0) ? `Level ${option.system.level}` : "Cantrip" }))
+          .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name, game.i18n.lang));
+        const bySpellLevel = new Map();
+        for (const spell of spells) {
+          const rows = bySpellLevel.get(spell.level) ?? [];
+          rows.push(spell);
+          bySpellLevel.set(spell.level, rows);
+        }
+        const spellCircles = [...bySpellLevel.entries()]
+          .sort(([a], [b]) => a - b)
+          .map(([spellLevel, rows]) => ({
+            spellLevel,
+            label: spellLevel === 0 ? "Cantrip" : `Spell Level ${spellLevel}`,
+            isCantrip: spellLevel === 0,
+            spells: rows
+          }));
+        spellGroups.push({
+          druidLevel: Number(level),
+          unlocked: druidLevel >= Number(level),
+          spells,
+          spellCircles,
+          splitBySpellLevel: Number(level) === 3 && spellCircles.length > 1
+        });
       }
       lands.push({ id, label, resistance: this.#humanize(LAND_RESISTANCES[id]), selected: id === selected, current: id === current, spellGroups });
     }
@@ -616,7 +637,7 @@ export class RuntimeFeatureService {
       current,
       oldItemId: oldId,
       newUuid: operation?.newUuid ?? "",
-      options: pool.map(option => ({ ...option, disabled: owned.has(option.identifier) && option.identifier !== oldIdentifier }))
+      options: pool.map(option => ({ ...option, levelLabel: "Cantrip", disabled: owned.has(option.identifier) && option.identifier !== oldIdentifier }))
     };
   }
 

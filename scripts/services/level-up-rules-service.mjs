@@ -60,10 +60,11 @@ export class LevelUpRulesService {
     const stateChoices = state.additionalChoices ?? {};
     const automaticItemGrants = foundry.utils.deepClone(
       state.itemGrantIntegrity?.items ?? state.itemGrantReconciliation?.items ?? []
-    ).map(row => ({
-      ...row,
-      badges: AdvancementChoiceAnnotationService.getBadges(draft.items.get(row.itemId))
-    }));
+    ).filter(row => this.#grantBelongsToSelectedProgression(draft, row, cls))
+      .map(row => ({
+        ...row,
+        badges: AdvancementChoiceAnnotationService.getBadges(draft.items.get(row.itemId))
+      }));
     const automaticAdvancementSummaries = this.#automaticAdvancementSummaries(draft, cls, newClassLevel, state);
     const selectedCantripSet = new Set(stateChoices.cantrips ?? []);
     const selectedSpellSet = new Set(stateChoices.spells ?? []);
@@ -1277,6 +1278,28 @@ export class LevelUpRulesService {
         groups: registry.groupOptions(rows),
         count: rows.length
       }));
+  }
+
+
+  static #grantBelongsToSelectedProgression(draft, row, cls) {
+    const selectedIdentifier = String(cls?.system?.identifier ?? "");
+    let owner = draft.items.get(row?.ownerItemId);
+    const visited = new Set();
+    while (owner && !visited.has(owner.id)) {
+      visited.add(owner.id);
+      if (owner.type === "class") return owner.id === cls.id;
+      if (owner.type === "subclass") {
+        const parent = owner.system?.classIdentifier ?? owner.system?.class?.identifier ?? owner.system?.class;
+        return Boolean(parent) && String(parent) === selectedIdentifier;
+      }
+      const grantOwnerId = owner.getFlag(MODULE_ID, "itemGrantInstance")?.ownerItemId;
+      const root = owner.getFlag("dnd5e", "advancementRoot") ?? owner.getFlag("dnd5e", "advancementOrigin");
+      const [rootId] = String(root ?? "").split(".");
+      const nextId = grantOwnerId || rootId;
+      if (!nextId || nextId === owner.id) break;
+      owner = draft.items.get(nextId);
+    }
+    return false;
   }
 
   static #automaticAdvancementSummaries(draft, cls, targetClassLevel, state = {}) {

@@ -49,11 +49,15 @@ export class SpellAccessService {
     const selectedCantrips = new Set(saved.classIdentifier === identifier ? saved.cantrips ?? [] : []);
     const selectedMagicianCantrips = new Set(saved.classIdentifier === identifier ? saved.magicianCantrip ?? [] : []);
     const selectedSpells = new Set(saved.classIdentifier === identifier ? saved.spells ?? [] : []);
-    const decorate = (option, selected) => ({
-      ...option,
-      selected: selected.has(option.identifier),
-      level: Number(option.system?.level ?? 0)
-    });
+    const decorate = (option, selected) => {
+      const level = Number(option.system?.level ?? 0);
+      return {
+        ...option,
+        selected: selected.has(option.identifier),
+        level,
+        levelLabel: level === 0 ? "Cantrip" : `Level ${level}`
+      };
+    };
 
     const cantripOptions = cantrips.map(option => decorate(option, selectedCantrips));
     const magicianCantripOptions = cantrips.map(option => decorate(option, selectedMagicianCantrips));

@@ -3,6 +3,7 @@ import { SourceRegistry } from "../services/source-registry.mjs";
 import { RestSessionService } from "../services/rest-session-service.mjs";
 import { RuntimeFeatureService } from "../services/runtime-feature-service.mjs";
 import { RuntimeTransactionService } from "../services/runtime-transaction-service.mjs";
+import { ProtectedTransactionDialogService } from "../services/protected-transaction-dialog-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -827,17 +828,18 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
       ? "The attempt begins immediately after confirmation."
       : `The attempt will run after the native ${this.restLabel} completes.`;
     const content = `<section class="cb-scribe-confirm-dialog"><p><strong>${spell}</strong> from <strong>${source}</strong></p><dl><div><dt>Effective Cost</dt><dd>${cost}</dd></div><div><dt>Remaining Currency</dt><dd>${remaining}</dd></div><div><dt>Required Time</dt><dd>${time}</dd></div><div><dt>Resolution</dt><dd>${check}</dd></div></dl><p class="warning"><strong>Failure:</strong> ${failure}</p><p>${timing}</p></section>`;
-    const DialogV2 = foundry.applications.api.DialogV2;
-    if (DialogV2?.confirm) {
-      return DialogV2.confirm({
+    return ProtectedTransactionDialogService.confirm({
+      key: `scribe-confirmation:${this.actor.id}`,
+      matchClass: "cb-scribe-transaction-dialog",
+      dialogOptions: {
         classes: ["character-builder", "cb-protected-transaction-dialog", "cb-scribe-transaction-dialog"],
         window: { title: "Confirm Scribing Attempt", modal: true },
         content,
         yes: { label: `Confirm Scribing\n${cost}`, icon: "fa-solid fa-book" },
         no: { label: "Cancel", icon: "fa-solid fa-xmark" }
-      });
-    }
-    return Dialog.confirm({ title: "Confirm Scribing Attempt", content, defaultYes: false });
+      },
+      fallback: () => Dialog.confirm({ title: "Confirm Scribing Attempt", content, defaultYes: false })
+    });
   }
 
   #refreshApplyButton() {

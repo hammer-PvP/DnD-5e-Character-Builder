@@ -206,8 +206,24 @@
               </div>
               <div class="cb-keeper-land-spells">
                 {{#each spellGroups}}
-                <section class="{{#unless unlocked}}locked{{/unless}}">
+                <section class="cb-keeper-land-level {{#if splitBySpellLevel}}cb-keeper-land-level-three{{/if}} {{#unless unlocked}}locked{{/unless}}">
                   <h5>Druid Level {{druidLevel}} {{#unless unlocked}}· Locked{{/unless}}</h5>
+                  {{#if splitBySpellLevel}}
+                  <div class="cb-keeper-spell-circle-grid">
+                    {{#each spellCircles}}
+                    <div class="cb-keeper-spell-circle {{#if isCantrip}}cantrip{{/if}}">
+                      <h6>{{label}}</h6>
+                      <div class="cb-keeper-spell-chip-list">
+                        {{#each spells}}
+                        <button type="button" data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}} details">
+                          <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}}</small></span>
+                        </button>
+                        {{/each}}
+                      </div>
+                    </div>
+                    {{/each}}
+                  </div>
+                  {{else}}
                   <div class="cb-keeper-spell-chip-list">
                     {{#each spells}}
                     <button type="button" data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}} details">
@@ -215,6 +231,7 @@
                     </button>
                     {{/each}}
                   </div>
+                  {{/if}}
                 </section>
                 {{/each}}
               </div>
@@ -304,7 +321,7 @@
                 <button type="button" class="cb-keeper-detail-zone" data-action="open-document" data-uuid="{{uuid}}"
                   title="{{#if disabled}}Already known{{else}}Open {{name}} details{{/if}}" {{#if disabled}}disabled{{/if}}>
                   <img src="{{img}}" alt="">
-                  <span><strong>{{name}}</strong><small>{{sourceLabel}}</small></span>
+                  <span><strong>{{name}}</strong><small>{{levelLabel}}</small></span>
                   <i class="fa-solid fa-book-open" aria-hidden="true"></i>
                 </button>
               </article>

@@ -281,14 +281,11 @@
           {{#each rules.automaticAdvancementSummaries}}
           <article class="cb-automatic-grant-card cb-automatic-advancement-card">
             <i class="{{icon}}" aria-hidden="true"></i>
-            <button type="button" class="cb-automatic-grant-preview" data-action="open-document" data-uuid="{{ownerUuid}}" aria-label="Open {{ownerName}} details">
-              <span>
-                <strong>{{title}}</strong>
-                <small>{{type}} · Granted by {{ownerName}}</small>
-              </span>
-              <i class="fa-solid fa-arrow-up-right-from-square"></i>
-            </button>
-            <p class="hint">{{detail}}</p>
+            <div class="cb-automatic-advancement-copy">
+              <strong>{{title}}</strong>
+              <span>{{detail}}</span>
+              {{#if ownerName}}<small>{{ownerName}}</small>{{/if}}
+            </div>
           </article>
           {{/each}}
         </div>
@@ -359,8 +356,15 @@
           <summary>Show automatic spells</summary>
           {{#each rules.automaticGroups}}
           <h4 class="cb-source-heading">{{label}}</h4>
-          <div class="cb-compact-item-list">
-            {{#each items}}<button type="button" data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}} details"><img src="{{img}}" alt=""><span>{{name}} <small>{{levelLabel}}</small></span></button>{{/each}}
+          <div class="cb-spell-grid cb-readonly-spell-grid">
+            {{#each items}}
+            <article class="cb-spell-option readonly">
+              <button type="button" class="cb-spell-details" data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}} details">
+                <img src="{{img}}" alt="">
+                <span><strong>{{name}}</strong><small>{{levelLabel}}</small></span>
+              </button>
+            </article>
+            {{/each}}
           </div>
           {{/each}}
         </details>
@@ -683,7 +687,7 @@
               <div class="cb-choice-grid">
                 {{#each spells}}
                 <button type="button" class="cb-automatic-grant-preview" data-action="open-document" data-uuid="{{uuid}}" aria-label="Open {{name}} details">
-                  <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}} · {{sourceLabel}}</small></span><i class="fa-solid fa-arrow-up-right-from-square"></i>
+                  <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}}</small></span><i class="fa-solid fa-arrow-up-right-from-square"></i>
                 </button>
                 {{/each}}
               </div>
@@ -704,7 +708,7 @@
               <div class="cb-choice-grid">
                 {{#each spells}}
                 <button type="button" class="cb-automatic-grant-preview" data-action="open-document" data-uuid="{{uuid}}" aria-label="Open {{name}} details">
-                  <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}} · {{sourceLabel}}</small></span><i class="fa-solid fa-arrow-up-right-from-square"></i>
+                  <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}}</small></span><i class="fa-solid fa-arrow-up-right-from-square"></i>
                 </button>
                 {{/each}}
               </div>
