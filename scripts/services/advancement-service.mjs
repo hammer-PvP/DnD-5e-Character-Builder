@@ -3,6 +3,7 @@ import { HitPointService } from "./hit-point-service.mjs";
 import { SourceResolver } from "./source-resolver.mjs";
 import { ItemGrantIntegrityService } from "./item-grant-integrity-service.mjs";
 import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
+import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
 
 export class AdvancementService {
   static async replacePrimaryDocument(draft, document, type, onComplete, options = {}) {
@@ -25,6 +26,7 @@ export class AdvancementService {
   static async addItem(draft, document, type, onComplete, { abilityAssignments = null, registry = null } = {}) {
     const Manager = globalThis.dnd5e?.applications?.advancement?.AdvancementManager;
     if (!Manager) throw new Error("D&D5e AdvancementManager is unavailable.");
+    const beforeItemIds = new Set(draft.items.map(item => item.id));
 
     let data = document.toObject();
     delete data._id;
@@ -51,6 +53,10 @@ export class AdvancementService {
           recoveryActor
         });
       }
+      await SpellPreparationPolicyService.normalizeNewCantrips(draft, {
+        beforeItemIds,
+        updateOptions: { characterBuilderCreationAdvancement: true }
+      });
       await onComplete?.();
     };
 

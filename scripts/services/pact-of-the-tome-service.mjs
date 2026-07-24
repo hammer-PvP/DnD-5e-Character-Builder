@@ -1,5 +1,6 @@
 import { MODULE_ID } from "../constants.mjs";
 import { AdvancementChoiceAnnotationService } from "./advancement-choice-annotation-service.mjs";
+import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
 
 /**
  * Reusable Pact of the Tome selection logic. The acquisition mode is used by
@@ -211,7 +212,12 @@ export class PactOfTheTomeService {
           data.system ??= {};
           data.system.ability = classItem?.system?.spellcasting?.ability ?? "cha";
           data.system.method = "pact";
-          data.system.prepared = kind === "cantrip" ? 1 : 2;
+          SpellPreparationPolicyService.applyToData(data, {
+            alwaysPrepared: true,
+            explicitPrepared: SpellPreparationPolicyService.ALWAYS_PREPARED,
+            category: `pact-of-the-tome-${kind}`,
+            accessModel: "pact-of-the-tome"
+          });
           data.system.sourceItem = "invocation:pact-of-the-tome";
           data.flags ??= {};
           data.flags.dnd5e ??= {};

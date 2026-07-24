@@ -27,7 +27,7 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
     if (!game.user.isGM) throw new Error("Only a GM can use the Character Builder Tool.");
     const settings = LevelUpService.settings();
     const mode = settings.levelUpMode === "xp" ? "xp" : "milestone";
-    const epicBoonEnabled = Boolean(settings.enableGrantEpicBoons);
+    const epicBoonEnabled = Boolean(settings.enableEpicBoons && settings.enableGrantEpicBoons);
     const actors = game.actors
       .filter(actor => actor.type === "character"
         && !actor.getFlag(MODULE_ID, "isDraft")
@@ -276,7 +276,7 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
     const DialogV2 = foundry.applications.api.DialogV2;
     if (DialogV2?.confirm) {
       return DialogV2.confirm({
-        window: { title }, content,
+        window: { title, modal: true }, content,
         yes: { label: yes, icon: "fa-solid fa-check" },
         no: { label: "Cancel", icon: "fa-solid fa-xmark" }
       });

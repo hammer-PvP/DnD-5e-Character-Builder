@@ -1,5 +1,5 @@
 import {
-  MODULE_ID, ABILITIES, STANDARD_ARRAY, POINT_BUY_COSTS, POINT_BUY_BUDGET, defaultSettings
+  MODULE_ID, ABILITIES, STANDARD_ARRAY, CUSTOM_ARRAY_SLOT_COUNT, POINT_BUY_COSTS, POINT_BUY_BUDGET, defaultSettings
 } from "../constants.mjs";
 import { SourceRegistry } from "../services/source-registry.mjs";
 import { DraftManager } from "../services/draft-manager.mjs";
@@ -36,6 +36,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     this.commitDialog = null;
     this.commitInProgress = false;
     this.commitTransactionToken = null;
+    this.rollBusy = false;
   }
 
   static DEFAULT_OPTIONS = {
@@ -82,9 +83,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       state = DraftManager.getBuildState(this.draft);
     }
 
-    const settings = foundry.utils.mergeObject(defaultSettings(), game.settings.get(MODULE_ID, "settings") ?? {}, {
-      inplace: false
-    });
+    const settings = this.#settings();
     const step = state.step ?? "abilitiesBackground";
     const species = this.draft.items.find(item => item.type === "race") ?? null;
     const background = this.draft.items.find(item => item.type === "background") ?? null;
@@ -135,34 +134,44 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     const backgroundSource = selectedBackgroundUuid
       ? await this.#resolveBackgroundDocument(selectedBackgroundUuid)
       : null;
-    const baseAbilities = state.baseAbilities ?? { str: 8, dex: 8, con: 8, int: 8, wis: 8, cha: 8 };
+    const baseAbilities = this.#methodBaseAbilities(effectiveMethod, state);
     const backgroundApplied = Boolean(background && state.abilitiesSaved);
-    const selectedRollValues = (state.rollSets ?? [])[state.selectedRollSet] ?? [];
     const pointBuy = this.#pointBuySummary(baseAbilities);
+    const abilitySlots = this.#abilitySlots(effectiveMethod, settings, state);
+    const methodAssignments = foundry.utils.deepClone(state.abilitySlotAssignments?.[effectiveMethod] ?? {});
+    const validSlotIds = new Set(abilitySlots.map(slot => slot.id));
+    const usedSlotIds = new Set(Object.values(methodAssignments).filter(id => validSlotIds.has(id)));
 
     const abilities = ABILITIES.map(ability => {
-      const base = Number(baseAbilities[ability.key] ?? 8);
-      const optionValues = effectiveMethod === "standardArray" ? STANDARD_ARRAY
-        : effectiveMethod === "roll" ? selectedRollValues : [];
+      const selectedSlotId = validSlotIds.has(methodAssignments[ability.key])
+        ? methodAssignments[ability.key]
+        : null;
+      const selectedSlot = abilitySlots.find(slot => slot.id === selectedSlotId) ?? null;
+      const rawBase = Number(baseAbilities[ability.key] ?? 8);
+      const base = selectedSlot ? selectedSlot.value : rawBase;
+      const hasAssignedSlot = Boolean(selectedSlot);
       const nextCost = base < 15 ? POINT_BUY_COSTS[base + 1] - POINT_BUY_COSTS[base] : Infinity;
       const final = backgroundApplied
         ? Number(this.draft.system.abilities?.[ability.key]?.value ?? base)
         : base;
+      const usesSelect = ["standardArray", "customArray", "roll"].includes(effectiveMethod);
       return {
         ...ability,
-        base,
-        bonus: final - base,
-        final,
+        base: usesSelect && !hasAssignedSlot ? null : base,
+        bonus: usesSelect && !hasAssignedSlot ? null : final - base,
+        final: usesSelect && !hasAssignedSlot ? null : final,
         pointBuy: effectiveMethod === "pointBuy",
-        usesSelect: ["standardArray", "roll"].includes(effectiveMethod),
+        usesSelect,
         usesInput: effectiveMethod === "manual",
         canDecrease: base > 8,
         canIncrease: base < 15 && pointBuy.remaining >= nextCost,
-        options: optionValues.map((value, index) => ({
-          value,
-          index,
-          selected: Number(value) === base
-        }))
+        options: abilitySlots
+          .filter(slot => slot.id === selectedSlotId || !usedSlotIds.has(slot.id))
+          .map(slot => ({
+            id: slot.id,
+            value: slot.value,
+            selected: slot.id === selectedSlotId
+          }))
       };
     });
 
@@ -275,8 +284,9 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         selected: Number(state.selectedRollSet) === index
       })),
       selectedRollSet: state.selectedRollSet,
-      rollLimit: settings.rollSets,
-      canRollMore: settings.rollSets === 0 || (state.rollSets ?? []).length < settings.rollSets,
+      rollLimit: this.#rollConfiguration(settings).limit,
+      rollStatus: this.#rollStatus(settings, state.rollSets ?? []),
+      canRollMore: !this.rollBusy && this.#canRollMore(settings, state.rollSets ?? []),
       pointBuy,
       spellAccess,
       equipmentPanels,
@@ -311,8 +321,11 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
     root.querySelectorAll('[name="abilityMethod"]').forEach(input => {
       input.addEventListener("change", async event => {
+        const method = String(event.currentTarget.value ?? "pointBuy");
+        const state = DraftManager.getBuildState(this.draft);
         await DraftManager.setBuildState(this.draft, {
-          abilityMethod: event.currentTarget.value,
+          abilityMethod: method,
+          baseAbilities: this.#methodBaseAbilities(method, state),
           abilitiesSaved: false
         });
         this.render({ force: true });
@@ -320,8 +333,9 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     });
 
     root.querySelectorAll('[name^="abilities."]').forEach(input => {
-      input.addEventListener("change", async () => {
-        await this.#storeVisibleBaseAbilities();
+      input.addEventListener("change", async event => {
+        if (event.currentTarget.tagName === "SELECT") await this.#storeAbilitySlotAssignment(event.currentTarget);
+        else await this.#storeVisibleBaseAbilities();
       });
     });
 
@@ -424,13 +438,18 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       case "roll-set":
         await this.#rollSet();
         break;
-      case "select-roll-set":
+      case "select-roll-set": {
+        const state = DraftManager.getBuildState(this.draft);
+        const assignments = foundry.utils.deepClone(state.abilitySlotAssignments ?? {});
+        assignments.roll = {};
         await DraftManager.setBuildState(this.draft, {
           selectedRollSet: Number(target.dataset.index),
+          abilitySlotAssignments: assignments,
           abilitiesSaved: false
         });
         this.render({ force: true });
         break;
+      }
       case "ability-adjust":
         await this.#adjustAbility(target.dataset.ability, Number(target.dataset.delta));
         break;
@@ -622,26 +641,33 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   }
 
   async #rollSet() {
-    const settings = foundry.utils.mergeObject(defaultSettings(), game.settings.get(MODULE_ID, "settings") ?? {}, {
-      inplace: false
-    });
+    if (this.rollBusy) return;
+    const settings = this.#settings();
     const state = DraftManager.getBuildState(this.draft);
-    const rollSets = state.rollSets ?? [];
-    if (settings.rollSets !== 0 && rollSets.length >= settings.rollSets) {
+    const rollSets = foundry.utils.deepClone(state.rollSets ?? []);
+    if (!this.#canRollMore(settings, rollSets)) {
       return ui.notifications.warn("The configured roll-set limit has been reached.");
     }
 
-    const results = [];
-    for (let index = 0; index < 6; index++) {
-      const roll = await new Roll("4d6dl1").evaluate();
-      results.push(Number(roll.total));
+    this.rollBusy = true;
+    try {
+      const results = [];
+      for (let index = 0; index < 6; index++) {
+        const roll = await new Roll("4d6dl1").evaluate();
+        results.push(Number(roll.total));
+      }
+      rollSets.push(results);
+      const assignments = foundry.utils.deepClone(state.abilitySlotAssignments ?? {});
+      assignments.roll = {};
+      await DraftManager.setBuildState(this.draft, {
+        rollSets,
+        selectedRollSet: rollSets.length - 1,
+        abilitySlotAssignments: assignments,
+        abilitiesSaved: false
+      });
+    } finally {
+      this.rollBusy = false;
     }
-    rollSets.push(results);
-    await DraftManager.setBuildState(this.draft, {
-      rollSets,
-      selectedRollSet: rollSets.length - 1,
-      abilitiesSaved: false
-    });
     this.render({ force: true });
   }
 
@@ -657,7 +683,13 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     base[key] = next;
     if (this.#pointBuySummary(base).remaining < 0) return;
 
-    await DraftManager.setBuildState(this.draft, { baseAbilities: base, abilitiesSaved: false });
+    const abilityMethodValues = foundry.utils.deepClone(state.abilityMethodValues ?? {});
+    abilityMethodValues.pointBuy = foundry.utils.deepClone(base);
+    await DraftManager.setBuildState(this.draft, {
+      baseAbilities: base,
+      abilityMethodValues,
+      abilitiesSaved: false
+    });
     this.render({ force: true });
   }
 
@@ -669,7 +701,52 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       const value = Number(form.get(`abilities.${ability.key}`));
       if (Number.isFinite(value)) base[ability.key] = value;
     }
-    await DraftManager.setBuildState(this.draft, { baseAbilities: base, abilitiesSaved: false });
+    const method = String(state.abilityMethod ?? "manual");
+    const abilityMethodValues = foundry.utils.deepClone(state.abilityMethodValues ?? {});
+    if (["pointBuy", "manual"].includes(method)) abilityMethodValues[method] = foundry.utils.deepClone(base);
+    await DraftManager.setBuildState(this.draft, {
+      baseAbilities: base,
+      abilityMethodValues,
+      abilitiesSaved: false
+    });
+    this.render({ force: true });
+  }
+
+  async #storeAbilitySlotAssignment(select) {
+    const abilityKey = String(select?.name ?? "").replace(/^abilities\./, "");
+    if (!ABILITIES.some(ability => ability.key === abilityKey)) return;
+
+    const settings = this.#settings();
+    const state = DraftManager.getBuildState(this.draft);
+    const method = String(state.abilityMethod ?? "pointBuy");
+    if (!["standardArray", "customArray", "roll"].includes(method)) return;
+
+    const slots = this.#abilitySlots(method, settings, state);
+    const slotById = new Map(slots.map(slot => [slot.id, slot]));
+    const selectedId = String(select.value ?? "");
+    const allAssignments = foundry.utils.deepClone(state.abilitySlotAssignments ?? {});
+    const assignments = foundry.utils.deepClone(allAssignments[method] ?? {});
+    const previousId = assignments[abilityKey] ?? null;
+
+    if (!selectedId) delete assignments[abilityKey];
+    else if (slotById.has(selectedId)) {
+      const occupiedAbility = ABILITIES.find(ability =>
+        ability.key !== abilityKey && assignments[ability.key] === selectedId
+      )?.key;
+      if (occupiedAbility) {
+        if (previousId && slotById.has(previousId)) assignments[occupiedAbility] = previousId;
+        else delete assignments[occupiedAbility];
+      }
+      assignments[abilityKey] = selectedId;
+    }
+
+    allAssignments[method] = assignments;
+    const base = this.#baseAbilitiesFromAssignments(assignments, slots, state.baseAbilities ?? {});
+    await DraftManager.setBuildState(this.draft, {
+      abilitySlotAssignments: allAssignments,
+      baseAbilities: base,
+      abilitiesSaved: false
+    });
     this.render({ force: true });
   }
 
@@ -680,14 +757,22 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       const form = new FormData(this.element);
       const method = String(form.get("abilityMethod") ?? "pointBuy");
       const state = DraftManager.getBuildState(this.draft);
-      const base = {};
+      const settings = this.#settings();
+      const selectMethod = ["standardArray", "customArray", "roll"].includes(method);
+      const slots = this.#abilitySlots(method, settings, state);
+      const assignments = foundry.utils.deepClone(state.abilitySlotAssignments?.[method] ?? {});
+      const base = selectMethod
+        ? this.#baseAbilitiesFromAssignments(assignments, slots, {})
+        : {};
 
-      for (const ability of ABILITIES) {
-        base[ability.key] = method === "pointBuy"
-          ? Number(state.baseAbilities?.[ability.key] ?? 8)
-          : Number(form.get(`abilities.${ability.key}`) ?? state.baseAbilities?.[ability.key]);
+      if (!selectMethod) {
+        for (const ability of ABILITIES) {
+          base[ability.key] = method === "pointBuy"
+            ? Number(this.#methodBaseAbilities("pointBuy", state)?.[ability.key] ?? 8)
+            : Number(form.get(`abilities.${ability.key}`) ?? this.#methodBaseAbilities("manual", state)?.[ability.key]);
+        }
       }
-      const baseError = this.#validateBaseAbilities(method, base, state);
+      const baseError = this.#validateBaseAbilities(method, base, state, settings, assignments);
       if (baseError) return ui.notifications.error(baseError);
 
       const backgroundUuid = String(form.get("selectedBackgroundUuid") ?? state.selectedBackgroundUuid ?? "");
@@ -699,7 +784,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       const source = await this.#resolveBackgroundDocument(backgroundUuid);
       if (!source) return ui.notifications.error("The selected Background could not be loaded.");
 
-      const fingerprint = JSON.stringify({ method, base, backgroundUuid });
+      const fingerprint = JSON.stringify({ method, base, assignments, backgroundUuid });
       const existing = this.draft.items.find(item => item.type === "background");
       if (state.abilitiesSaved && state.abilityBackgroundFingerprint === fingerprint && existing) {
         if (advance) await DraftManager.setBuildState(this.draft, { step: "species" });
@@ -738,9 +823,17 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         await this.#ensureCustomBackgroundCommon();
       }
       await HitPointService.enforceFirstLevelMaximum(this.draft);
+      const abilityMethodValues = foundry.utils.deepClone(state.abilityMethodValues ?? {});
+      if (["pointBuy", "manual"].includes(method)) abilityMethodValues[method] = foundry.utils.deepClone(base);
       await DraftManager.setBuildState(this.draft, {
         abilityMethod: method,
         baseAbilities: base,
+        abilityMethodValues,
+        abilitySlotAssignments: foundry.utils.mergeObject(
+          foundry.utils.deepClone(state.abilitySlotAssignments ?? {}),
+          selectMethod ? { [method]: assignments } : {},
+          { inplace: false }
+        ),
         selectedBackgroundUuid: backgroundUuid,
         backgroundAbilityAssignments: {},
         abilityBackgroundFingerprint: fingerprint,
@@ -763,8 +856,10 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     }
   }
 
-  #validateBaseAbilities(method, base, state) {
-    if (Object.values(base).some(value => !Number.isFinite(value))) return "Every Ability Score requires a value.";
+  #validateBaseAbilities(method, base, state, settings, assignments = {}) {
+    if (Object.values(base).length !== ABILITIES.length || Object.values(base).some(value => !Number.isFinite(value))) {
+      return "Every Ability Score requires a value.";
+    }
     if (method === "pointBuy") {
       if (Object.values(base).some(value => value < 8 || value > 15 || !Number.isInteger(value))) {
         return "Point Buy values must be whole numbers from 8 to 15.";
@@ -772,17 +867,24 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       const cost = Object.values(base).reduce((total, value) => total + POINT_BUY_COSTS[value], 0);
       if (cost > POINT_BUY_BUDGET) return `Point Buy exceeds the ${POINT_BUY_BUDGET}-point budget (${cost}/${POINT_BUY_BUDGET}).`;
     }
-    if (method === "standardArray") {
-      const actual = Object.values(base).sort((a, b) => b - a);
-      const expected = [...STANDARD_ARRAY].sort((a, b) => b - a);
-      if (actual.join(",") !== expected.join(",")) return "Use every Standard Array value exactly once.";
+    if (["standardArray", "customArray", "roll"].includes(method)) {
+      const slots = this.#abilitySlots(method, settings, state);
+      if (slots.length !== ABILITIES.length) {
+        return method === "roll"
+          ? "Roll and select a complete Ability Score set first."
+          : "The configured Ability Score array is incomplete.";
+      }
+      const assignedIds = ABILITIES.map(ability => assignments[ability.key]).filter(Boolean);
+      const validIds = new Set(slots.map(slot => slot.id));
+      if (assignedIds.length !== ABILITIES.length || new Set(assignedIds).size !== ABILITIES.length ||
+          assignedIds.some(id => !validIds.has(id))) {
+        const label = method === "standardArray" ? "Standard Array"
+          : method === "customArray" ? "Custom Array" : "selected roll set";
+        return `Assign every slot from the ${label} exactly once.`;
+      }
     }
-    if (method === "roll") {
-      const set = state.rollSets?.[state.selectedRollSet];
-      if (!set) return "Roll and select a complete Ability Score set first.";
-      const actual = Object.values(base).sort((a, b) => b - a);
-      const expected = [...set].sort((a, b) => b - a);
-      if (actual.join(",") !== expected.join(",")) return "Assign each value from the selected roll set exactly once.";
+    if (method === "manual" && Object.values(base).some(value => !Number.isInteger(value) || value < 1 || value > 20)) {
+      return "Manual Ability Scores must be whole numbers from 1 to 20.";
     }
     return null;
   }
@@ -805,9 +907,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     try {
       const formData = Object.fromEntries(new FormData(this.element).entries());
       const plan = await EquipmentService.captureSelection(this.draft, this.registry, formData);
-      const settings = foundry.utils.mergeObject(defaultSettings(), game.settings.get(MODULE_ID, "settings") ?? {}, {
-        inplace: false
-      });
+      const settings = this.#settings();
       const shop = await ShopService.initializeDraft(this.draft, this.registry, plan.budgetBreakdown, settings, {
         equipmentFingerprint: EquipmentService.selectionFingerprint(plan.equipmentState)
       });
@@ -1003,10 +1103,17 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
   async #discard() {
     if (this.commitInProgress) return this.#focusCommitDialog();
-    const confirmed = await Dialog.confirm({
-      title: "Discard Character Builder Draft",
-      content: "<p>Delete the current Character Builder draft? The original Actor will remain unchanged.</p>"
-    });
+    const title = "Discard Character Builder Draft";
+    const content = "<p>Delete the current Character Builder draft? The original Actor will remain unchanged.</p>";
+    const DialogV2 = foundry.applications?.api?.DialogV2;
+    const confirmed = DialogV2?.confirm
+      ? await DialogV2.confirm({
+        window: { title, modal: true },
+        content,
+        yes: { label: "Discard Draft", icon: "fa-solid fa-trash" },
+        no: { label: "Keep Draft", icon: "fa-solid fa-xmark" }
+      })
+      : await Dialog.confirm({ title, content, defaultYes: false });
     if (!confirmed) return;
     await DraftManager.discard(this.actor);
     this.close();
@@ -1024,13 +1131,106 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     return fromUuid(uuid);
   }
 
+  #settings() {
+    const stored = game.settings.get(MODULE_ID, "settings") ?? {};
+    const settings = foundry.utils.mergeObject(defaultSettings(), stored, { inplace: false });
+    const storedMode = String(stored.rollAbilityScores?.mode ?? "");
+    if (!["single", "limited", "unlimited"].includes(storedMode)) {
+      const legacyRollSets = Number(stored.rollSets ?? settings.rollSets ?? 2);
+      settings.rollAbilityScores = legacyRollSets === 0
+        ? { mode: "unlimited", limit: 2 }
+        : legacyRollSets === 1
+          ? { mode: "single", limit: 1 }
+          : { mode: "limited", limit: Math.max(1, Math.trunc(legacyRollSets || 2)) };
+    }
+    return settings;
+  }
+
+  #methodBaseAbilities(method, state) {
+    const fallback = { str: 8, dex: 8, con: 8, int: 8, wis: 8, cha: 8 };
+    if (!["pointBuy", "manual"].includes(method)) {
+      return foundry.utils.deepClone(state.baseAbilities ?? fallback);
+    }
+    const saved = state.abilityMethodValues?.[method] ?? state.baseAbilities ?? fallback;
+    const normalized = Object.fromEntries(ABILITIES.map(ability => [ability.key, Number(saved?.[ability.key])]));
+    const complete = ABILITIES.every(ability => Number.isInteger(normalized[ability.key]));
+    if (!complete) return foundry.utils.deepClone(fallback);
+    if (method === "manual") {
+      return ABILITIES.every(ability => normalized[ability.key] >= 1 && normalized[ability.key] <= 20)
+        ? normalized
+        : foundry.utils.deepClone(fallback);
+    }
+    const inRange = ABILITIES.every(ability => normalized[ability.key] >= 8 && normalized[ability.key] <= 15);
+    if (!inRange || !this.#pointBuySummary(normalized).valid) return foundry.utils.deepClone(fallback);
+    return normalized;
+  }
+
+  #abilitySlots(method, settings, state) {
+    let values = [];
+    if (method === "standardArray") values = STANDARD_ARRAY;
+    else if (method === "customArray") values = Array.from({ length: CUSTOM_ARRAY_SLOT_COUNT }, (_, index) => {
+      const value = Number(settings.customArray?.[index]);
+      return Number.isInteger(value) ? Math.min(20, Math.max(1, value)) : null;
+    }).filter(value => value !== null);
+    else if (method === "roll") values = state.rollSets?.[state.selectedRollSet] ?? [];
+    const setKey = method === "roll" ? (state.selectedRollSet ?? "none") : "base";
+    return values.map((value, index) => ({ id: `${method}:${setKey}:${index}`, value: Number(value), index }));
+  }
+
+  #baseAbilitiesFromAssignments(assignments, slots, fallback = {}) {
+    const slotById = new Map(slots.map(slot => [slot.id, slot]));
+    const base = {};
+    for (const ability of ABILITIES) {
+      const slot = slotById.get(assignments?.[ability.key]);
+      if (slot) base[ability.key] = Number(slot.value);
+      else if (Number.isFinite(Number(fallback?.[ability.key]))) base[ability.key] = Number(fallback[ability.key]);
+    }
+    return base;
+  }
+
+  #rollConfiguration(settings) {
+    const legacy = Number(settings.rollSets ?? 2);
+    const requestedMode = String(settings.rollAbilityScores?.mode ?? "");
+    const mode = ["single", "limited", "unlimited"].includes(requestedMode)
+      ? requestedMode
+      : legacy === 0 ? "unlimited" : legacy === 1 ? "single" : "limited";
+    const requestedLimit = Number(settings.rollAbilityScores?.limit ?? (legacy > 0 ? legacy : 2));
+    const limit = mode === "single" ? 1 : Math.max(1, Math.trunc(Number.isFinite(requestedLimit) ? requestedLimit : 2));
+    return { mode, limit };
+  }
+
+  #canRollMore(settings, rollSets) {
+    const configuration = this.#rollConfiguration(settings);
+    return configuration.mode === "unlimited" || rollSets.length < configuration.limit;
+  }
+
+  #rollStatus(settings, rollSets) {
+    const configuration = this.#rollConfiguration(settings);
+    const used = rollSets.length;
+    if (configuration.mode === "unlimited") return { mode: "unlimited", text: `${used} set${used === 1 ? "" : "s"} generated · Unlimited` };
+    const remaining = Math.max(0, configuration.limit - used);
+    return {
+      mode: configuration.mode,
+      used,
+      remaining,
+      limit: configuration.limit,
+      text: `${used}/${configuration.limit} sets generated · ${remaining} remaining`
+    };
+  }
+
   #pointBuySummary(baseAbilities) {
     const spent = Object.values(baseAbilities).reduce((total, value) => total + (POINT_BUY_COSTS[value] ?? 99), 0);
     return { spent, remaining: POINT_BUY_BUDGET - spent, valid: spent <= POINT_BUY_BUDGET };
   }
 
   #abilityMethodLabel(id) {
-    return { pointBuy: "Point Buy", standardArray: "Standard Array", roll: "Roll", manual: "Manual" }[id] ?? id;
+    return {
+      pointBuy: "Point Buy",
+      standardArray: "Standard Array",
+      customArray: "Custom Array",
+      roll: "Roll",
+      manual: "Manual"
+    }[id] ?? id;
   }
 
   #reviewContext() {

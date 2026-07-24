@@ -9,12 +9,12 @@ Character Builder is a guided D&D 2024 character creation, Level Up, Epic Boon, 
 - Foundry VTT 14.364
 - D&D5e 5.3.3
 
-SRD 5.1 Legacy is not officially supported. Character Keeper is under active testing in version 0.9.7g as an experimental Short Rest, Long Rest, and Wizard spellbook-management capability.
+SRD 5.1 Legacy is not officially supported. Character Keeper is treated as stable for its currently implemented Short Rest, Long Rest, and Wizard spellbook-management routines; version 0.9.8 limits Keeper changes to visual or minor cross-cutting corrections.
 
 ## Level 1 creation
 
 - Combined Ability Scores and Background creation with native D&D5e Advancements.
-- Configurable Point Buy, Standard Array, rolled sets, and manual Ability Score methods.
+- Configurable Point Buy, exclusive Standard Array, GM-defined Custom Array, Single/Limited/Unlimited rolled sets, and manual Ability Score methods.
 - Custom Background with free 2024 Ability Score assignment, an Origin Feat, two skills, one tool, Common plus two Standard Languages, and 1 GP.
 - Species and Class selection with staged preview, confirmation, and source filtering.
 - Class spell access for full-list, limited-selection, Pact Magic, and Wizard spellbook models.
@@ -22,6 +22,43 @@ SRD 5.1 Legacy is not officially supported. Character Keeper is under active tes
 - Independent Class and Background starting equipment or starting-currency choices.
 - Transactional mundane Starting Equipment Shop with Checkout, exact purchase manifests, containers, quantity support, and GM Bonus Gold.
 - Review and recoverable application to the original Actor.
+
+## Character Builder 0.9.8 — General creation and progression revision
+
+Version 0.9.8 returns the project to a general Character Builder scope after the Character Keeper runtime set reached its stable review point. It combines the approved visual corrections with Ability Score improvements, current-workflow spell-state consistency, progression-policy controls, clearer multiclass summaries, and protected transaction confirmations. It intentionally performs no migration or automatic repair of Actors created by earlier versions, other applications, manual editing, or homebrew workflows.
+
+### Ability Scores
+
+- **Exclusive Standard Array slots:** every Standard Array slot can be assigned exactly once. Selecting a slot removes it from the other Ability dropdowns; clearing or changing the assignment returns the prior slot immediately. Slot identity, rather than only numeric value, is validated before confirmation.
+- **GM-configurable Custom Array:** the GM can enable a six-slot Custom Array and configure each independent whole-number slot from 1 through 20. Duplicate numeric values remain distinct slots, and players may assign each slot once to any Ability Score.
+- **Explicit roll modes:** Roll Ability Scores supports `Single Roll`, `Limited Rolls`, and `Unlimited Rolls`. Limited Rolls uses a GM-defined total number of complete sets, including the first, while the creation screen reports generated and remaining sets and blocks duplicate or over-limit roll requests.
+
+### Feat, ASI, and Epic Boon policy
+
+- New GM controls are enabled by default: `Enable Feats`, `Enable Ability Score Improvement`, and `Enable Epic Boons`. With all three enabled, the existing official behavior is unchanged.
+- Native D&D5e browsers, queries, indexes, filters, and Advancement documents remain untouched. Character Builder validates only the confirmed result and validates it again before commit.
+- Disabling Feats rejects optional common Feats, including Feats that grant a +1 Ability Score increase, while mandatory source grants and already-owned Feats remain untouched.
+- Disabling Ability Score Improvement rejects only the generic two-point ASI. When Feats remain enabled, eligible Feats that grant a +1 Ability Score increase remain valid.
+- Disabling Epic Boons rejects new Epic Boon choices. The GM `Grant Epic Boons` tool additionally requires both `Enable Epic Boons` and `Enable Grant Epic Boons`.
+
+### Spells and cantrips
+
+- Every cantrip created or replaced by the current Character Creation, Level Up, Multiclass, Pact of the Tome, ItemGrant repair, or Character Keeper workflow is written as native D&D5e `Always Prepared` state. Cantrips remain separate from Prepared Spells of level 1+ and cannot be unprepared from the sheet.
+- A central preparation-state policy keeps current module workflows consistent while preserving normal prepared, always-prepared, spellbook, full-list, and scribed spell behavior for leveled spells.
+- No Actor-wide migration or retrospective cantrip repair is performed.
+
+### Level Up and multiclass presentation
+
+- `Native Progression Applied Automatically` now respects primary-versus-secondary class restrictions, so multiclass summaries do not display initial-class Saving Throws, Heavy Armor, or other grants that the native system did not apply.
+- Automatic grants are consolidated by category and use complete labels such as `Constitution`, `Charisma`, `Martial Weapons`, `Light Armor`, `Medium Armor`, and `Shields` instead of internal abbreviations or truncated source text.
+- The sticky spell-choice heading now meets the Level Up banner without an exposed scrolling strip.
+
+### Protected confirmations and visual corrections
+
+- Transaction confirmations use modal blocking behavior so Character Creation, Level Up, Multiclass, Epic Boon, Character Keeper, and Scribe Spell confirmations cannot fall behind another module window while awaiting a decision.
+- Scribe Spell displays `Confirm Scribing` and the complete GP cost on separate lines in both the Keeper action and final confirmation.
+- Square selection checks are centered without changing their approved size or hit area.
+- Gold action buttons retain their visual identity with improved title and subtitle legibility.
 
 ## Character Builder 0.9.7g — Visual standardization follow-up
 
@@ -247,6 +284,27 @@ This README is the consolidated project and release document. Static validation 
 ## Repository
 
 https://github.com/hammer-PvP/DnD-5e-Character-Builder
+
+## 0.9.8 validation checklist
+
+- With all three progression-policy toggles enabled, Feat, generic ASI, and Epic Boon behavior matches the prior official flow.
+- With `Enable Feats` disabled, optional common Feats and +1 Ability Score Feats are rejected without altering the native browser; mandatory source grants remain intact.
+- With `Enable Ability Score Improvement` disabled, only the generic two-point ASI is rejected, while eligible Feats including +1 Ability Score Feats remain valid when Feats are enabled.
+- With `Enable Epic Boons` disabled, new Epic Boon choices and GM grant actions are unavailable, while already-applied Epic Boons remain untouched.
+- `Grant Epic Boons` requires both the global Epic Boon toggle and the dedicated GM grant toggle.
+- Standard Array and Custom Array consume six independent slots exactly once, including when Custom Array contains duplicate numeric values.
+- Clearing or changing an array assignment immediately returns the prior slot to every other Ability dropdown.
+- Single Roll creates one set, Limited Rolls respects the configured total including the first, and Unlimited Rolls remains unrestricted.
+- Repeated clicks cannot generate a second roll while one roll-set request is in progress.
+- Current-workflow cantrips created during Character Creation, Level Up, Multiclass, Pact of the Tome, ItemGrant reconciliation, and Wizard Replace Cantrip use native `Always Prepared` state.
+- Leveled limited-list spells remain Prepared, full-list and spellbook entries remain Unprepared, feature-owned always-prepared spells remain Always Prepared, and Scribe Spell additions remain Unprepared.
+- Multiclass automatic-progression summaries respect `primary` and `secondary` class restrictions and never advertise Heavy Armor or Saving Throws that were not applied.
+- Automatic grant summaries use complete labels and consolidate repeated deterministic categories.
+- Level Up sticky spell headers meet the fixed banner without exposing scrolling content through a gap.
+- Square checkbox marks are centered, and gold action title/subtitle text remains legible.
+- Scribe Spell shows `Confirm Scribing` and the full GP cost on separate lines.
+- Transaction confirmations remain modal and cannot be pushed behind Character Creation, Level Up, Character Keeper, or another module window.
+- No Actor migration, historical spell repair, or homebrew reinterpretation is performed.
 
 ## 0.9.7f validation checklist
 

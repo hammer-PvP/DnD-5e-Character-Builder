@@ -1,4 +1,4 @@
-import { MODULE_ID, SOURCE_DEFINITIONS, defaultSettings } from "../constants.mjs";
+import { MODULE_ID, SOURCE_DEFINITIONS, CUSTOM_ARRAY_SLOT_COUNT, defaultSettings } from "../constants.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -18,8 +18,22 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
   };
 
   async _prepareContext() {
-    const settings = foundry.utils.mergeObject(defaultSettings(), game.settings.get(MODULE_ID, "settings") ?? {}, {
+    const storedSettings = game.settings.get(MODULE_ID, "settings") ?? {};
+    const settings = foundry.utils.mergeObject(defaultSettings(), storedSettings, {
       inplace: false
+    });
+    const legacyRollSets = Number(storedSettings.rollSets ?? settings.rollSets ?? 2);
+    const configuredRollMode = String(storedSettings.rollAbilityScores?.mode ?? "");
+    const rollMode = ["single", "limited", "unlimited"].includes(configuredRollMode)
+      ? configuredRollMode
+      : legacyRollSets === 0 ? "unlimited" : legacyRollSets === 1 ? "single" : "limited";
+    const rollLimit = rollMode === "single" ? 1 : Math.max(1, Math.trunc(Number(
+      settings.rollAbilityScores?.limit ?? (legacyRollSets > 0 ? legacyRollSets : 2)
+    ) || 2));
+    settings.rollAbilityScores = { mode: rollMode, limit: rollLimit };
+    settings.customArray = Array.from({ length: CUSTOM_ARRAY_SLOT_COUNT }, (_, index) => {
+      const value = Number(settings.customArray?.[index] ?? [15, 14, 13, 12, 10, 8][index]);
+      return Number.isInteger(value) ? Math.min(20, Math.max(1, value)) : [15, 14, 13, 12, 10, 8][index];
     });
     const ordered = [...settings.sources].sort((a, b) => Number(a.priority) - Number(b.priority));
     return {
@@ -57,9 +71,15 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     });
     root.querySelector('[name="allowMulticlassing"]')?.addEventListener("change", () => this.#refreshMulticlassRequirements());
     root.querySelector('[name="requireArcanaCheckForSpellScrollScribing"]')?.addEventListener("change", () => this.#refreshScribeSettings());
+    root.querySelector('[name="customArray"]')?.addEventListener("change", () => this.#refreshCustomArraySettings());
+    root.querySelector('[name="rollMode"]')?.addEventListener("change", () => this.#refreshRollSettings());
+    root.querySelector('[name="enableEpicBoons"]')?.addEventListener("change", () => this.#refreshEpicBoonSettings());
     this.#refreshHpDefaults();
     this.#refreshMulticlassRequirements();
     this.#refreshScribeSettings();
+    this.#refreshCustomArraySettings();
+    this.#refreshRollSettings();
+    this.#refreshEpicBoonSettings();
   }
 
   async #save(event) {
@@ -72,8 +92,13 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       priority
     }));
 
-    const rollSetsValue = form.querySelector('[name="rollSets"]')?.value ?? "2";
-    const rollSets = rollSetsValue === "unlimited" ? 0 : Number(rollSetsValue);
+    const rollMode = String(form.querySelector('[name="rollMode"]')?.value ?? "limited");
+    const rawRollLimit = Number(form.querySelector('[name="rollLimit"]')?.value ?? 2);
+    const rollLimit = Math.max(1, Math.trunc(Number.isFinite(rawRollLimit) ? rawRollLimit : 2));
+    const rollSets = rollMode === "unlimited" ? 0 : rollMode === "single" ? 1 : rollLimit;
+    const customArray = Array.from({ length: CUSTOM_ARRAY_SLOT_COUNT }, (_, index) =>
+      Number(form.querySelector(`[name="customArray.${index}"]`)?.value)
+    );
     const rawShopBonusGold = Number(form.querySelector('[name="shopBonusGold"]')?.value ?? 0);
     const shopBonusGold = Number.isFinite(rawShopBonusGold)
       ? Math.max(0, Math.trunc(rawShopBonusGold))
@@ -94,15 +119,22 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       abilityMethods: {
         pointBuy: form.querySelector('[name="pointBuy"]')?.checked ?? false,
         standardArray: form.querySelector('[name="standardArray"]')?.checked ?? false,
+        customArray: form.querySelector('[name="customArray"]')?.checked ?? false,
         roll: form.querySelector('[name="roll"]')?.checked ?? false,
         manual: form.querySelector('[name="manual"]')?.checked ?? false
       },
+      customArray,
+      rollAbilityScores: { mode: rollMode, limit: rollLimit },
       rollSets,
       shopBonusGold,
       levelUpMode: String(form.querySelector('[name="levelUpMode"]')?.value ?? "milestone"),
       allowMulticlassing: form.querySelector('[name="allowMulticlassing"]')?.checked ?? false,
       enforceMulticlassRequirements: form.querySelector('[name="enforceMulticlassRequirements"]')?.checked ?? true,
-      enableGrantEpicBoons: form.querySelector('[name="enableGrantEpicBoons"]')?.checked ?? false,
+      enableFeats: form.querySelector('[name="enableFeats"]')?.checked ?? true,
+      enableAbilityScoreImprovement: form.querySelector('[name="enableAbilityScoreImprovement"]')?.checked ?? true,
+      enableEpicBoons: form.querySelector('[name="enableEpicBoons"]')?.checked ?? true,
+      enableGrantEpicBoons: (form.querySelector('[name="enableEpicBoons"]')?.checked ?? true)
+        && (form.querySelector('[name="enableGrantEpicBoons"]')?.checked ?? false),
       allowSpellScrollScribing: form.querySelector('[name="allowSpellScrollScribing"]')?.checked ?? true,
       chargeWizardScribingCosts: form.querySelector('[name="chargeWizardScribingCosts"]')?.checked ?? true,
       requireArcanaCheckForSpellScrollScribing: form.querySelector('[name="requireArcanaCheckForSpellScrollScribing"]')?.checked ?? true,
@@ -118,6 +150,16 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     if (!Object.values(settings.abilityMethods).some(Boolean)) {
       return ui.notifications.error("Enable at least one Ability Score method.");
     }
+    if (settings.abilityMethods.customArray
+      && customArray.some(value => !Number.isInteger(value) || value < 1 || value > 20)) {
+      return ui.notifications.error("Every Custom Array slot must be a whole number from 1 to 20.");
+    }
+    if (!["single", "limited", "unlimited"].includes(rollMode)) {
+      return ui.notifications.error("Choose a valid Ability Score roll mode.");
+    }
+    if (rollMode === "limited" && (!Number.isInteger(rawRollLimit) || rawRollLimit < 1)) {
+      return ui.notifications.error("Limited Rolls requires a positive whole-number set limit.");
+    }
     if (!settings.sources.some(source => source.enabled)) {
       return ui.notifications.error("Enable at least one content source.");
     }
@@ -131,6 +173,31 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     await game.settings.set(MODULE_ID, "settings", settings);
     ui.notifications.info("Character Builder settings saved.");
     this.close();
+  }
+
+  #refreshCustomArraySettings() {
+    const enabled = this.element?.querySelector?.('[name="customArray"]')?.checked ?? false;
+    this.element?.querySelectorAll?.('[name^="customArray."]').forEach(input => {
+      input.disabled = !enabled;
+      input.closest("label")?.classList.toggle("disabled", !enabled);
+    });
+  }
+
+  #refreshRollSettings() {
+    const mode = String(this.element?.querySelector?.('[name="rollMode"]')?.value ?? "limited");
+    const limit = this.element?.querySelector?.('[name="rollLimit"]');
+    if (!limit) return;
+    const limited = mode === "limited";
+    limit.disabled = !limited;
+    limit.closest("label")?.classList.toggle("disabled", !limited);
+  }
+
+  #refreshEpicBoonSettings() {
+    const enabled = this.element?.querySelector?.('[name="enableEpicBoons"]')?.checked ?? true;
+    const grant = this.element?.querySelector?.('[name="enableGrantEpicBoons"]');
+    if (!grant) return;
+    grant.disabled = !enabled;
+    grant.closest("label")?.classList.toggle("disabled", !enabled);
   }
 
   #refreshMulticlassRequirements() {

@@ -1,4 +1,4 @@
-import { MODULE_ID } from "../constants.mjs";
+import { MODULE_ID, defaultSettings } from "../constants.mjs";
 
 /**
  * Minimal guard around the native D&D5e Ability Score Improvement feat choice.
@@ -103,12 +103,30 @@ export class NativeFeatChoiceGuard {
       return "The selected document could not be resolved as a feat from its source compendium.";
     }
 
+    const settings = this.settings();
     if (this.isAbilityScoreImprovement(candidate)) {
-      return "Ability Score Improvement cannot be selected here. This screen is only for choosing a feat. If you want to increase ability scores, return to the previous screen and use the Ability Score Improvement option.";
+      if (!settings.enableAbilityScoreImprovement) {
+        if (!settings.enableFeats) {
+          return "Ability Score Improvement and optional Feats are both disabled by the Game Master. Return to the Advancement screen and continue without selecting an option when the native workflow allows it.";
+        }
+        return "Ability Score Improvement is disabled by the Game Master. Choose an eligible Feat from the list instead. Feats that grant an Ability Score increase remain valid.";
+      }
+      return "Ability Score Improvement cannot be selected here. This screen is only for choosing a Feat. Return to the previous screen and use the Ability Score Improvement option.";
+    }
+
+    const epicBoon = this.isEpicBoon(candidate);
+    if (epicBoon && !settings.enableEpicBoons) {
+      return "Epic Boons are disabled by the Game Master. Choose another permitted option.";
+    }
+    if (!epicBoon && !settings.enableFeats) {
+      if (!settings.enableAbilityScoreImprovement) {
+        return "Optional Feats and Ability Score Improvement are both disabled by the Game Master. Return to the Advancement screen and continue without selecting an option when the native workflow allows it.";
+      }
+      return "Optional Feat selection is disabled by the Game Master. Return to the previous screen and use Ability Score Improvement instead. Feats that grant a +1 Ability Score increase are also disabled.";
     }
 
     const level = Number(projectedCharacterLevel ?? actor?.system?.details?.level ?? 0);
-    if (this.isEpicBoon(candidate) && level < 19) {
+    if (epicBoon && level < 19) {
       return `Epic Boon feats require character level 19 or higher. The projected character level is ${level}.`;
     }
 
@@ -117,6 +135,13 @@ export class NativeFeatChoiceGuard {
     }
 
     return null;
+  }
+
+
+  static settings() {
+    return foundry.utils.mergeObject(defaultSettings(), game.settings.get(MODULE_ID, "settings") ?? {}, {
+      inplace: false
+    });
   }
 
   static projectedCharacterLevel(manager, state) {
@@ -171,6 +196,14 @@ export class NativeFeatChoiceGuard {
     const name = foundry.utils.escapeHTML(candidate?.name ?? "The selected feat");
     const safeReason = foundry.utils.escapeHTML(reason);
     const isAsi = NativeFeatChoiceGuard.isAbilityScoreImprovement(candidate);
+    const settings = NativeFeatChoiceGuard.settings();
+    const title = isAsi && !settings.enableAbilityScoreImprovement
+      ? "Ability Score Improvement Disabled"
+      : NativeFeatChoiceGuard.isEpicBoon(candidate) && !settings.enableEpicBoons
+        ? "Epic Boons Disabled"
+        : !isAsi && !NativeFeatChoiceGuard.isEpicBoon(candidate) && !settings.enableFeats
+          ? "Feat Selection Disabled"
+          : "Invalid Feat Choice";
     const content = `<div class="cb-structural-error">
       ${isAsi ? "" : `<p><strong>${name} cannot be selected.</strong></p>`}
       <p>${safeReason}</p>
@@ -179,7 +212,7 @@ export class NativeFeatChoiceGuard {
     const DialogV2 = foundry.applications?.api?.DialogV2;
     if (DialogV2?.wait) {
       await DialogV2.wait({
-        window: { title: "Invalid Feat Choice", modal: true },
+        window: { title, modal: true },
         content,
         buttons: [{ action: "choose", label: "Choose Another Feat", icon: "fa-solid fa-rotate-left", default: true }],
         close: () => "choose"

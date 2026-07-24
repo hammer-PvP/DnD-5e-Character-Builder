@@ -487,7 +487,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     const DialogV2 = foundry.applications.api.DialogV2;
     const confirmed = DialogV2?.confirm
       ? await DialogV2.confirm({
-        window: { title },
+        window: { title, modal: true },
         content,
         yes: { label: "Discard Rest Changes", icon: "fa-solid fa-rotate-left" },
         no: { label: "Keep Changes", icon: "fa-solid fa-xmark" }
@@ -534,7 +534,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     const title = "Discard Pending Character Keeper Changes";
     const content = `<p>The native ${this.restLabel} has already completed.</p><p>Discard the pending Character Keeper choices and close this session? The completed rest and its native recovery will remain in place.</p>`;
     const confirmed = DialogV2?.confirm
-      ? await DialogV2.confirm({ window: { title }, content, yes: { label: "Discard Pending Changes" }, no: { label: "Keep Session" } })
+      ? await DialogV2.confirm({ window: { title, modal: true }, content, yes: { label: "Discard Pending Changes" }, no: { label: "Keep Session" } })
       : await Dialog.confirm({ title, content, yes: () => true, no: () => false, defaultYes: false });
     if (!confirmed) return;
     this.#setBusy(true, "Recovering Character Keeper session…");
@@ -830,9 +830,10 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     const DialogV2 = foundry.applications.api.DialogV2;
     if (DialogV2?.confirm) {
       return DialogV2.confirm({
-        window: { title: "Confirm Scribing Attempt" },
+        classes: ["character-builder", "cb-protected-transaction-dialog", "cb-scribe-transaction-dialog"],
+        window: { title: "Confirm Scribing Attempt", modal: true },
         content,
-        yes: { label: `Confirm Scribing — ${cost}`, icon: "fa-solid fa-book" },
+        yes: { label: `Confirm Scribing\n${cost}`, icon: "fa-solid fa-book" },
         no: { label: "Cancel", icon: "fa-solid fa-xmark" }
       });
     }

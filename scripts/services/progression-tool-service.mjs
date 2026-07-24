@@ -42,8 +42,9 @@ export class ProgressionToolService {
 
   static async grantEpicBoons(actors) {
     this.#assertGM();
-    if (!LevelUpService.settings().enableGrantEpicBoons) {
-      throw new Error("Grant Epic Boons is disabled in Character Builder settings.");
+    const settings = LevelUpService.settings();
+    if (!settings.enableEpicBoons || !settings.enableGrantEpicBoons) {
+      throw new Error("Grant Epic Boons requires both Enable Epic Boons and Enable Grant Epic Boons in Character Builder settings.");
     }
     const unique = this.#uniqueActors(actors);
     if (!unique.length) throw new Error("Select at least one character.");

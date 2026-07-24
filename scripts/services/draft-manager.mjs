@@ -24,6 +24,11 @@ export class DraftManager {
         characterName: actor.name,
         abilityMethod: "pointBuy",
         baseAbilities: { str: 8, dex: 8, con: 8, int: 8, wis: 8, cha: 8 },
+        abilityMethodValues: {
+          pointBuy: { str: 8, dex: 8, con: 8, int: 8, wis: 8, cha: 8 },
+          manual: { str: 8, dex: 8, con: 8, int: 8, wis: 8, cha: 8 }
+        },
+        abilitySlotAssignments: {},
         selectedBackgroundUuid: null,
         backgroundAbilityAssignments: {},
         abilityBackgroundFingerprint: null,

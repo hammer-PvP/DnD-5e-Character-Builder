@@ -2,6 +2,7 @@ import { MODULE_ID, SOURCE_DEFINITIONS } from "../constants.mjs";
 import { LevelUpDraftManager } from "./level-up-draft-manager.mjs";
 import { SourceRegistry } from "./source-registry.mjs";
 import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.mjs";
+import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
 
 const LAND_SPELLS = Object.freeze({
   arid: {
@@ -219,8 +220,8 @@ export class LevelUpFeatureService {
           selected: saved.spells?.["primal-order-magician"] ?? [],
           featureItemId: magician.id,
           category: "primal-order-magician",
-          prepared: 1,
-          alwaysPrepared: false,
+          prepared: SpellPreparationPolicyService.ALWAYS_PREPARED,
+          alwaysPrepared: true,
           sourceItem: "class:druid",
           repair: magicianNeedsCantrip && oldClassLevel >= 1
         }, registry));
@@ -770,7 +771,12 @@ export class LevelUpFeatureService {
       data.system ??= {};
       data.system.ability = this.#spellAbility(cls.system?.identifier, section);
       data.system.method = cls.system?.identifier === "warlock" ? "pact" : "spell";
-      data.system.prepared = section.alwaysPrepared ? 2 : Number(section.prepared ?? 1);
+      SpellPreparationPolicyService.applyToData(data, {
+        alwaysPrepared: section.alwaysPrepared,
+        explicitPrepared: section.prepared,
+        category: section.category,
+        accessModel: section.accessModel ?? ""
+      });
       data.system.sourceItem = section.sourceItem ?? `class:${cls.system?.identifier}`;
       data.flags ??= {};
       data.flags.dnd5e ??= {};

@@ -23,6 +23,9 @@ export class EpicBoonService {
   }
 
   static grantEligibility(actor) {
+    const settings = this.settings();
+    if (!settings.enableEpicBoons) return { eligible: false, reason: "Epic Boons are disabled in Character Builder settings." };
+    if (!settings.enableGrantEpicBoons) return { eligible: false, reason: "Grant Epic Boons is disabled in Character Builder settings." };
     if (!actor || actor.type !== "character") return { eligible: false, reason: "Player Character Actors only." };
     if (actor.getFlag(MODULE_ID, "isDraft") || actor.getFlag(MODULE_ID, "isLevelUpDraft")) {
       return { eligible: false, reason: "Draft Actors are not eligible." };
@@ -38,7 +41,10 @@ export class EpicBoonService {
 
   static async grant(actor, metadata = {}) {
     if (!game.user.isGM) throw new Error("Only a GM can grant an Epic Boon.");
-    if (!this.settings().enableGrantEpicBoons) throw new Error("Grant Epic Boons is disabled in Character Builder settings.");
+    const settings = this.settings();
+    if (!settings.enableEpicBoons || !settings.enableGrantEpicBoons) {
+      throw new Error("Grant Epic Boons requires both Enable Epic Boons and Enable Grant Epic Boons in Character Builder settings.");
+    }
     const eligibility = this.grantEligibility(actor);
     if (!eligibility.eligible) throw new Error(eligibility.reason);
 
@@ -65,6 +71,7 @@ export class EpicBoonService {
   }
 
   static async claim(actor) {
+    if (!this.settings().enableEpicBoons) throw new Error("Epic Boons are disabled by the Game Master.");
     if (!actor || actor.type !== "character") throw new Error("Epic Boons can be claimed only by Player Character Actors.");
     if (!actor.isOwner) throw new Error("You do not own this Actor.");
     const pending = this.pending(actor);
@@ -169,6 +176,7 @@ export class EpicBoonService {
   }
 
   static async #invalidSelectionReason(candidate, actor, sourceUuid) {
+    if (!this.settings().enableEpicBoons) return "Epic Boons are disabled by the Game Master.";
     if (!NativeFeatChoiceGuard.isEpicBoon(candidate)) {
       return "The selected document is not an Epic Boon.";
     }

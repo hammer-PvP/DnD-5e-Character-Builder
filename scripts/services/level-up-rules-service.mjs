@@ -10,6 +10,7 @@ import { PactOfTheTomeService } from "./pact-of-the-tome-service.mjs";
 import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
 import { MetamagicService } from "./metamagic-service.mjs";
 import { WarlockProjectedCantripService } from "./warlock-projected-cantrip-service.mjs";
+import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
 
 export class LevelUpRulesService {
   static async buildContext(sourceActor, draft, registry) {
@@ -63,7 +64,7 @@ export class LevelUpRulesService {
       ...row,
       badges: AdvancementChoiceAnnotationService.getBadges(draft.items.get(row.itemId))
     }));
-    const automaticAdvancementSummaries = this.#automaticAdvancementSummaries(draft, cls, newClassLevel);
+    const automaticAdvancementSummaries = this.#automaticAdvancementSummaries(draft, cls, newClassLevel, state);
     const selectedCantripSet = new Set(stateChoices.cantrips ?? []);
     const selectedSpellSet = new Set(stateChoices.spells ?? []);
     const selectedSavantSet = new Set(stateChoices.savantSpells ?? []);
@@ -422,7 +423,7 @@ export class LevelUpRulesService {
       accessModel: context.subclassCaster.identifier
     } : {};
     for (const identifier of selectedCantrips) entries.push({
-      option: selectedByIdentifier.get(identifier), category: context.subclassCaster?.identifier ?? "cantrip", prepared: 1,
+      option: selectedByIdentifier.get(identifier), category: context.subclassCaster?.identifier ?? "cantrip", prepared: SpellPreparationPolicyService.ALWAYS_PREPARED,
       ...spellAccess
     });
     for (const identifier of selectedSpells) {
@@ -455,7 +456,7 @@ export class LevelUpRulesService {
     if (addCantripIdentifier) entries.push({
       option: selectedByIdentifier.get(addCantripIdentifier),
       category: context.subclassCaster?.identifier ?? "cantrip-replacement",
-      prepared: 1,
+      prepared: SpellPreparationPolicyService.ALWAYS_PREPARED,
       ...spellAccess
     });
 
@@ -1278,52 +1279,106 @@ export class LevelUpRulesService {
       }));
   }
 
-  static #automaticAdvancementSummaries(draft, cls, targetClassLevel) {
-    const summaries = [];
+  static #automaticAdvancementSummaries(draft, cls, targetClassLevel, state = {}) {
+    const summaries = new Map();
     const classIdentifier = cls.system?.identifier;
+    const multiclass = Boolean(state?.multiclass);
     for (const owner of draft.items) {
-      if (!['class', 'subclass'].includes(owner.type)) continue;
-      if (owner.type === 'class' && owner.id !== cls.id) continue;
-      if (owner.type === 'subclass') {
+      if (!["class", "subclass"].includes(owner.type)) continue;
+      if (owner.type === "class" && owner.id !== cls.id) continue;
+      if (owner.type === "subclass") {
         const parent = owner.system?.classIdentifier ?? owner.system?.class?.identifier ?? owner.system?.class;
         if (parent && parent !== classIdentifier) continue;
       }
       const advancements = owner.toObject().system?.advancement ?? {};
       for (const advancement of Object.values(advancements)) {
         if (Number(advancement?.level ?? 0) !== Number(targetClassLevel)) continue;
-        const type = String(advancement?.type ?? '');
-        if (type === 'ScaleValue') {
+        const restriction = String(advancement?.classRestriction ?? "").trim().toLowerCase();
+        if (multiclass && restriction === "primary") continue;
+        if (!multiclass && restriction === "secondary") continue;
+
+        const type = String(advancement?.type ?? "");
+        if (type === "ScaleValue") {
           const rows = Object.entries(advancement.configuration?.scale ?? {})
             .map(([minimum, row]) => [Number(minimum), row?.value])
             .filter(([minimum]) => minimum <= Number(targetClassLevel))
             .sort((a, b) => a[0] - b[0]);
           const value = rows.at(-1)?.[1];
-          summaries.push({
+          const title = advancement.title || advancement.configuration?.identifier || "Scale Increase";
+          const key = `${owner.id}:scale:${title}`;
+          summaries.set(key, {
             ownerName: owner.name,
             ownerUuid: owner.uuid,
-            title: advancement.title || advancement.configuration?.identifier || 'Scale Increase',
-            type: 'Scale Value',
-            detail: value == null ? 'Updated by the native D&D5e Advancement.' : `New value: ${value}`,
-            icon: 'fa-solid fa-arrow-trend-up'
+            title,
+            type: "Applied automatically",
+            detail: value == null ? "Updated by the native D&D5e Advancement." : `New value: ${value}`,
+            icon: "fa-solid fa-arrow-trend-up"
           });
           continue;
         }
-        if (type === 'Trait') {
-          const choices = advancement.configuration?.choices ?? [];
-          const grants = advancement.configuration?.grants ?? [];
-          if (choices.length || !grants.length) continue;
-          summaries.push({
-            ownerName: owner.name,
-            ownerUuid: owner.uuid,
-            title: advancement.title || 'Proficiency or Trait Grant',
-            type: 'Trait Grant',
-            detail: grants.map(grant => this.#humanize(String(grant).split(':').at(-1))).join(', '),
-            icon: 'fa-solid fa-list-check'
-          });
-        }
+        if (type !== "Trait") continue;
+        const choices = advancement.configuration?.choices ?? [];
+        const configuredGrants = advancement.configuration?.grants ?? [];
+        const applied = Array.isArray(advancement.value?.chosen) && advancement.value.chosen.length
+          ? advancement.value.chosen
+          : configuredGrants;
+        if (choices.length || !applied.length) continue;
+
+        const title = this.#traitGrantTitle(advancement.title || "Proficiency or Trait Grant");
+        const key = `${owner.id}:trait:${title}`;
+        const existing = summaries.get(key) ?? {
+          ownerName: owner.name,
+          ownerUuid: owner.uuid,
+          title,
+          type: "Applied automatically",
+          values: [],
+          icon: "fa-solid fa-list-check"
+        };
+        existing.values = [...new Set([
+          ...(existing.values ?? []),
+          ...applied.map(value => this.#traitGrantLabel(value)).filter(Boolean)
+        ])];
+        existing.detail = existing.values.join(", ");
+        summaries.set(key, existing);
       }
     }
-    return summaries;
+    return [...summaries.values()].map(({ values, ...summary }) => summary);
+  }
+
+  static #traitGrantTitle(title) {
+    const normalized = String(title ?? "").trim().toLowerCase();
+    if (normalized.includes("saving throw")) return "Saving Throw Proficiencies";
+    if (normalized.includes("mastery")) return "Weapon Mastery";
+    if (normalized.includes("weapon")) return "Weapon Proficiencies";
+    if (normalized.includes("armor")) return "Armor Training";
+    return title || "Proficiency or Trait Grant";
+  }
+
+  static #traitGrantLabel(rawValue) {
+    const value = String(rawValue ?? "").trim().toLowerCase();
+    const labels = {
+      "saves:str": "Strength",
+      "saves:dex": "Dexterity",
+      "saves:con": "Constitution",
+      "saves:int": "Intelligence",
+      "saves:wis": "Wisdom",
+      "saves:cha": "Charisma",
+      "weapon:sim": "Simple Weapons",
+      "weapon:mar": "Martial Weapons",
+      "armor:lgt": "Light Armor",
+      "armor:light": "Light Armor",
+      "armor:med": "Medium Armor",
+      "armor:medium": "Medium Armor",
+      "armor:hvy": "Heavy Armor",
+      "armor:heavy": "Heavy Armor",
+      "armor:shl": "Shields",
+      "armor:shield": "Shields"
+    };
+    if (labels[value]) return labels[value];
+    const parts = value.split(":");
+    const leaf = parts.at(-1) ?? value;
+    const ability = { str: "Strength", dex: "Dexterity", con: "Constitution", int: "Intelligence", wis: "Wisdom", cha: "Charisma" }[leaf];
+    return ability ?? this.#humanize(leaf);
   }
 
   static #duplicateCount(values) {
@@ -1447,7 +1502,11 @@ export class LevelUpRulesService {
       data.system ??= {};
       data.system.ability = entry.ability ?? cls.system?.spellcasting?.ability ?? data.system.ability ?? "";
       data.system.method = cls.system?.spellcasting?.progression === "pact" ? "pact" : "spell";
-      data.system.prepared = entry.prepared;
+      SpellPreparationPolicyService.applyToData(data, {
+        explicitPrepared: entry.prepared,
+        category: entry.category,
+        accessModel: entry.accessModel
+      });
       data.system.sourceItem = entry.sourceItem ?? `class:${cls.system?.identifier}`;
       data.flags ??= {};
       data.flags.dnd5e ??= {};

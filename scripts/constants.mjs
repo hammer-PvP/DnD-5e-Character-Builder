@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.7g";
-export const MODULE_BUILD = "community-beta-097f-rest-reset-correction";
+export const MODULE_VERSION = "0.9.8";
+export const MODULE_BUILD = "community-beta-098-general-revision";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -40,6 +40,7 @@ export const ABILITIES = [
 ];
 
 export const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8];
+export const CUSTOM_ARRAY_SLOT_COUNT = 6;
 export const POINT_BUY_BUDGET = 27;
 export const POINT_BUY_COSTS = { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 };
 
@@ -104,13 +105,23 @@ export function defaultSettings() {
     abilityMethods: {
       pointBuy: true,
       standardArray: true,
+      customArray: false,
       roll: true,
       manual: false
     },
+    customArray: [15, 14, 13, 12, 10, 8],
+    rollAbilityScores: {
+      mode: "limited",
+      limit: 2
+    },
+    // Legacy mirror retained so worlds upgrading from older settings remain readable.
     rollSets: 2,
     levelUpMode: "milestone",
     allowMulticlassing: true,
     enforceMulticlassRequirements: true,
+    enableFeats: true,
+    enableAbilityScoreImprovement: true,
+    enableEpicBoons: true,
     enableGrantEpicBoons: false,
     allowSpellScrollScribing: true,
     chargeWizardScribingCosts: true,

@@ -1,6 +1,7 @@
 import { MODULE_ID, SPELL_ACCESS_MODELS } from "../constants.mjs";
 import { DraftManager } from "./draft-manager.mjs";
 import { PactOfTheTomeService } from "./pact-of-the-tome-service.mjs";
+import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
 
 /**
  * Populates native Spell Items during creation. Preparation, slots, casting,
@@ -146,12 +147,12 @@ export class SpellAccessService {
     const documents = [];
     for (const selected of selectedCantrips) documents.push({
       option: validCantrips.get(selected),
-      prepared: 1,
+      prepared: SpellPreparationPolicyService.ALWAYS_PREPARED,
       category: "cantrip"
     });
     for (const selected of selectedMagicianCantrips) documents.push({
       option: validMagicianCantrips.get(selected),
-      prepared: 1,
+      prepared: SpellPreparationPolicyService.ALWAYS_PREPARED,
       category: "primal-order-magician",
       featureItemId: context.magicianFeatureItemId,
       featureLabel: "Primal Order: Magician"
@@ -176,7 +177,11 @@ export class SpellAccessService {
       data.system ??= {};
       data.system.ability = cls.system.spellcasting?.ability ?? "";
       data.system.method = progression === "pact" ? "pact" : "spell";
-      data.system.prepared = entry.prepared;
+      SpellPreparationPolicyService.applyToData(data, {
+        explicitPrepared: entry.prepared,
+        category: entry.category,
+        accessModel: model
+      });
       data.system.sourceItem = `class:${identifier}`;
       data.flags ??= {};
       data.flags.dnd5e ??= {};
@@ -194,7 +199,7 @@ export class SpellAccessService {
         acquiredAtClassLevel: context.classLevel,
         sourceUuid: document.uuid,
         spellLevel: Number(data.system.level ?? 0),
-        alwaysPrepared: false
+        alwaysPrepared: Number(data.system.prepared ?? 0) === SpellPreparationPolicyService.ALWAYS_PREPARED
       } : null;
       data.flags[MODULE_ID] = {
         classSpellAccess: true,

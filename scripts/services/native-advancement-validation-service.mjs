@@ -1,6 +1,7 @@
 import { MODULE_ID } from "../constants.mjs";
 import { ManagedAdvancementRegistry } from "./managed-advancement-registry.mjs";
 import { NativeFeatChoiceGuard } from "./native-feat-choice-guard.mjs";
+import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
 
 /**
  * Error raised when a source-native Advancement completed in a state that the
@@ -40,8 +41,13 @@ export class NativeAdvancementValidationService {
     workflow = "Class Progression",
     validateManagedCounts = workflow !== "Class Progression"
   } = {}) {
+    await SpellPreparationPolicyService.normalizeNewCantrips(draft, {
+      beforeItemIds,
+      updateOptions: { characterBuilderNativeAdvancementValidation: true }
+    });
     const added = draft.items.filter(item => !beforeItemIds.has(item.id));
     this.#validateNonRepeatableDuplicates(draft, added, workflow);
+    this.#validateProgressionChoicePolicy(draft, added, state, workflow);
     this.#validateEpicBoonEligibility(draft, added, state, workflow);
     this.#validateExplicitRequirements(draft, added, state, workflow);
     await this.#validateNativePrerequisites(draft, added, state, workflow);
@@ -83,6 +89,93 @@ export class NativeAdvancementValidationService {
         }
       );
     }
+  }
+
+  static #validateProgressionChoicePolicy(draft, added, state, workflow) {
+    const settings = NativeFeatChoiceGuard.settings();
+    if (settings.enableFeats && settings.enableAbilityScoreImprovement && settings.enableEpicBoons) return;
+
+    const classIdentifier = String(state?.selectedClassIdentifier ?? "");
+    const targetClassLevel = Number(state?.targetClassLevel ?? 0);
+    if (!classIdentifier || !targetClassLevel) return;
+
+    const addedById = new Map(added.map(item => [item.id, item]));
+    for (const owner of draft.items) {
+      if (!["class", "subclass"].includes(owner.type)) continue;
+      if (owner.type === "class" && String(owner.system?.identifier ?? "") !== classIdentifier) continue;
+      if (owner.type === "subclass") {
+        const parent = owner.system?.classIdentifier ?? owner.system?.class?.identifier ?? owner.system?.class;
+        if (parent && String(parent) !== classIdentifier) continue;
+      }
+
+      const advancements = owner.toObject().system?.advancement ?? {};
+      for (const [advancementId, advancement] of Object.entries(advancements)) {
+        if (advancement?.type !== "AbilityScoreImprovement") continue;
+        if (Number(advancement.level ?? 0) !== targetClassLevel) continue;
+
+        const choiceType = String(advancement.value?.type ?? "");
+        const title = advancement.title || (targetClassLevel >= 19 ? "Epic Boon" : "Ability Score Improvement");
+        if (choiceType === "asi" && !settings.enableAbilityScoreImprovement) {
+          throw new StructuralLevelUpError(
+            "Ability Score Improvement is disabled by the Game Master.",
+            {
+              title: "Ability Score Improvement Disabled",
+              choiceName: title,
+              reason: settings.enableFeats
+                ? "Choose an eligible Feat from the list instead. Feats that grant an Ability Score increase remain valid. Choice not applied."
+                : "Ability Score Improvement and optional Feats are both disabled. Return to the Advancement screen and continue without selecting an option when the native workflow allows it. Choice not applied.",
+              diagnostic: `[Character Builder Level Up] ${draft.name} selected the generic two-point ASI while it was disabled during ${workflow} (${owner.name}.${advancementId}).`
+            }
+          );
+        }
+
+        if (choiceType !== "feat") continue;
+        const selectedIds = this.#embeddedItemIds(advancement.value?.feat ?? advancement.value?.added ?? {}, draft);
+        const selectedItems = [...selectedIds].map(id => addedById.get(id) ?? draft.items.get(id)).filter(Boolean);
+        for (const feat of selectedItems) {
+          if (feat.type !== "feat" || feat.system?.type?.value !== "feat") continue;
+          const epicBoon = NativeFeatChoiceGuard.isEpicBoon(feat);
+          if (epicBoon && !settings.enableEpicBoons) {
+            throw new StructuralLevelUpError(
+              `${feat.name} cannot be selected.`,
+              {
+                title: "Epic Boons Disabled",
+                choiceName: feat.name,
+                reason: "Epic Boons are disabled by the Game Master. Choose another permitted option. Choice not applied.",
+                diagnostic: `[Character Builder Level Up] ${draft.name} selected Epic Boon ${feat.name} while Epic Boons were disabled during ${workflow}.`
+              }
+            );
+          }
+          if (!epicBoon && !settings.enableFeats) {
+            throw new StructuralLevelUpError(
+              `${feat.name} cannot be selected.`,
+              {
+                title: "Feat Selection Disabled",
+                choiceName: feat.name,
+                reason: settings.enableAbilityScoreImprovement
+                  ? "Optional Feat selection is disabled by the Game Master. Use Ability Score Improvement instead. Feats that grant a +1 Ability Score increase are also disabled. Choice not applied."
+                  : "Optional Feats and Ability Score Improvement are both disabled. Return to the Advancement screen and continue without selecting an option when the native workflow allows it. Choice not applied.",
+                diagnostic: `[Character Builder Level Up] ${draft.name} selected optional Feat ${feat.name} while Feats were disabled during ${workflow}.`
+              }
+            );
+          }
+        }
+      }
+    }
+  }
+
+  static #embeddedItemIds(value, draft) {
+    const ids = new Set();
+    const walk = node => {
+      if (!node || typeof node !== "object") return;
+      if (Array.isArray(node)) return node.forEach(walk);
+      for (const [key, nested] of Object.entries(node)) {
+        if (draft.items.get(key)) ids.add(key);
+        walk(nested);
+      }
+    };
+    walk(value);
+    return ids;
   }
 
   static #validateEpicBoonEligibility(draft, added, state, workflow) {

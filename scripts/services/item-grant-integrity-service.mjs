@@ -1,6 +1,7 @@
 import { MODULE_ID } from "../constants.mjs";
 import { DraftManager } from "./draft-manager.mjs";
 import { LevelUpDraftManager } from "./level-up-draft-manager.mjs";
+import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
 
 /**
  * Shared mandatory ItemGrant integrity audit for both Character Creation and
@@ -97,6 +98,7 @@ export class ItemGrantIntegrityService {
             }
 
             data._id = itemId;
+            this.#normalizeCurrentGrantSpellData(data);
             this.#ensureGrantMetadata(data, {
               owner,
               advancementId,
@@ -160,6 +162,12 @@ export class ItemGrantIntegrityService {
           const rows = keepIds
             .map(id => draft.items.get(id))
             .filter(Boolean);
+          // Normalize only Items produced by the active workflow. Existing
+          // source-Actor Items are intentionally left untouched so this audit
+          // never becomes a migration or a homebrew repair pass.
+          const currentFlowRows = rows.filter(item => !sourceItemIds.has(item.id));
+          for (const item of currentFlowRows) await this.#normalizeCurrentGrantSpellItem(item);
+
           const newlyUnlocked = context === "creation"
             || advancementLevel === Number(resolvedState.targetClassLevel)
             || rows.some(item => !sourceItemIds.has(item.id));
@@ -426,6 +434,32 @@ export class ItemGrantIntegrityService {
     return data;
   }
 
+
+  static #normalizeCurrentGrantSpellData(data) {
+    if (data?.type !== "spell") return false;
+    if (Number(foundry.utils.getProperty(data, "system.level") ?? -1) !== 0) return false;
+    if (Number(foundry.utils.getProperty(data, "system.prepared") ?? -1)
+      === SpellPreparationPolicyService.ALWAYS_PREPARED) return false;
+    foundry.utils.setProperty(
+      data,
+      "system.prepared",
+      SpellPreparationPolicyService.ALWAYS_PREPARED
+    );
+    return true;
+  }
+
+  static async #normalizeCurrentGrantSpellItem(item) {
+    if (item?.type !== "spell" || Number(item.system?.level ?? -1) !== 0) return false;
+    if (Number(item.system?.prepared ?? -1) === SpellPreparationPolicyService.ALWAYS_PREPARED) return false;
+    await item.update({
+      "system.prepared": SpellPreparationPolicyService.ALWAYS_PREPARED
+    }, {
+      characterBuilderItemGrantIntegrity: true,
+      characterBuilderSpellPreparationPolicy: true
+    });
+    return true;
+  }
+
   static #ensureGrantMetadata(data, {
     owner, advancementId, advancementLevel, configuredUuid, resolvedUuid,
     occurrence, transactionId, recoveredFromNativeClone
@@ -458,7 +492,14 @@ export class ItemGrantIntegrityService {
     if (selectedAbility) foundry.utils.setProperty(itemData, "system.ability", selectedAbility);
     if (spell.method) {
       foundry.utils.setProperty(itemData, "system.method", spell.method);
-      foundry.utils.setProperty(itemData, "system.prepared", Number(spell.prepared ?? 0));
+      foundry.utils.setProperty(itemData, "system.prepared", SpellPreparationPolicyService.resolve({
+        level: foundry.utils.getProperty(itemData, "system.level"),
+        explicitPrepared: spell.prepared,
+        alwaysPrepared: Number(spell.prepared ?? 0) === SpellPreparationPolicyService.ALWAYS_PREPARED,
+        category: "native-item-grant"
+      }));
+    } else if (Number(foundry.utils.getProperty(itemData, "system.level")) === 0) {
+      foundry.utils.setProperty(itemData, "system.prepared", SpellPreparationPolicyService.ALWAYS_PREPARED);
     }
     if (owner.system?.identifier) {
       foundry.utils.setProperty(itemData, "system.sourceItem", `${owner.type}:${owner.system.identifier}`);

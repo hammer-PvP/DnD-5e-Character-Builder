@@ -240,7 +240,7 @@ async function confirmAction({ title, content, yes }) {
   const DialogV2 = foundry.applications.api.DialogV2;
   if (DialogV2?.confirm) {
     return DialogV2.confirm({
-      window: { title },
+      window: { title, modal: true },
       content,
       yes: { label: yes, icon: "fa-solid fa-check" },
       no: { label: "Cancel", icon: "fa-solid fa-xmark" }
@@ -407,8 +407,9 @@ function injectLevelUpButton(actor, root) {
   container.querySelector(".cb-start-sheet-button")?.remove();
   container.classList.remove("cb-start-slot-active");
 
+  const settings = LevelUpService.settings();
   const eligibility = LevelUpService.eligibility(actor);
-  const pendingEpicBoon = Boolean(EpicBoonService.pending(actor)?.available);
+  const pendingEpicBoon = Boolean(settings.enableEpicBoons && EpicBoonService.pending(actor)?.available);
   let button = container.querySelector(".cb-level-up-sheet-button");
   if (!button) {
     button = document.createElement("button");
@@ -591,7 +592,7 @@ function isCreationEligible(actor) {
 
 function openForActor(actor) {
   if (isCreationEligible(actor)) return openBuilder(actor);
-  if (EpicBoonService.pending(actor)?.available) return openEpicBoon(actor);
+  if (LevelUpService.settings().enableEpicBoons && EpicBoonService.pending(actor)?.available) return openEpicBoon(actor);
   const eligibility = LevelUpService.eligibility(actor);
   if (eligibility.ready) return openLevelUp(actor);
   return ui.notifications.warn(eligibility.reason || "Character Builder is not currently available for this Actor.");
@@ -606,6 +607,9 @@ function openBuilder(actor) {
 }
 
 async function openEpicBoon(actor) {
+  if (!LevelUpService.settings().enableEpicBoons) {
+    return ui.notifications.warn("Epic Boons are disabled by the Game Master.");
+  }
   if (!EpicBoonService.pending(actor)?.available) {
     return ui.notifications.warn("This Actor has no pending Epic Boon.");
   }
@@ -646,7 +650,7 @@ async function promptCreationMode(actor) {
 
   const DialogV2 = foundry.applications.api.DialogV2;
   const result = await DialogV2.wait({
-    window: { title: "Create Player Character" },
+    window: { title: "Create Player Character", modal: true },
     content,
     buttons: [
       { action: "builder", label: "Use Character Builder", icon: "fa-solid fa-arrow-up-right-dots" },

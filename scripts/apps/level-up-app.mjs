@@ -1249,7 +1249,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const DialogV2 = foundry.applications.api.DialogV2;
     if (DialogV2?.confirm) {
       return DialogV2.confirm({
-        window: { title },
+        window: { title, modal: true },
         content,
         yes: { label: yes, icon: "fa-solid fa-check" },
         no: { label: "Cancel", icon: "fa-solid fa-xmark" }

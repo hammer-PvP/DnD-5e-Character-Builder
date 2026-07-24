@@ -279,12 +279,12 @@
         </header>
         <div class="cb-automatic-grant-grid">
           {{#each rules.automaticAdvancementSummaries}}
-          <article class="cb-automatic-grant-card">
+          <article class="cb-automatic-grant-card cb-automatic-advancement-card">
             <i class="{{icon}}" aria-hidden="true"></i>
             <button type="button" class="cb-automatic-grant-preview" data-action="open-document" data-uuid="{{ownerUuid}}" aria-label="Open {{ownerName}} details">
               <span>
                 <strong>{{title}}</strong>
-                <small>{{ownerName}} · {{type}}</small>
+                <small>{{type}} · Granted by {{ownerName}}</small>
               </span>
               <i class="fa-solid fa-arrow-up-right-from-square"></i>
             </button>

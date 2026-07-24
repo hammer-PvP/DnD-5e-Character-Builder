@@ -2,6 +2,7 @@ import { CURRENCY_CP, MODULE_ID } from "../constants.mjs";
 import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.mjs";
 import { PactOfTheTomeService } from "./pact-of-the-tome-service.mjs";
 import { RuntimeBadgeReconciliationService } from "./runtime-badge-reconciliation-service.mjs";
+import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
 
 const LAND_LABELS = Object.freeze({ arid: "Arid", polar: "Polar", temperate: "Temperate", tropical: "Tropical" });
 const LAND_RESISTANCES = Object.freeze({ arid: "fire", polar: "cold", temperate: "lightning", tropical: "poison" });
@@ -984,7 +985,12 @@ export class RuntimeFeatureService {
     if (actor.items.some(item => item.type === "spell" && item.id !== oldSpell.id && item.system?.identifier === source.system?.identifier)) throw new Error("This Actor already knows that cantrip.");
     const cls = this.#class(actor, "wizard");
     const data = source.toObject(); delete data._id;
-    data.system ??= {}; data.system.ability = "int"; data.system.method = "spell"; data.system.prepared = 1; data.system.sourceItem = "class:wizard";
+    data.system ??= {}; data.system.ability = "int"; data.system.method = "spell";
+    SpellPreparationPolicyService.applyToData(data, {
+      category: "cantrip-replacement",
+      accessModel: "spellbook"
+    });
+    data.system.sourceItem = "class:wizard";
     data.flags ??= {}; data.flags.dnd5e ??= {}; data.flags.dnd5e.sourceId = source.uuid;
     data.flags[MODULE_ID] = {
       ...(data.flags[MODULE_ID] ?? {}), classSpellAccess: true, classIdentifier: "wizard", classItemId: cls?.id ?? null,

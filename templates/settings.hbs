@@ -38,17 +38,39 @@
         <div class="cb-settings-inline-options">
           <label><input type="checkbox" name="pointBuy" {{checked settings.abilityMethods.pointBuy}}> Point Buy</label>
           <label><input type="checkbox" name="standardArray" {{checked settings.abilityMethods.standardArray}}> Standard Array</label>
+          <label><input type="checkbox" name="customArray" {{checked settings.abilityMethods.customArray}}> Custom Array</label>
           <label><input type="checkbox" name="roll" {{checked settings.abilityMethods.roll}}> Roll</label>
           <label><input type="checkbox" name="manual" {{checked settings.abilityMethods.manual}}> Manual Entry</label>
         </div>
 
-        <div class="form-group cb-settings-form-group">
-          <label>Complete Roll Sets Allowed</label>
-          <select name="rollSets">
-            <option value="1" {{#if (eq settings.rollSets 1)}}selected{{/if}}>1 — No Reroll</option>
-            <option value="2" {{#if (eq settings.rollSets 2)}}selected{{/if}}>2 — One Reroll</option>
-            <option value="unlimited" {{#if (eq settings.rollSets 0)}}selected{{/if}}>Unlimited</option>
-          </select>
+        <div class="cb-settings-subsection">
+          <h3>Custom Array</h3>
+          <p class="hint">Configure six independent slots. Each slot can be assigned to any Ability Score once, even when two slots contain the same value.</p>
+          <div class="cb-custom-array-grid">
+            {{#each settings.customArray}}
+            <label>
+              <span>#{{add @index 1}}</span>
+              <input type="number" name="customArray.{{@index}}" value="{{this}}" min="1" max="20" step="1">
+            </label>
+            {{/each}}
+          </div>
+        </div>
+
+        <div class="cb-settings-subsection">
+          <h3>Roll Ability Scores</h3>
+          <div class="form-group cb-settings-form-group">
+            <label>Roll Mode</label>
+            <select name="rollMode">
+              <option value="single" {{#if (eq settings.rollAbilityScores.mode "single")}}selected{{/if}}>Single Roll</option>
+              <option value="limited" {{#if (eq settings.rollAbilityScores.mode "limited")}}selected{{/if}}>Limited Rolls</option>
+              <option value="unlimited" {{#if (eq settings.rollAbilityScores.mode "unlimited")}}selected{{/if}}>Unlimited Rolls</option>
+            </select>
+            <p class="hint">Limited Rolls counts every complete set, including the first.</p>
+          </div>
+          <label class="cb-roll-limit-setting">
+            <span>Complete Sets Allowed</span>
+            <input type="number" name="rollLimit" value="{{settings.rollAbilityScores.limit}}" min="1" step="1">
+          </label>
         </div>
       </fieldset>
 
@@ -79,10 +101,25 @@
           <label><input type="checkbox" name="enforceMulticlassRequirements" {{checked settings.enforceMulticlassRequirements}}> Enforce Multiclass Requirements</label>
           <p class="hint">Apply official prerequisites. Disabling this option does not enable Multiclass by itself.</p>
         </div>
-        <div class="cb-settings-toggle">
-          <label><input type="checkbox" name="enableGrantEpicBoons" {{checked settings.enableGrantEpicBoons}}> Enable Grant Epic Boons</label>
-          <p class="hint">Allow the GM to grant pending Epic Boon choices to eligible level 20 Player Characters.</p>
+        <div class="cb-settings-policy-grid">
+          <div class="cb-settings-toggle">
+            <label><input type="checkbox" name="enableFeats" {{checked settings.enableFeats}}> Enable Feats</label>
+            <p class="hint">Allow optional Feat choices, including Feats that grant a +1 Ability Score increase. Mandatory source grants remain unchanged.</p>
+          </div>
+          <div class="cb-settings-toggle">
+            <label><input type="checkbox" name="enableAbilityScoreImprovement" {{checked settings.enableAbilityScoreImprovement}}> Enable Ability Score Improvement</label>
+            <p class="hint">Allow the generic two-point Ability Score Improvement choice. Feat-granted +1 increases are controlled by Enable Feats.</p>
+          </div>
+          <div class="cb-settings-toggle">
+            <label><input type="checkbox" name="enableEpicBoons" {{checked settings.enableEpicBoons}}> Enable Epic Boons</label>
+            <p class="hint">Allow optional Epic Boon choices. Existing Epic Boons are never removed.</p>
+          </div>
+          <div class="cb-settings-toggle">
+            <label><input type="checkbox" name="enableGrantEpicBoons" {{checked settings.enableGrantEpicBoons}}> Enable Grant Epic Boons</label>
+            <p class="hint">Allow the GM to grant pending Epic Boon choices to eligible level 20 Player Characters. Requires Enable Epic Boons.</p>
+          </div>
         </div>
+        <p class="hint">Native D&amp;D5e choice lists remain untouched. Character Builder validates the returned choice before it is applied.</p>
       </fieldset>
 
       <fieldset>

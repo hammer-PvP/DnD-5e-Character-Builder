@@ -4211,3 +4211,146 @@
   color: #81d99a !important;
 }
 
+
+/* 0.9.8 — General revision: compact visual repairs and new GM settings. */
+
+/* Center the single custom check glyph inside every square selection control. */
+.character-builder .window-content .cb-primary-toggle input,
+.character-builder .window-content .cb-spell-toggle input,
+.character-builder .window-content .cb-choice-toggle input,
+.character-builder .window-content .cb-keeper-select-zone input {
+  position: relative !important;
+  display: block !important;
+}
+.character-builder .window-content .cb-primary-toggle input::before,
+.character-builder .window-content .cb-spell-toggle input::before,
+.character-builder .window-content .cb-choice-toggle input::before,
+.character-builder .window-content .cb-keeper-select-zone input::before {
+  position: absolute !important;
+  inset: 0 !important;
+  display: grid !important;
+  place-items: center !important;
+  width: 100% !important;
+  height: 100% !important;
+  padding: 0 !important;
+  line-height: 1 !important;
+  text-align: center !important;
+  transform: translateY(-.5px) scale(0) !important;
+  transform-origin: center !important;
+}
+.character-builder .window-content .cb-primary-toggle input:checked::before,
+.character-builder .window-content .cb-spell-toggle input:checked::before,
+.character-builder .window-content .cb-choice-toggle input:checked::before,
+.character-builder .window-content .cb-keeper-select-zone input:checked::before {
+  transform: translateY(-.5px) scale(1) !important;
+}
+
+/* Preserve the gold identity while keeping both action lines legible. */
+.character-builder .cb-primary-confirm strong,
+.character-builder .cb-primary-confirm small,
+.character-builder .gold-button {
+  text-shadow: 0 1px 2px rgba(0,0,0,.92), 0 0 1px rgba(0,0,0,.8);
+}
+.character-builder .cb-primary-confirm small { opacity: .9; }
+
+/* The fixed Level Up banner and the first sticky choice header meet with no exposed strip. */
+.character-builder .cb-level-up-choices-scroll {
+  padding-top: 14px;
+  background: #111113;
+}
+.character-builder .cb-level-up-choices-scroll > .cb-choice-section > .cb-choice-section-header {
+  top: -1px;
+  box-shadow: 0 -16px 0 rgba(23,23,26,.98), 0 5px 10px rgba(0,0,0,.2);
+}
+
+/* Automatic native grants show complete category names and full values. */
+.character-builder .cb-automatic-advancement-card {
+  align-items: start;
+  min-width: 0;
+}
+.character-builder .cb-automatic-advancement-card .cb-automatic-grant-preview {
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 0;
+  align-items: start;
+}
+.character-builder .cb-automatic-advancement-card .cb-automatic-grant-preview span,
+.character-builder .cb-automatic-advancement-card .cb-automatic-grant-preview strong,
+.character-builder .cb-automatic-advancement-card .cb-automatic-grant-preview small {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  line-height: 1.25;
+}
+.character-builder .cb-automatic-advancement-card > .hint {
+  grid-column: 2;
+  margin: 0 5px 4px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+/* Ability Score settings added in 0.9.8. */
+.character-builder .cb-settings-subsection {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(209,176,107,.22);
+}
+.character-builder .cb-settings-subsection h3 {
+  margin: 0 0 5px;
+  color: var(--cb-gold);
+  font-size: 15px;
+}
+.character-builder .cb-custom-array-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 9px;
+}
+.character-builder .cb-custom-array-grid label,
+.character-builder .cb-roll-limit-setting {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 7px;
+  align-items: center;
+}
+.character-builder .cb-custom-array-grid input { min-width: 0; width: 100%; }
+.character-builder .cb-roll-limit-setting { margin-top: 8px; }
+.character-builder .cb-settings-policy-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+  margin-top: 12px;
+}
+.character-builder .cb-settings-toggle label.disabled,
+.character-builder .cb-custom-array-grid label.disabled,
+.character-builder .cb-roll-limit-setting.disabled {
+  opacity: .42;
+}
+.character-builder .cb-roll-status {
+  margin: 5px 0 10px;
+  color: var(--cb-gold-bright);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Scribe Spell keeps both its in-window action and its protected final action on two lines. */
+.character-builder .cb-scribe-confirm-copy {
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+.character-builder.cb-scribe-transaction-dialog .form-footer button,
+.character-builder.cb-scribe-transaction-dialog footer button,
+.cb-scribe-transaction-dialog .form-footer button,
+.cb-scribe-transaction-dialog footer button {
+  min-height: 48px;
+  white-space: pre-line;
+  line-height: 1.2;
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .character-builder .cb-custom-array-grid,
+  .character-builder .cb-settings-policy-grid { grid-template-columns: 1fr; }
+}

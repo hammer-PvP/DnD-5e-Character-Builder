@@ -125,6 +125,7 @@
           </button>
         </div>
         <p class="hint">Choose one complete set. Values from different sets cannot be mixed.</p>
+        {{#if rollStatus}}<p class="cb-roll-status">{{rollStatus.text}}</p>{{/if}}
         <div class="cb-roll-sets">
           {{#each rollSets}}
           <button type="button" class="cb-roll-set {{#if selected}}selected{{/if}}"
@@ -162,7 +163,8 @@
               </div>
               {{else if usesSelect}}
               <select name="abilities.{{key}}">
-                {{#each options}}<option value="{{value}}" {{#if selected}}selected{{/if}}>{{value}}</option>{{/each}}
+                <option value="" {{#unless base}}selected{{/unless}}>— Select —</option>
+                {{#each options}}<option value="{{id}}" {{#if selected}}selected{{/if}}>{{value}}</option>{{/each}}
               </select>
               {{else}}
               <input type="number" name="abilities.{{key}}" value="{{base}}" min="1" max="20" step="1">
