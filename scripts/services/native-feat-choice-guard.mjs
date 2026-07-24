@@ -1,155 +1,21 @@
 import { MODULE_ID, defaultSettings } from "../constants.mjs";
 
 /**
- * Minimal guard around the native D&D5e Ability Score Improvement feat choice.
+ * Pure classification helpers for post-Advancement validation.
  *
- * The native Compendium Browser remains completely authoritative. Character
- * Builder passes the original browser options through unchanged and validates
- * only the UUID confirmed by the player before D&D5e applies that feat to the
- * Advancement clone.
- *
- * This service does not filter, rebuild, clone, decorate, hide, or otherwise
- * modify browser entries, indexes, sources, tooltips, or sidebar filters.
+ * This service never opens, wraps, patches, filters, or observes the native
+ * D&D5e Compendium Browser or AdvancementManager. The native workflow runs
+ * untouched; Character Builder uses these helpers only after it has completed
+ * on the temporary Level Up Draft.
  */
 export class NativeFeatChoiceGuard {
-  static #active = null;
-
-  /**
-   * Run a native AdvancementManager while guarding confirmed ASI feat choices.
-   *
-   * @param {object} manager  D&D5e AdvancementManager.
-   * @param {object} options
-   * @param {object} options.state  Character Builder Level Up state.
-   * @param {Function} callback  Function that renders and awaits the manager.
-   * @returns {Promise<*>}
-   */
-  static async run(manager, { state } = {}, callback) {
-    const Browser = globalThis.dnd5e?.applications?.CompendiumBrowser;
-    if (!Browser || typeof Browser.selectOne !== "function") return callback();
-    if (this.#active) return callback();
-
-    const originalSelectOne = Browser.selectOne;
-    const context = {
-      manager,
-      state,
-      projectedCharacterLevel: this.projectedCharacterLevel(manager, state),
-      originalSelectOne
-    };
-
-    this.#active = context;
-    const guardedSelectOne = async function(options = {}, renderOptions = {}) {
-      if (!NativeFeatChoiceGuard.isAbilityScoreFeatBrowser(options)
-        || NativeFeatChoiceGuard.#active !== context) {
-        return originalSelectOne.call(this, options, renderOptions);
-      }
-
-      // The browser receives the exact native options object. Invalid choices
-      // are stopped only after confirmation and are never returned to D&D5e.
-      while (NativeFeatChoiceGuard.#active === context) {
-        const result = await originalSelectOne.call(this, options, renderOptions);
-        if (!result) return null;
-
-        let candidate = null;
-        try {
-          candidate = await fromUuid(result);
-        } catch (error) {
-          console.warn(`${MODULE_ID} | Failed to resolve the confirmed native feat UUID.`, error);
-        }
-
-        const invalid = NativeFeatChoiceGuard.invalidCandidateReason(candidate, {
-          actor: manager.clone,
-          projectedCharacterLevel: context.projectedCharacterLevel
-        });
-        if (!invalid) return result;
-
-        await NativeFeatChoiceGuard.#showInvalidChoice(candidate, invalid);
-      }
-
-      return null;
-    };
-    Browser.selectOne = guardedSelectOne;
-
-    try {
-      return await callback();
-    } finally {
-      if (Browser.selectOne === guardedSelectOne && this.#active === context) {
-        Browser.selectOne = originalSelectOne;
-      }
-      if (this.#active === context) this.#active = null;
-    }
-  }
-
-  /**
-   * Identify the browser invocation used by AbilityScoreImprovementFlow.
-   * ItemChoice feat browsers use CompendiumBrowser.select and remain outside
-   * this guard.
-   */
-  static isAbilityScoreFeatBrowser(options = {}) {
-    const locked = options?.filters?.locked ?? {};
-    return options?.tab === "feats"
-      && locked?.additional?.category?.feat === 1
-      && !locked?.additional?.subtype
-      && (!locked.types || locked.types.has?.("feat"));
-  }
-
-  /**
-   * Validate only the feat confirmed by the player.
-   *
-   * Returns null when valid, otherwise a user-facing reason. No prerequisite
-   * engine is implemented here; all other feat rules remain native to D&D5e.
-   */
-  static invalidCandidateReason(candidate, { actor, projectedCharacterLevel } = {}) {
-    if (!candidate || candidate.type !== "feat" || candidate.system?.type?.value !== "feat") {
-      return "The selected document could not be resolved as a feat from its source compendium.";
-    }
-
-    const settings = this.settings();
-    if (this.isAbilityScoreImprovement(candidate)) {
-      if (!settings.enableAbilityScoreImprovement) {
-        if (!settings.enableFeats) {
-          return "Ability Score Improvement and optional Feats are both disabled by the Game Master. Return to the Advancement screen and continue without selecting an option when the native workflow allows it.";
-        }
-        return "Ability Score Improvement is disabled by the Game Master. Choose an eligible Feat from the list instead. Feats that grant an Ability Score increase remain valid.";
-      }
-      return "Ability Score Improvement cannot be selected here. This screen is only for choosing a Feat. Return to the previous screen and use the Ability Score Improvement option.";
-    }
-
-    const epicBoon = this.isEpicBoon(candidate);
-    if (epicBoon && !settings.enableEpicBoons) {
-      return "Epic Boons are disabled by the Game Master. Choose another permitted option.";
-    }
-    if (!epicBoon && !settings.enableFeats) {
-      if (!settings.enableAbilityScoreImprovement) {
-        return "Optional Feats and Ability Score Improvement are both disabled by the Game Master. Return to the Advancement screen and continue without selecting an option when the native workflow allows it.";
-      }
-      return "Optional Feat selection is disabled by the Game Master. Return to the previous screen and use Ability Score Improvement instead. Feats that grant a +1 Ability Score increase are also disabled.";
-    }
-
-    const level = Number(projectedCharacterLevel ?? actor?.system?.details?.level ?? 0);
-    if (epicBoon && level < 19) {
-      return `Epic Boon feats require character level 19 or higher. The projected character level is ${level}.`;
-    }
-
-    if (!this.isRepeatable(candidate) && this.findOwnedEquivalent(candidate, actor)) {
-      return `${candidate.name} is already owned and cannot be selected more than once.`;
-    }
-
-    return null;
-  }
-
-
   static settings() {
     return foundry.utils.mergeObject(defaultSettings(), game.settings.get(MODULE_ID, "settings") ?? {}, {
       inplace: false
     });
   }
 
-  static projectedCharacterLevel(manager, state) {
-    const stateLevel = Number(state?.targetCharacterLevel ?? 0);
-    if (stateLevel > 0) return stateLevel;
-    return Number(manager?.clone?.system?.details?.level ?? manager?.actor?.system?.details?.level ?? 0);
-  }
-
+  /** The generic native two-point Ability Score Improvement option only. */
   static isAbilityScoreImprovement(item) {
     return item?.type === "feat"
       && item.system?.type?.value === "feat"
@@ -190,35 +56,5 @@ export class NativeFeatChoiceGuard {
     ];
     return candidates.map(value => String(value ?? "").trim())
       .find(value => value.startsWith("Compendium.")) ?? null;
-  }
-
-  static async #showInvalidChoice(candidate, reason) {
-    const name = foundry.utils.escapeHTML(candidate?.name ?? "The selected feat");
-    const safeReason = foundry.utils.escapeHTML(reason);
-    const isAsi = NativeFeatChoiceGuard.isAbilityScoreImprovement(candidate);
-    const settings = NativeFeatChoiceGuard.settings();
-    const title = isAsi && !settings.enableAbilityScoreImprovement
-      ? "Ability Score Improvement Disabled"
-      : NativeFeatChoiceGuard.isEpicBoon(candidate) && !settings.enableEpicBoons
-        ? "Epic Boons Disabled"
-        : !isAsi && !NativeFeatChoiceGuard.isEpicBoon(candidate) && !settings.enableFeats
-          ? "Feat Selection Disabled"
-          : "Invalid Feat Choice";
-    const content = `<div class="cb-structural-error">
-      ${isAsi ? "" : `<p><strong>${name} cannot be selected.</strong></p>`}
-      <p>${safeReason}</p>
-      <p>This choice was not applied. Select a different feat or return to the previous step.</p>
-    </div>`;
-    const DialogV2 = foundry.applications?.api?.DialogV2;
-    if (DialogV2?.wait) {
-      await DialogV2.wait({
-        window: { title, modal: true },
-        content,
-        buttons: [{ action: "choose", label: "Choose Another Feat", icon: "fa-solid fa-rotate-left", default: true }],
-        close: () => "choose"
-      });
-    } else {
-      ui.notifications.warn(`${candidate?.name ?? "The selected feat"}: ${reason}`, { permanent: true });
-    }
   }
 }

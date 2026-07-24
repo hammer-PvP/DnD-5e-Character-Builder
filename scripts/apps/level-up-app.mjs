@@ -1205,13 +1205,15 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const choice = foundry.utils.escapeHTML(error.choiceName ?? "The selected option");
     const reason = foundry.utils.escapeHTML(error.reason ?? error.message ?? "The native Advancement result is inconsistent.");
     const returnToChoices = error.returnStep === "choices";
-    const returnLabel = returnToChoices ? "Return to Spells & Features" : "Return to Class Progression";
-    const content = `<div class="cb-structural-error">
-      <p><strong>${choice} cannot be applied safely.</strong></p>
-      <p>${reason}</p>
-      <p>The invalid choice was reverted to the pre-choice Draft snapshot. Return to the appropriate Character Builder step and choose a valid option.</p>
-      <p><strong>Your live character has not been changed.</strong> The selected Class and locked Hit Die result are preserved.</p>
-    </div>`;
+    const returnLabel = error.actionLabel ?? (returnToChoices ? "Return to Spells & Features" : "Return to Class Progression");
+    const content = error.concise
+      ? `<div class="cb-structural-error"><p>${reason}</p></div>`
+      : `<div class="cb-structural-error">
+        <p><strong>${choice} cannot be applied safely.</strong></p>
+        <p>${reason}</p>
+        <p>The invalid choice was reverted to the pre-choice Draft snapshot. Return to the appropriate Character Builder step and choose a valid option.</p>
+        <p><strong>Your live character has not been changed.</strong> The selected Class and locked Hit Die result are preserved.</p>
+      </div>`;
     const DialogV2 = foundry.applications.api.DialogV2;
     if (DialogV2?.wait) {
       await DialogV2.wait({
@@ -1239,9 +1241,11 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       commitReady: false,
       step: returnToChoices ? "choices" : "advancements"
     });
-    ui.notifications.warn(returnToChoices
-      ? "The invalid choice was reverted. Return to Spells & Features and choose again."
-      : "The invalid native choice was reverted. Reopen Class Progression and choose again.", { permanent: true });
+    if (!error.concise) {
+      ui.notifications.warn(returnToChoices
+        ? "The invalid choice was reverted. Return to Spells & Features and choose again."
+        : "The invalid native choice was reverted. Reopen Class Progression and choose again.", { permanent: true });
+    }
     this.render({ force: true });
   }
 

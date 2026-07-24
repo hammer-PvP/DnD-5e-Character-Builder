@@ -4354,3 +4354,43 @@
   .character-builder .cb-custom-array-grid,
   .character-builder .cb-settings-policy-grid { grid-template-columns: 1fr; }
 }
+
+
+/* 0.9.8a — stability corrections without changing the frozen 0.9.8 layout. */
+
+/* Read-only automatic class spells have no selection column. The later
+   canonical selectable-card rule must not reserve its 48px checkbox zone. */
+.character-builder .cb-spell-option.readonly {
+  grid-template-columns: minmax(0, 1fr);
+}
+.character-builder .cb-spell-option.readonly .cb-spell-details {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Change Land keeps the approved two-column layout while making each spell
+   card readable at the available width. */
+.character-builder .cb-keeper-spell-chip-list > button {
+  flex: 1 1 160px;
+  width: auto;
+  max-width: none;
+  min-width: 0;
+  min-height: 42px;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 8px;
+  padding: 4px 8px 4px 4px;
+}
+.character-builder .cb-keeper-spell-chip-list img {
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
+}
+.character-builder .cb-keeper-spell-chip-list strong {
+  font-size: 12px;
+  line-height: 1.2;
+}
+.character-builder .cb-keeper-spell-chip-list small {
+  margin-top: 2px;
+  opacity: .68;
+  line-height: 1.15;
+}

@@ -9,7 +9,7 @@ Character Builder is a guided D&D 2024 character creation, Level Up, Epic Boon, 
 - Foundry VTT 14.364
 - D&D5e 5.3.3
 
-SRD 5.1 Legacy is not officially supported. Character Keeper is treated as stable for its currently implemented Short Rest, Long Rest, and Wizard spellbook-management routines; version 0.9.8 limits Keeper changes to visual or minor cross-cutting corrections.
+SRD 5.1 Legacy is not officially supported. Character Keeper is treated as stable for its currently implemented Short Rest, Long Rest, and Wizard spellbook-management routines; version 0.9.8a limits Keeper changes to visual or minor cross-cutting corrections.
 
 ## Level 1 creation
 
@@ -23,9 +23,18 @@ SRD 5.1 Legacy is not officially supported. Character Keeper is treated as stabl
 - Transactional mundane Starting Equipment Shop with Checkout, exact purchase manifests, containers, quantity support, and GM Bonus Gold.
 - Review and recoverable application to the original Actor.
 
-## Character Builder 0.9.8 — General creation and progression revision
+## Character Builder 0.9.8a — Stability corrections
 
-Version 0.9.8 returns the project to a general Character Builder scope after the Character Keeper runtime set reached its stable review point. It combines the approved visual corrections with Ability Score improvements, current-workflow spell-state consistency, progression-policy controls, clearer multiclass summaries, and protected transaction confirmations. It intentionally performs no migration or automatic repair of Actors created by earlier versions, other applications, manual editing, or homebrew workflows.
+Version 0.9.8a keeps the approved 0.9.8 visual layout frozen and corrects the first issues found during live testing. It intentionally performs no migration or automatic repair of Actors created by earlier versions, other applications, manual editing, or homebrew workflows.
+
+
+### 0.9.8a live-test corrections
+
+- The native D&D5e AdvancementManager and Compendium Browser now run completely untouched. Feat, ASI +2, and Epic Boon policy is validated only after the native workflow finishes on the Level Up Draft and before any live Actor commit.
+- `ASI +2` means only the generic two-point Ability Score Improvement option. Every other feat remains a Feat, including feats that grant +1 to an Ability Score.
+- Invalid policy choices are rolled back to the pre-choice Draft snapshot and receive a concise GM-policy message before the player reopens Class Progression.
+- Read-only `Automatically Added Class Spells` cards retain the approved layout and now display their spell names and source text instead of collapsing to the icon column.
+- Circle of the Land `Change Land` spell cards retain the approved two-column Keeper layout, use larger readable content, and show only `Cantrip` or `Level N` beneath the spell name.
 
 ### Ability Scores
 
@@ -285,7 +294,7 @@ This README is the consolidated project and release document. Static validation 
 
 https://github.com/hammer-PvP/DnD-5e-Character-Builder
 
-## 0.9.8 validation checklist
+## 0.9.8a validation checklist
 
 - With all three progression-policy toggles enabled, Feat, generic ASI, and Epic Boon behavior matches the prior official flow.
 - With `Enable Feats` disabled, optional common Feats and +1 Ability Score Feats are rejected without altering the native browser; mandatory source grants remain intact.

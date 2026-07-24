@@ -15,7 +15,9 @@ export class StructuralLevelUpError extends Error {
     choiceName = null,
     reason = null,
     diagnostic = null,
-    returnStep = "advancements"
+    returnStep = "advancements",
+    concise = false,
+    actionLabel = null
   } = {}) {
     super(message);
     this.name = "StructuralLevelUpError";
@@ -25,6 +27,8 @@ export class StructuralLevelUpError extends Error {
     this.reason = reason;
     this.diagnostic = diagnostic ?? message;
     this.returnStep = returnStep;
+    this.concise = concise;
+    this.actionLabel = actionLabel;
   }
 }
 
@@ -114,17 +118,18 @@ export class NativeAdvancementValidationService {
         if (Number(advancement.level ?? 0) !== targetClassLevel) continue;
 
         const choiceType = String(advancement.value?.type ?? "");
-        const title = advancement.title || (targetClassLevel >= 19 ? "Epic Boon" : "Ability Score Improvement");
         if (choiceType === "asi" && !settings.enableAbilityScoreImprovement) {
           throw new StructuralLevelUpError(
-            "Ability Score Improvement is disabled by the Game Master.",
+            "ASI +2 is not allowed for this advancement.",
             {
-              title: "Ability Score Improvement Disabled",
-              choiceName: title,
+              title: "ASI +2 Not Allowed",
+              choiceName: "ASI +2",
               reason: settings.enableFeats
-                ? "Choose an eligible Feat from the list instead. Feats that grant an Ability Score increase remain valid. Choice not applied."
-                : "Ability Score Improvement and optional Feats are both disabled. Return to the Advancement screen and continue without selecting an option when the native workflow allows it. Choice not applied.",
-              diagnostic: `[Character Builder Level Up] ${draft.name} selected the generic two-point ASI while it was disabled during ${workflow} (${owner.name}.${advancementId}).`
+                ? "The GM does not allow ASI +2 for this advancement. Select a different Feat."
+                : "The GM does not allow ASI +2 or Feats for this advancement. Select another permitted option.",
+              diagnostic: `[Character Builder Level Up] ${draft.name} selected the generic two-point ASI while it was disabled during ${workflow} (${owner.name}.${advancementId}).`,
+              concise: true,
+              actionLabel: settings.enableFeats ? "Select Another Feat" : "Select Another Option"
             }
           );
         }
@@ -139,10 +144,12 @@ export class NativeAdvancementValidationService {
             throw new StructuralLevelUpError(
               `${feat.name} cannot be selected.`,
               {
-                title: "Epic Boons Disabled",
+                title: "Epic Boon Not Allowed",
                 choiceName: feat.name,
-                reason: "Epic Boons are disabled by the Game Master. Choose another permitted option. Choice not applied.",
-                diagnostic: `[Character Builder Level Up] ${draft.name} selected Epic Boon ${feat.name} while Epic Boons were disabled during ${workflow}.`
+                reason: "The GM does not allow Epic Boons for this advancement. Select another permitted option.",
+                diagnostic: `[Character Builder Level Up] ${draft.name} selected Epic Boon ${feat.name} while Epic Boons were disabled during ${workflow}.`,
+                concise: true,
+                actionLabel: "Select Another Option"
               }
             );
           }
@@ -150,12 +157,14 @@ export class NativeAdvancementValidationService {
             throw new StructuralLevelUpError(
               `${feat.name} cannot be selected.`,
               {
-                title: "Feat Selection Disabled",
+                title: "Feat Not Allowed",
                 choiceName: feat.name,
                 reason: settings.enableAbilityScoreImprovement
-                  ? "Optional Feat selection is disabled by the Game Master. Use Ability Score Improvement instead. Feats that grant a +1 Ability Score increase are also disabled. Choice not applied."
-                  : "Optional Feats and Ability Score Improvement are both disabled. Return to the Advancement screen and continue without selecting an option when the native workflow allows it. Choice not applied.",
-                diagnostic: `[Character Builder Level Up] ${draft.name} selected optional Feat ${feat.name} while Feats were disabled during ${workflow}.`
+                  ? "The GM only allows ASI +2 for this advancement. Choose +2 to one Ability Score or +1 to two different Ability Scores."
+                  : "The GM does not allow Feats or ASI +2 for this advancement. Select another permitted option.",
+                diagnostic: `[Character Builder Level Up] ${draft.name} selected Feat ${feat.name} while Feats were disabled during ${workflow}.`,
+                concise: true,
+                actionLabel: settings.enableAbilityScoreImprovement ? "Choose ASI +2" : "Select Another Option"
               }
             );
           }
