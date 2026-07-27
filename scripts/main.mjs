@@ -11,6 +11,7 @@ import { EpicBoonService } from "./services/epic-boon-service.mjs";
 import { ClassProgressionGuard } from "./services/class-progression-guard.mjs";
 import { RestManagementApp } from "./apps/rest-management-app.mjs";
 import { SourceRegistry } from "./services/source-registry.mjs";
+import { SplashTutorialService } from "./services/splash-tutorial-service.mjs";
 
 let scribeIconPromise = null;
 
@@ -38,6 +39,27 @@ Hooks.once("init", async () => {
     default: { entries: [] }
   });
 
+  game.settings.register(MODULE_ID, "tutorialSuppressed", {
+    scope: "client",
+    config: false,
+    type: Boolean,
+    default: false
+  });
+
+  game.settings.register(MODULE_ID, "tutorialForceRevisionSeen", {
+    scope: "client",
+    config: false,
+    type: Number,
+    default: 0
+  });
+
+  game.settings.register(MODULE_ID, "tutorialForceRevision", {
+    scope: "world",
+    config: false,
+    type: Number,
+    default: 0
+  });
+
   const localizedSettingText = (key, fallback) => {
     const localized = game.i18n.localize(key);
     return localized && localized !== key ? localized : fallback;
@@ -52,7 +74,7 @@ Hooks.once("init", async () => {
     ),
     icon: "fa-solid fa-arrow-up-right-dots",
     type: CharacterBuilderSettingsApp,
-    restricted: true
+    restricted: false
   });
 
   game.keybindings.register(MODULE_ID, "openBuilder", {
@@ -79,7 +101,8 @@ Hooks.once("init", async () => {
     claimEpicBoon: actor => EpicBoonService.claim(actor),
     openKeeper: (actor, restType = "long", config = {}) => RestManagementApp.launch(actor, restType, config),
     scribeSpell: actor => RestManagementApp.launchScribe(actor),
-    openTool: () => game.user.isGM ? new CharacterBuilderToolApp().render({ force: true }) : null
+    openTool: () => game.user.isGM ? new CharacterBuilderToolApp().render({ force: true }) : null,
+    openTutorial: () => SplashTutorialService.openNow()
   };
 });
 
@@ -108,6 +131,8 @@ Hooks.once("ready", async () => {
       }
     }
   }
+
+  await SplashTutorialService.initializeForCurrentUser();
 });
 
 Hooks.on("preCreateItem", (item, data, options) =>

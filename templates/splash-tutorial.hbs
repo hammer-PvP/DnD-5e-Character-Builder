@@ -1,0 +1,56 @@
+<section class="cb-splash-tutorial">
+  <header class="cb-splash-header">
+    <div class="cb-splash-brand-icon"><i class="fa-solid fa-arrow-up-right-dots"></i></div>
+    <div>
+      <span class="cb-splash-role">{{roleLabel}}</span>
+      <h1>Character Builder</h1>
+      <p>A quick guide to creating, advancing, and maintaining your character.</p>
+    </div>
+  </header>
+
+  <nav class="cb-splash-steps" aria-label="Tutorial pages">
+    {{#each steps}}
+    <button type="button" data-action="go-to-page" data-page-index="{{index}}" class="{{#if active}}active{{/if}} {{#if complete}}complete{{/if}}" aria-label="Open tutorial page {{add index 1}}">
+      {{#if complete}}<i class="fa-solid fa-check"></i>{{else}}{{add index 1}}{{/if}}
+    </button>
+    {{/each}}
+  </nav>
+
+  <main class="cb-splash-page">
+    <div class="cb-splash-media">
+      <img src="{{page.image}}" alt="{{page.alt}}">
+    </div>
+    <div class="cb-splash-copy">
+      <span class="cb-splash-eyebrow">{{page.eyebrow}}</span>
+      <h2>{{page.title}}</h2>
+      <p class="cb-splash-intro">{{page.text}}</p>
+      <ul>
+        {{#each page.bullets}}<li>{{this}}</li>{{/each}}
+      </ul>
+    </div>
+  </main>
+
+  <footer class="cb-splash-footer">
+    <button type="button" data-action="back" {{#if first}}disabled{{/if}}>
+      <i class="fa-solid fa-chevron-left"></i> Back
+    </button>
+
+    <span class="cb-splash-counter">{{pageNumber}} of {{pageCount}}</span>
+
+    {{#if last}}
+    <div class="cb-splash-finish-controls">
+      <label>
+        <input type="checkbox" name="tutorialSuppressed" {{checked suppressed}}>
+        Don't show this tutorial again
+      </label>
+      <button type="button" class="gold-button" data-action="finish">
+        <i class="fa-solid fa-check"></i> OK
+      </button>
+    </div>
+    {{else}}
+    <button type="button" class="gold-button" data-action="next">
+      Next <i class="fa-solid fa-chevron-right"></i>
+    </button>
+    {{/if}}
+  </footer>
+</section>
