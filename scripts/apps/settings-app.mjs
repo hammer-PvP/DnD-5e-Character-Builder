@@ -39,7 +39,7 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     const ordered = [...settings.sources].sort((a, b) => Number(a.priority) - Number(b.priority));
     return {
       isGM: game.user.isGM,
-      tutorialSuppressed: Boolean(game.settings.get(MODULE_ID, "tutorialSuppressed")),
+      tutorialSuppressed: SplashTutorialService.isSuppressed(),
       settings,
       sources: ordered.map((row, index) => ({
         ...row,
@@ -96,7 +96,7 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     const tutorialSuppressed = Boolean(form.querySelector('[name="tutorialSuppressed"]')?.checked);
 
     if (!game.user.isGM) {
-      await game.settings.set(MODULE_ID, "tutorialSuppressed", tutorialSuppressed);
+      await SplashTutorialService.setSuppressed(tutorialSuppressed);
       ui.notifications.info("Character Builder tutorial preference saved.");
       await this.close();
       if (!tutorialSuppressed) setTimeout(() => SplashTutorialService.openNow(), 150);
@@ -187,7 +187,7 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       return ui.notifications.error("Choose a valid Level Up mode.");
     }
 
-    await game.settings.set(MODULE_ID, "tutorialSuppressed", tutorialSuppressed);
+    await SplashTutorialService.setSuppressed(tutorialSuppressed);
     await game.settings.set(MODULE_ID, "settings", settings);
     ui.notifications.info("Character Builder settings saved.");
     await this.close();

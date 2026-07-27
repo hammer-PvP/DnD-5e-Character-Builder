@@ -39,19 +39,6 @@ Hooks.once("init", async () => {
     default: { entries: [] }
   });
 
-  game.settings.register(MODULE_ID, "tutorialSuppressed", {
-    scope: "client",
-    config: false,
-    type: Boolean,
-    default: false
-  });
-
-  game.settings.register(MODULE_ID, "tutorialForceRevisionSeen", {
-    scope: "client",
-    config: false,
-    type: Number,
-    default: 0
-  });
 
   game.settings.register(MODULE_ID, "tutorialForceRevision", {
     scope: "world",

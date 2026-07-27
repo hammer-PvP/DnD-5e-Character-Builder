@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.8c";
-export const MODULE_BUILD = "community-beta-098c-first-run-splash-tutorial";
+export const MODULE_VERSION = "0.9.8d";
+export const MODULE_BUILD = "community-beta-098d-user-scoped-tutorial-and-github-docs";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {

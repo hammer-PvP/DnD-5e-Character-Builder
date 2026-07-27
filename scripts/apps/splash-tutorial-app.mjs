@@ -194,7 +194,7 @@ export class SplashTutorialApp extends HandlebarsApplicationMixin(ApplicationV2)
       first: this.pageIndex === 0,
       last: this.pageIndex === pages.length - 1,
       roleLabel: game.user.isGM ? "Game Master Guide" : "Player Guide",
-      suppressed: Boolean(game.settings.get(MODULE_ID, "tutorialSuppressed")),
+      suppressed: Boolean(game.user.getFlag(MODULE_ID, "tutorialSuppressed")),
       steps: pages.map((entry, index) => ({
         id: entry.id,
         index,
@@ -231,7 +231,7 @@ export class SplashTutorialApp extends HandlebarsApplicationMixin(ApplicationV2)
   async #finish(event) {
     event.preventDefault();
     const suppress = Boolean(this.element.querySelector('[name="tutorialSuppressed"]')?.checked);
-    await game.settings.set(MODULE_ID, "tutorialSuppressed", suppress);
+    await game.user.setFlag(MODULE_ID, "tutorialSuppressed", suppress);
     await this.close();
   }
 

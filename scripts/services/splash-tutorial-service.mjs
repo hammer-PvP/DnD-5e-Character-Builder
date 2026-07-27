@@ -4,6 +4,8 @@ import { SplashTutorialApp } from "../apps/splash-tutorial-app.mjs";
 const SOCKET_CHANNEL = `module.${MODULE_ID}`;
 const OPEN_DELAY_MS = 900;
 const SAFE_RETRY_MS = 1000;
+const SUPPRESSED_FLAG = "tutorialSuppressed";
+const FORCE_REVISION_SEEN_FLAG = "tutorialForceRevisionSeen";
 
 export class SplashTutorialService {
   static #socketReady = false;
@@ -18,15 +20,28 @@ export class SplashTutorialService {
     });
   }
 
+  static isSuppressed(user = game.user) {
+    return Boolean(user?.getFlag?.(MODULE_ID, SUPPRESSED_FLAG));
+  }
+
+  static forceRevisionSeen(user = game.user) {
+    return Number(user?.getFlag?.(MODULE_ID, FORCE_REVISION_SEEN_FLAG) ?? 0);
+  }
+
+  static async setSuppressed(suppressed, user = game.user) {
+    if (!user) throw new Error("A Foundry user is required to save the tutorial preference.");
+    await user.setFlag(MODULE_ID, SUPPRESSED_FLAG, Boolean(suppressed));
+  }
+
   static async initializeForCurrentUser() {
     this.initializeSocket();
     const revision = Number(game.settings.get(MODULE_ID, "tutorialForceRevision") ?? 0);
-    const seen = Number(game.settings.get(MODULE_ID, "tutorialForceRevisionSeen") ?? 0);
+    const seen = this.forceRevisionSeen();
     if (revision > seen) {
       await this.#processForceRevision(revision, { open: true });
       return;
     }
-    if (!game.settings.get(MODULE_ID, "tutorialSuppressed")) this.scheduleOpen();
+    if (!this.isSuppressed()) this.scheduleOpen();
   }
 
   static openNow() {
@@ -44,6 +59,16 @@ export class SplashTutorialService {
     const confirmed = await this.#confirmForce();
     if (!confirmed) return false;
 
+    // The preference belongs to each Foundry User, not to the browser client.
+    // Clearing it on every User also covers users who are currently offline.
+    const resets = await Promise.allSettled(
+      game.users.contents.map(user => this.setSuppressed(false, user))
+    );
+    const failures = resets.filter(result => result.status === "rejected");
+    if (failures.length) {
+      console.warn(`${MODULE_ID} | Could not clear the tutorial preference for ${failures.length} user(s).`, failures);
+    }
+
     const current = Number(game.settings.get(MODULE_ID, "tutorialForceRevision") ?? 0);
     const revision = Math.max(1, current + 1);
     await game.settings.set(MODULE_ID, "tutorialForceRevision", revision);
@@ -55,10 +80,10 @@ export class SplashTutorialService {
 
   static async #processForceRevision(revision, { open = false } = {}) {
     if (!Number.isFinite(revision) || revision <= 0) return;
-    const seen = Number(game.settings.get(MODULE_ID, "tutorialForceRevisionSeen") ?? 0);
+    const seen = this.forceRevisionSeen();
     if (revision <= seen) return;
-    await game.settings.set(MODULE_ID, "tutorialForceRevisionSeen", revision);
-    await game.settings.set(MODULE_ID, "tutorialSuppressed", false);
+    await game.user.setFlag(MODULE_ID, FORCE_REVISION_SEEN_FLAG, revision);
+    await this.setSuppressed(false);
     if (open) this.scheduleOpen({ delay: 250 });
   }
 
@@ -78,7 +103,7 @@ export class SplashTutorialService {
       return;
     }
     this.#scheduled = false;
-    if (!game.settings.get(MODULE_ID, "tutorialSuppressed")) SplashTutorialApp.open();
+    if (!this.isSuppressed()) SplashTutorialApp.open();
   }
 
   static async #confirmForce() {
