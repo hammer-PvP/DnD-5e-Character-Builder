@@ -1,4 +1,5 @@
 import { MODULE_ID, SOURCE_DEFINITIONS, CUSTOM_ARRAY_SLOT_COUNT, defaultSettings } from "../constants.mjs";
+import { SplashTutorialService } from "../services/splash-tutorial-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -37,6 +38,8 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     });
     const ordered = [...settings.sources].sort((a, b) => Number(a.priority) - Number(b.priority));
     return {
+      isGM: game.user.isGM,
+      tutorialSuppressed: Boolean(game.settings.get(MODULE_ID, "tutorialSuppressed")),
       settings,
       sources: ordered.map((row, index) => ({
         ...row,
@@ -63,6 +66,11 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       this.close();
     });
     root.querySelector('[data-action="save"]')?.addEventListener("click", event => this.#save(event));
+    root.querySelector('[data-action="open-tutorial"]')?.addEventListener("click", event => {
+      event.preventDefault();
+      SplashTutorialService.openNow();
+    });
+    root.querySelector('[data-action="force-tutorial"]')?.addEventListener("click", event => this.#forceTutorial(event));
     root.querySelectorAll('[data-action="move-source"]').forEach(button => {
       button.addEventListener("click", event => this.#moveSource(event));
     });
@@ -85,6 +93,15 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
   async #save(event) {
     event.preventDefault();
     const form = this.element;
+    const tutorialSuppressed = Boolean(form.querySelector('[name="tutorialSuppressed"]')?.checked);
+
+    if (!game.user.isGM) {
+      await game.settings.set(MODULE_ID, "tutorialSuppressed", tutorialSuppressed);
+      ui.notifications.info("Character Builder tutorial preference saved.");
+      await this.close();
+      if (!tutorialSuppressed) setTimeout(() => SplashTutorialService.openNow(), 150);
+      return;
+    }
     const sourceRows = [...form.querySelectorAll("[data-source-id]")];
     const sources = sourceRows.map((row, priority) => ({
       id: row.dataset.sourceId,
@@ -170,9 +187,22 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       return ui.notifications.error("Choose a valid Level Up mode.");
     }
 
+    await game.settings.set(MODULE_ID, "tutorialSuppressed", tutorialSuppressed);
     await game.settings.set(MODULE_ID, "settings", settings);
     ui.notifications.info("Character Builder settings saved.");
-    this.close();
+    await this.close();
+    if (!tutorialSuppressed) setTimeout(() => SplashTutorialService.openNow(), 150);
+  }
+
+  async #forceTutorial(event) {
+    event.preventDefault();
+    try {
+      await SplashTutorialService.forceForEveryone();
+      await this.render({ force: true });
+    } catch (error) {
+      console.error(`${MODULE_ID} | Could not reopen the tutorial for everyone.`, error);
+      ui.notifications.error(error.message);
+    }
   }
 
   #refreshCustomArraySettings() {

@@ -1,8 +1,8 @@
 {
   "CB.Title": "Character Builder",
   "CB.Settings.Title": "Character Builder Settings",
-  "CB.Settings.Button": "Configure Character Builder",
-  "CB.Settings.Hint": "Configure content sources, Ability Score methods, the Starting Equipment Shop, Level Up, Epic Boons, Character Keeper rest management, multiclassing, and Hit Point advancement.",
+  "CB.Settings.Button": "Open Character Builder Settings",
+  "CB.Settings.Hint": "Open the splash tutorial and manage your tutorial preference. GMs can also configure content sources, character creation, Level Up, Epic Boons, Character Keeper, multiclassing, and Hit Points.",
   "CB.Start": "Start Character Builder",
   "CB.Resume": "Resume Character Builder",
   "CB.Prompt.Title": "Create Player Character",

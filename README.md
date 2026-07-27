@@ -9,7 +9,7 @@ Character Builder is a guided D&D 2024 character creation, Level Up, Epic Boon, 
 - Foundry VTT 14.364
 - D&D5e 5.3.3
 
-SRD 5.1 Legacy is not officially supported. Character Keeper is treated as stable for its currently implemented Short Rest, Long Rest, and Wizard spellbook-management routines; version 0.9.8b limits Keeper changes to visual or minor cross-cutting corrections.
+SRD 5.1 Legacy is not officially supported. Character Keeper is treated as stable for its currently implemented Short Rest, Long Rest, and Wizard spellbook-management routines; version 0.9.8c adds first-run onboarding without changing the frozen 0.9.8 application layouts or rules behavior.
 
 ## Level 1 creation
 
@@ -22,6 +22,19 @@ SRD 5.1 Legacy is not officially supported. Character Keeper is treated as stabl
 - Independent Class and Background starting equipment or starting-currency choices.
 - Transactional mundane Starting Equipment Shop with Checkout, exact purchase manifests, containers, quantity support, and GM Bonus Gold.
 - Review and recoverable application to the original Actor.
+
+## Character Builder 0.9.8c — First-run splash tutorial
+
+Version 0.9.8c adds role-aware first-run onboarding while preserving the approved 0.9.8 visual baseline and all validated Character Creation, Level Up, Multiclass, Character Keeper, and transaction behavior.
+
+### 0.9.8c additions
+
+- Game Masters receive a five-page tutorial covering the gold Character Builder launcher, individual and batch Level Up grants, Character Keeper rest management, protected transactions, and content-source settings.
+- Players receive a shorter tutorial covering character creation, the Level Up arrow, and optional rest management. Players who own a Wizard Actor also receive a contextual spellbook-scribing page.
+- The final tutorial page provides `Don't show this tutorial again`; closing the window without completing it does not silently suppress future display.
+- Character Builder Settings are available to every user for opening the guide manually and controlling their own automatic-display preference. Non-GMs see only tutorial controls.
+- GMs receive `Show Splash Tutorial to Everyone Once`, a one-shot world trigger that clears suppression for online users immediately and for offline users at their next login.
+- Forced tutorial display waits until Character Creation, Level Up, Character Keeper, Shop, and protected transaction windows are no longer active.
 
 ## Character Builder 0.9.8b — Live-test detail corrections
 
@@ -306,6 +319,19 @@ This README is the consolidated project and release document. Static validation 
 ## Repository
 
 https://github.com/hammer-PvP/DnD-5e-Character-Builder
+
+## 0.9.8c validation checklist
+
+- A GM with tutorial suppression disabled receives the five-page GM guide after the world becomes ready.
+- A player with tutorial suppression disabled receives the three-page player guide; owning a Wizard Actor adds the contextual fourth page.
+- Back, Next, page indicators, final OK, and the final suppression checkbox preserve the current page and preference correctly.
+- Closing the tutorial with the Foundry window close control does not change the user's suppression preference.
+- `Open Splash Tutorial` opens the correct role-aware guide without changing automatic-display preference.
+- Saving `Don't Show Splash Tutorial` suppresses future automatic display for that user; clearing it reopens the guide and allows future automatic display.
+- Non-GM users can open Character Builder Settings but cannot view or change world-level module configuration.
+- `Show Splash Tutorial to Everyone Once` requires GM confirmation, clears the GM's local suppression immediately, notifies online users, and increments a world revision for offline users.
+- A forced tutorial does not interrupt an active Character Creation, Level Up, Character Keeper, Shop, or protected transaction window.
+- Existing v0.9.8b rules, layouts, modal protections, multiclass fixes, and spell-card behavior remain unchanged.
 
 ## 0.9.8b validation checklist
 

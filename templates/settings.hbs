@@ -3,12 +3,38 @@
     <i class="fa-solid fa-arrow-up-right-dots"></i>
     <div>
       <h1>Character Builder</h1>
+      {{#if isGM}}
       <p>Configure D&D 2024 / SRD 5.2 Modern character creation and Level Up behavior.</p>
+      {{else}}
+      <p>Manage the Character Builder splash tutorial for your user.</p>
+      {{/if}}
     </div>
   </header>
 
   <div class="cb-settings-body">
     <div class="cb-settings-grid">
+      <fieldset class="cb-settings-wide cb-tutorial-settings">
+        <legend>Splash Tutorial</legend>
+        <div class="cb-settings-toggle">
+          <label><input type="checkbox" name="tutorialSuppressed" {{checked tutorialSuppressed}}> Don't Show Splash Tutorial</label>
+          <p class="hint">Prevent the tutorial from opening automatically for this user. The guide can still be opened manually.</p>
+        </div>
+        <div class="cb-tutorial-settings-actions">
+          <button type="button" data-action="open-tutorial">
+            <i class="fa-solid fa-book-open-reader"></i> Open Splash Tutorial
+          </button>
+          {{#if isGM}}
+          <button type="button" class="gold-button" data-action="force-tutorial">
+            <i class="fa-solid fa-users-viewfinder"></i> Show Splash Tutorial to Everyone Once
+          </button>
+          {{/if}}
+        </div>
+        {{#if isGM}}
+        <p class="hint">The GM action is a one-time trigger. It clears tutorial suppression for online users immediately and for offline users at their next login.</p>
+        {{/if}}
+      </fieldset>
+
+      {{#if isGM}}
       <fieldset class="cb-settings-wide">
         <legend>Content Sources and Priority</legend>
         <p class="hint">Sources are complete packages or logical SRD sources. Higher rows have higher priority.</p>
@@ -166,6 +192,7 @@
         <legend>Creation Prompt</legend>
         <label><input type="checkbox" name="promptOnCreate" {{checked settings.promptOnCreate}}> Ask whether to use Character Builder when a new Player Character Actor is created.</label>
       </fieldset>
+      {{/if}}
     </div>
   </div>
 
