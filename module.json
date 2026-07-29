@@ -1,23 +1,19 @@
 {
-  "id": "dnd5e-character-builder",
-  "title": "Character Builder (DnD 5e - 2024)",
-  "description": "D&D 2024 Character Creation, Level Up, Epic Boon gifts, and Character Keeper Short/Long Rest management for Foundry VTT 14.",
-  "version": "0.9.8d",
+  "id": "dnd5e-supplier",
+  "title": "Supplier (D&D 5e)",
+  "description": "A configurable stock generator for Supplier profiles in Foundry VTT, creating native D&D 5e Items inside World Item folders for use with third-party merchants.",
+  "version": "0.0.1f",
   "authors": [
     {
       "name": "Raphael Andrade"
-    },
-    {
-      "name": "OpenAI",
-      "flags": {
-        "contribution": "Character creation, Starting Equipment Shop, and Level Up community beta implementation"
-      }
     }
   ],
+  "url": "https://github.com/hammer-PvP/DnD-5e-Supplier",
+  "manifest": "https://raw.githubusercontent.com/hammer-PvP/DnD-5e-Supplier/main/module.json",
+  "download": "https://github.com/hammer-PvP/DnD-5e-Supplier/releases/download/v0.0.1f/dnd5e-supplier.zip",
   "compatibility": {
     "minimum": "14",
-    "verified": "14.364",
-    "maximum": "14"
+    "verified": "14"
   },
   "relationships": {
     "systems": [
@@ -26,8 +22,7 @@
         "type": "system",
         "compatibility": {
           "minimum": "5.3.3",
-          "verified": "5.3.3",
-          "maximum": "5.3.3"
+          "verified": "5.3.3"
         }
       }
     ]
@@ -36,20 +31,18 @@
     "scripts/main.mjs"
   ],
   "styles": [
-    "styles/character-builder.css"
+    "styles/supplier.css"
   ],
   "languages": [
     {
       "lang": "en",
       "name": "English",
       "path": "lang/en.json"
+    },
+    {
+      "lang": "pt-BR",
+      "name": "Português (Brasil)",
+      "path": "lang/pt-BR.json"
     }
-  ],
-  "license": "LICENSE",
-  "readme": "README.md",
-  "url": "https://github.com/hammer-PvP/DnD-5e-Character-Builder",
-  "manifest": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/latest/download/module.json",
-  "download": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/download/v0.9.8d/dnd5e-character-builder.zip",
-  "bugs": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/issues",
-  "changelog": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/tag/v0.9.8d"
+  ]
 }

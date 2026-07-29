@@ -1,0 +1,41 @@
+<div class="supplier-picker-shell">
+  <header class="supplier-picker-header">
+    {{#if title}}<h2>{{title}}</h2>{{/if}}
+    <label class="supplier-picker-search">
+      <i class="fa-solid fa-magnifying-glass"></i>
+      <input type="search" data-action="search" placeholder="{{localize 'DND5E_SUPPLIER.Picker.Search'}}">
+    </label>
+    <div class="supplier-picker-filters">
+      <select data-filter="type"><option value="">{{localize "DND5E_SUPPLIER.Picker.AllTypes"}}</option>{{#each typeOptions}}<option value="{{value}}">{{label}}</option>{{/each}}</select>
+      <select data-filter="subtype"><option value="">{{localize "DND5E_SUPPLIER.Picker.AllSubtypes"}}</option>{{#each subtypeOptions}}<option value="{{value}}">{{label}}</option>{{/each}}</select>
+      <select data-filter="source"><option value="">{{localize "DND5E_SUPPLIER.Picker.AllSources"}}</option>{{#each sourceOptions}}<option value="{{value}}">{{label}}</option>{{/each}}</select>
+    </div>
+    <div class="supplier-picker-result-count"><b data-visible-count>0</b> {{localize "DND5E_SUPPLIER.Picker.Results"}}</div>
+    {{#if banMode}}
+      <div class="supplier-ban-scope">
+        <strong>{{localize "DND5E_SUPPLIER.Picker.BanScope"}}</strong>
+        <label class="selected"><input type="radio" name="banScope" value="source" checked><span><b>{{localize "DND5E_SUPPLIER.Picker.BanThisSource"}}</b><small>{{localize "DND5E_SUPPLIER.Picker.BanThisSourceHint"}}</small></span></label>
+        <label><input type="radio" name="banScope" value="all"><span><b>{{localize "DND5E_SUPPLIER.Picker.BanAllSources"}}</b><small>{{localize "DND5E_SUPPLIER.Picker.BanAllSourcesHint"}}</small></span></label>
+      </div>
+    {{else}}
+      <small>{{localize "DND5E_SUPPLIER.Picker.Hint"}}</small>
+    {{/if}}
+  </header>
+  <div class="supplier-picker-list">
+    {{#each entries}}
+      <button type="button" class="supplier-picker-row" data-picker-row data-search="{{searchText}}" data-type="{{normalizedType}}" data-subtypes="{{normalizedSubtypes}}" data-source="{{normalizedPack}}" data-action="select-item"
+        data-uuid="{{uuid}}" data-key="{{canonicalKey}}" data-name="{{name}}" data-img="{{img}}" data-item-type="{{type}}" data-item-subtype="{{subtype}}" data-item-subtype-key="{{primarySubtypeKey}}" data-pack-id="{{packId}}" data-pack="{{packLabel}}" data-package-name="{{packageName}}">
+        <img src="{{img}}" alt="">
+        <span class="supplier-picker-main"><strong>{{name}}</strong><small>{{type}}{{#if subtypeLabel}} / {{subtypeLabel}}{{/if}}</small></span>
+        <span class="supplier-picker-source">{{sourceDisplay}}</span>
+        {{#if ../multiple}}<i class="fa-solid fa-check supplier-picker-check"></i>{{/if}}
+      </button>
+    {{/each}}
+  </div>
+  {{#if multiple}}
+    <footer class="supplier-picker-footer">
+      <span><b data-selected-count>0</b> {{localize "DND5E_SUPPLIER.Picker.Selected"}}</span>
+      <button type="button" class="supplier-primary" data-action="confirm-selection"><i class="fa-solid fa-ban"></i>{{#if banMode}}{{localize "DND5E_SUPPLIER.Picker.AddToBanList"}}{{else}}{{localize "DND5E_SUPPLIER.Picker.AddSelected"}}{{/if}}</button>
+    </footer>
+  {{/if}}
+</div>
