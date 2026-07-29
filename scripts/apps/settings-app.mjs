@@ -11,7 +11,7 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
 
   static DEFAULT_OPTIONS = {
     id: "character-builder-settings",
-    classes: ["character-builder", "settings-app"],
+    classes: ["dnd5e-character-builder", "character-builder", "settings-app"],
     tag: "form",
     position: { width: 900, height: 820 },
     window: { title: "Character Builder Settings", resizable: true }

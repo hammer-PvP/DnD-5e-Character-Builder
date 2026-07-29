@@ -21,6 +21,16 @@ It uses the official D&D5e documents and native Advancement system as its rules 
 
 Install the module through Foundry's package browser, or use the manifest URL published on the module page.
 
+### Required dependency: libWrapper
+
+Character Builder requires **libWrapper 1.13.5.1 or newer**. The dependency is declared in `module.json` with its official manifest URL, allowing Foundry to resolve and install it with Character Builder. A world cannot enable Character Builder while the required dependency is missing or inactive.
+
+Official libWrapper project:
+
+`https://github.com/ruipin/fvtt-lib-wrapper`
+
+libWrapper coordinates the module's required D&D5e method wrapper with other packages and provides conflict diagnostics to the Game Master. Character Builder does not directly replace Foundry or D&D5e prototype methods.
+
 For GitHub releases, the canonical release assets are:
 
 - `module.json`
@@ -222,6 +232,25 @@ While a commit or confirmation is active:
   <img src="docs/images/protected-transaction.png" alt="Protected Level Up transaction overlay" width="780">
 </p>
 
+
+## Compatibility Hardening
+
+Character Builder is designed for worlds that may run many other modules in the same browser context.
+
+The current compatibility policy includes:
+
+- libWrapper-managed interception instead of direct prototype replacement;
+- concrete type checks before collection access;
+- no reliance on non-standard `Array.prototype.first()` or similar convenience extensions;
+- module-prefixed Handlebars helpers and Application classes;
+- a namespaced public API at `game.modules.get("dnd5e-character-builder").api`;
+- the legacy `game.characterBuilder` alias retained for existing beta macros;
+- native Application close hooks retained as a fallback for protected Advancement cleanup.
+
+These protections reduce conflicts, but Foundry modules still share one JavaScript environment. Reproducible compatibility reports should include the complete active-module list.
+
+See [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for the wrapper inventory and conflict-report checklist.
+
 ## Scope and Responsibility
 
 Character Builder is responsible for delivering the Items, spells, features, effects, ownership, Advancements, flags, and resources required by the selected rules and choices.
@@ -241,7 +270,8 @@ Useful reports include:
 - class/subclass and current level;
 - exact steps;
 - screenshots;
-- exported Actor JSON when the problem concerns Actor data.
+- exported Actor JSON when the problem concerns Actor data;
+- complete active-module list when the stack includes another package or a generated `Bundle.js` file.
 
 ## Changelog
 

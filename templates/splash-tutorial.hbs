@@ -10,8 +10,8 @@
 
   <nav class="cb-splash-steps" aria-label="Tutorial pages">
     {{#each steps}}
-    <button type="button" data-action="go-to-page" data-page-index="{{index}}" class="{{#if active}}active{{/if}} {{#if complete}}complete{{/if}}" aria-label="Open tutorial page {{add index 1}}">
-      {{#if complete}}<i class="fa-solid fa-check"></i>{{else}}{{add index 1}}{{/if}}
+    <button type="button" data-action="go-to-page" data-page-index="{{index}}" class="{{#if active}}active{{/if}} {{#if complete}}complete{{/if}}" aria-label="Open tutorial page {{dnd5eCharacterBuilderAdd index 1}}">
+      {{#if complete}}<i class="fa-solid fa-check"></i>{{else}}{{dnd5eCharacterBuilderAdd index 1}}{{/if}}
     </button>
     {{/each}}
   </nav>

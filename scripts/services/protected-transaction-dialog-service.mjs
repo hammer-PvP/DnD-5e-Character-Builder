@@ -118,7 +118,7 @@ export class ProtectedTransactionDialogService {
     if (this.#active === active) this.#active = null;
 
     queueMicrotask(() => {
-      const owner = [...document.querySelectorAll(".application.character-builder")]
+      const owner = [...document.querySelectorAll(".application.dnd5e-character-builder")]
         .filter(element => element.isConnected && !element.hidden)
         .sort((a, b) => this.#zIndex(b) - this.#zIndex(a))[0];
       const focusTarget = owner?.querySelector?.(

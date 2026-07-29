@@ -70,9 +70,17 @@
 
 <hr>
 
-<h2>Installation and Support</h2>
+<h2>Installation and Required Dependency</h2>
 
 <p>Install Character Builder from the Foundry package browser or use the manifest URL listed for this package.</p>
+
+<p><strong>Required:</strong> libWrapper 1.13.5.1 or newer. Character Builder declares libWrapper as a required relationship using its official manifest, so Foundry can resolve and install the dependency. The world cannot enable Character Builder while libWrapper is missing or inactive.</p>
+
+<p><strong>libWrapper Project:</strong> https://github.com/ruipin/fvtt-lib-wrapper</p>
+
+<p>Character Builder uses libWrapper for coordinated D&amp;D5e method interception and conflict reporting. It also avoids non-standard Array convenience methods and uses module-prefixed helpers and Application classes to reduce interference in module-heavy worlds.</p>
+
+<h2>Support</h2>
 
 <p><strong>Project:</strong> https://github.com/hammer-PvP/DnD-5e-Character-Builder<br>
 <strong>Issues:</strong> https://github.com/hammer-PvP/DnD-5e-Character-Builder/issues</p>

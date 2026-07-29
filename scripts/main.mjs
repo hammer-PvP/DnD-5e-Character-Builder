@@ -14,14 +14,17 @@ import { SourceRegistry } from "./services/source-registry.mjs";
 import { SplashTutorialService } from "./services/splash-tutorial-service.mjs";
 import { ContentSourceService } from "./services/content-source-service.mjs";
 import { RulesCompatibilityService } from "./services/rules-compatibility-service.mjs";
+import { LibWrapperService } from "./services/lib-wrapper-service.mjs";
 
 let scribeIconPromise = null;
 
 Hooks.once("init", async () => {
-  if (!Handlebars.helpers.eq) Handlebars.registerHelper("eq", (a, b) => a === b);
-  if (!Handlebars.helpers.gt) Handlebars.registerHelper("gt", (a, b) => Number(a) > Number(b));
-  if (!Handlebars.helpers.add) Handlebars.registerHelper("add", (a, b) => Number(a) + Number(b));
-  if (!Handlebars.helpers.concat) Handlebars.registerHelper("concat", (...values) => values.slice(0, -1).join(""));
+  LibWrapperService.register();
+
+  Handlebars.registerHelper("dnd5eCharacterBuilderEq", (a, b) => a === b);
+  Handlebars.registerHelper("dnd5eCharacterBuilderGt", (a, b) => Number(a) > Number(b));
+  Handlebars.registerHelper("dnd5eCharacterBuilderAdd", (a, b) => Number(a) + Number(b));
+  Handlebars.registerHelper("dnd5eCharacterBuilderConcat", (...values) => values.slice(0, -1).join(""));
   await loadTemplates([
     `modules/${MODULE_ID}/templates/partials/source-preview.hbs`,
     `modules/${MODULE_ID}/templates/partials/pact-of-the-tome-selection.hbs`
@@ -82,7 +85,7 @@ Hooks.once("init", async () => {
     }
   });
 
-  game.characterBuilder = {
+  const api = {
     open: actor => openForActor(actor),
     eligible: actor => isCreationEligible(actor),
     levelUpEligible: actor => LevelUpService.eligibility(actor),
@@ -93,10 +96,16 @@ Hooks.once("init", async () => {
     openTool: () => game.user.isGM ? new CharacterBuilderToolApp().render({ force: true }) : null,
     openTutorial: () => SplashTutorialService.openNow()
   };
+  game.modules.get(MODULE_ID).api = api;
+  // Backward-compatible alias retained for macros created during the beta.
+  game.characterBuilder = api;
 });
 
 Hooks.once("ready", async () => {
   console.info(`Character Builder ${MODULE_VERSION} (${MODULE_BUILD}) loaded.`);
+  if (!LibWrapperService.register() && game.user.isGM) {
+    ui.notifications.error("Character Builder requires libWrapper. Install and activate libWrapper, then reload the world.", { permanent: true });
+  }
   if (game.system.id !== "dnd5e") {
     ui.notifications.error("Character Builder requires the D&D5e system.");
     return;

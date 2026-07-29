@@ -79,7 +79,7 @@
           <div class="cb-custom-array-grid">
             {{#each settings.customArray}}
             <label>
-              <span>#{{add @index 1}}</span>
+              <span>#{{dnd5eCharacterBuilderAdd @index 1}}</span>
               <input type="number" name="customArray.{{@index}}" value="{{this}}" min="1" max="20" step="1">
             </label>
             {{/each}}
@@ -91,9 +91,9 @@
           <div class="form-group cb-settings-form-group">
             <label>Roll Mode</label>
             <select name="rollMode">
-              <option value="single" {{#if (eq settings.rollAbilityScores.mode "single")}}selected{{/if}}>Single Roll</option>
-              <option value="limited" {{#if (eq settings.rollAbilityScores.mode "limited")}}selected{{/if}}>Limited Rolls</option>
-              <option value="unlimited" {{#if (eq settings.rollAbilityScores.mode "unlimited")}}selected{{/if}}>Unlimited Rolls</option>
+              <option value="single" {{#if (dnd5eCharacterBuilderEq settings.rollAbilityScores.mode "single")}}selected{{/if}}>Single Roll</option>
+              <option value="limited" {{#if (dnd5eCharacterBuilderEq settings.rollAbilityScores.mode "limited")}}selected{{/if}}>Limited Rolls</option>
+              <option value="unlimited" {{#if (dnd5eCharacterBuilderEq settings.rollAbilityScores.mode "unlimited")}}selected{{/if}}>Unlimited Rolls</option>
             </select>
             <p class="hint">Limited Rolls counts every complete set, including the first.</p>
           </div>
@@ -118,8 +118,8 @@
         <div class="form-group cb-settings-form-group">
           <label>Advancement Method</label>
           <select name="levelUpMode">
-            <option value="xp" {{#if (eq settings.levelUpMode "xp")}}selected{{/if}}>Experience Points</option>
-            <option value="milestone" {{#if (eq settings.levelUpMode "milestone")}}selected{{/if}}>Milestone — GM Grant Required</option>
+            <option value="xp" {{#if (dnd5eCharacterBuilderEq settings.levelUpMode "xp")}}selected{{/if}}>Experience Points</option>
+            <option value="milestone" {{#if (dnd5eCharacterBuilderEq settings.levelUpMode "milestone")}}selected{{/if}}>Milestone — GM Grant Required</option>
           </select>
           <p class="hint">XP unlocks Level Up at the next character-level threshold. Milestone requires a GM grant.</p>
         </div>
@@ -185,9 +185,9 @@
         <div class="form-group cb-settings-form-group">
           <label>Default Method</label>
           <select name="hpDefaultMethod">
-            <option value="roll" {{#if (eq settings.hitPointAdvancement.defaultMethod "roll")}}selected{{/if}}>Roll</option>
-            <option value="average" {{#if (eq settings.hitPointAdvancement.defaultMethod "average")}}selected{{/if}}>Average</option>
-            <option value="maximum" {{#if (eq settings.hitPointAdvancement.defaultMethod "maximum")}}selected{{/if}}>Maximum</option>
+            <option value="roll" {{#if (dnd5eCharacterBuilderEq settings.hitPointAdvancement.defaultMethod "roll")}}selected{{/if}}>Roll</option>
+            <option value="average" {{#if (dnd5eCharacterBuilderEq settings.hitPointAdvancement.defaultMethod "average")}}selected{{/if}}>Average</option>
+            <option value="maximum" {{#if (dnd5eCharacterBuilderEq settings.hitPointAdvancement.defaultMethod "maximum")}}selected{{/if}}>Maximum</option>
           </select>
         </div>
       </fieldset>

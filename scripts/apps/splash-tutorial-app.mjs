@@ -154,7 +154,7 @@ export class SplashTutorialApp extends HandlebarsApplicationMixin(ApplicationV2)
 
   static DEFAULT_OPTIONS = {
     id: "character-builder-splash-tutorial",
-    classes: ["character-builder", "splash-tutorial-app", "standard-form"],
+    classes: ["dnd5e-character-builder", "character-builder", "splash-tutorial-app", "standard-form"],
     tag: "form",
     position: { width: 940, height: 780 },
     window: { title: "Character Builder Tutorial", resizable: true }

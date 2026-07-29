@@ -505,7 +505,9 @@ export class AdvancementChoiceAnnotationService {
     if (!value) return [];
     if (Array.isArray(value)) return value;
     if (value instanceof Set) return [...value];
-    if (typeof value.values === "function") return [...value.values()];
+    // Foundry Collection extends Map. Check the concrete collection type rather
+    // than invoking an arbitrary external object method named values().
+    if (value instanceof Map) return [...value.values()];
     if (typeof value === "object") {
       const entries = Object.entries(value);
       if (entries.length && entries.every(([, selected]) => typeof selected === "boolean")) {

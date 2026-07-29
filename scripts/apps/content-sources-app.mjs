@@ -13,7 +13,7 @@ export class ContentSourcesApp extends HandlebarsApplicationMixin(ApplicationV2)
 
   static DEFAULT_OPTIONS = {
     id: "character-builder-content-sources",
-    classes: ["character-builder", "content-sources-app"],
+    classes: ["dnd5e-character-builder", "character-builder", "content-sources-app"],
     tag: "form",
     position: { width: 940, height: 780 },
     window: { title: "Character Builder Content Sources", resizable: true, modal: true }

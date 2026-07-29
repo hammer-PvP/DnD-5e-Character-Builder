@@ -7,7 +7,7 @@
         <h2 id="cb-commit-title">{{commitDialog.title}}</h2>
       </header>
 
-      {{#if (eq commitDialog.mode "confirmation")}}
+      {{#if (dnd5eCharacterBuilderEq commitDialog.mode "confirmation")}}
       <div class="cb-commit-confirmation-copy">
         <i class="fa-solid fa-arrow-up-right-dots cb-commit-confirm-icon" aria-hidden="true"></i>
         <p>Apply character level <strong>{{commitDialog.targetLevel}}</strong> to <strong>{{commitDialog.actorName}}</strong>?</p>
@@ -19,11 +19,11 @@
       </footer>
       {{else}}
       <div class="cb-commit-progress-copy">
-        {{#if (eq commitDialog.mode "success")}}
+        {{#if (dnd5eCharacterBuilderEq commitDialog.mode "success")}}
         <i class="fa-solid fa-circle-check cb-commit-state-icon success" aria-hidden="true"></i>
-        {{else if (eq commitDialog.mode "error")}}
+        {{else if (dnd5eCharacterBuilderEq commitDialog.mode "error")}}
         <i class="fa-solid fa-rotate-left cb-commit-state-icon error" aria-hidden="true"></i>
-        {{else if (eq commitDialog.mode "critical")}}
+        {{else if (dnd5eCharacterBuilderEq commitDialog.mode "critical")}}
         <i class="fa-solid fa-triangle-exclamation cb-commit-state-icon critical" aria-hidden="true"></i>
         {{else}}
         <i class="fa-solid fa-gears cb-commit-state-icon working" aria-hidden="true"></i>
@@ -36,12 +36,12 @@
         </div>
         <small data-commit-progress-value>{{commitDialog.percent}}%</small>
       </div>
-      {{#if (eq commitDialog.mode "error")}}
+      {{#if (dnd5eCharacterBuilderEq commitDialog.mode "error")}}
       <footer>
         <button type="button" class="cb-primary-confirm" data-action="restart-after-failed-commit"><i class="fa-solid fa-rotate-left"></i> Restart Level Up</button>
       </footer>
       {{/if}}
-      {{#if (eq commitDialog.mode "critical")}}
+      {{#if (dnd5eCharacterBuilderEq commitDialog.mode "critical")}}
       <footer>
         <button type="button" class="cb-danger-button" data-action="close-critical-commit"><i class="fa-solid fa-lock"></i> Close Character Builder</button>
       </footer>
@@ -71,7 +71,7 @@
 
     <section class="cb-level-up-policy">
       <h3>Advancement Policy</h3>
-      <p>{{#if (eq settings.levelUpMode "xp")}}Experience Points{{else}}Milestone — GM Grant{{/if}}</p>
+      <p>{{#if (dnd5eCharacterBuilderEq settings.levelUpMode "xp")}}Experience Points{{else}}Milestone — GM Grant{{/if}}</p>
       <p>Multiclassing: {{#if settings.allowMulticlassing}}Enabled{{else}}Disabled{{/if}}</p>
       <p class="hint">Sources: {{sourceOrder}}</p>
     </section>
@@ -81,8 +81,8 @@
     </button>
   </aside>
 
-  <main class="cb-level-up-main {{#if (eq state.step 'choices')}}cb-level-up-main-choices{{/if}}">
-    {{#if (eq state.step "class")}}
+  <main class="cb-level-up-main {{#if (dnd5eCharacterBuilderEq state.step 'choices')}}cb-level-up-main-choices{{/if}}">
+    {{#if (dnd5eCharacterBuilderEq state.step "class")}}
     <section class="cb-level-up-panel">
       <header class="cb-section-heading">
         <div>
@@ -99,12 +99,12 @@
             <img src="{{img}}" alt="{{name}}">
             <div class="cb-class-advance-copy">
               <h3>{{name}} {{#if original}}<span class="cb-badge">Original Class</span>{{/if}}</h3>
-              <p>Class Level {{level}} → {{add level 1}}</p>
+              <p>Class Level {{level}} → {{dnd5eCharacterBuilderAdd level 1}}</p>
             </div>
           </div>
           <button type="button" class="cb-primary-confirm cb-class-advance-button" data-action="select-class" data-item-id="{{id}}" {{#if disabled}}disabled{{/if}}>
             <i class="fa-solid fa-arrow-up"></i>
-            <span><strong>Advance {{name}}</strong><small>Continue to Hit Dice and level {{add level 1}} features</small></span>
+            <span><strong>Advance {{name}}</strong><small>Continue to Hit Dice and level {{dnd5eCharacterBuilderAdd level 1}} features</small></span>
           </button>
         </article>
         {{/each}}
@@ -149,7 +149,7 @@
     </section>
     {{/if}}
 
-    {{#if (eq state.step "hp")}}
+    {{#if (dnd5eCharacterBuilderEq state.step "hp")}}
     <section class="cb-level-up-panel">
       <header class="cb-section-heading cb-level-up-confirm-heading">
         <div>
@@ -168,9 +168,9 @@
         <button type="button" class="cb-hp-method {{#if selected}}selected{{/if}}" data-action="resolve-hp" data-method="{{id}}" {{#if disabled}}disabled{{/if}} {{#if ../busy}}disabled{{/if}}>
           <i class="{{icon}}"></i>
           <strong>{{label}}</strong>
-          {{#if (eq id "roll")}}<small>{{description}}</small>{{/if}}
-          {{#if (eq id "average")}}<small>{{description}}</small>{{/if}}
-          {{#if (eq id "maximum")}}<small>{{description}}</small>{{/if}}
+          {{#if (dnd5eCharacterBuilderEq id "roll")}}<small>{{description}}</small>{{/if}}
+          {{#if (dnd5eCharacterBuilderEq id "average")}}<small>{{description}}</small>{{/if}}
+          {{#if (dnd5eCharacterBuilderEq id "maximum")}}<small>{{description}}</small>{{/if}}
         </button>
         {{/each}}
       </div>
@@ -190,7 +190,7 @@
     </section>
     {{/if}}
 
-    {{#if (eq state.step "advancements")}}
+    {{#if (dnd5eCharacterBuilderEq state.step "advancements")}}
     <section class="cb-level-up-panel">
       <header class="cb-section-heading cb-level-up-confirm-heading">
         <div>
@@ -215,7 +215,7 @@
     </section>
     {{/if}}
 
-    {{#if (eq state.step "choices")}}
+    {{#if (dnd5eCharacterBuilderEq state.step "choices")}}
     <section class="cb-level-up-panel cb-level-up-choices {{#if rules.spellSelectionComplete}}complete{{/if}}" data-spell-selection-root data-required="{{rules.requiredSpellSelections}}" data-invocation-target-class-level="{{rules.invocations.targetClassLevel}}" data-existing-invocations="{{rules.invocations.existingIdentifiersString}}">
       <header class="cb-section-heading cb-spell-choice-heading cb-level-up-confirm-heading">
         <div>
@@ -254,7 +254,7 @@
             </button>
             <div class="cb-automatic-grant-tags">
               {{#if alwaysPrepared}}<span>Always Prepared</span>{{/if}}
-              {{#if freeUses}}<span>{{freeUses}} Free Use{{#unless (eq freeUses "1")}}s{{/unless}}</span>{{/if}}
+              {{#if freeUses}}<span>{{freeUses}} Free Use{{#unless (dnd5eCharacterBuilderEq freeUses "1")}}s{{/unless}}</span>{{/if}}
               {{#if repaired}}<span>Grant Restored</span>{{/if}}
             </div>
             {{#if badges.length}}
@@ -294,7 +294,7 @@
 
       {{#if rules.cantripCount}}
       <section class="cb-choice-section cb-spell-selection-section" data-spell-selection-section data-required="{{rules.cantripCount}}">
-        <header class="cb-choice-section-header"><div><h3>Choose {{rules.cantripCount}} Cantrip{{#unless (eq rules.cantripCount 1)}}s{{/unless}}</h3><p>Cantrips are Spell Level 0.</p></div><strong data-selection-count>{{rules.selectedCantripCount}} / {{rules.cantripCount}}</strong></header>
+        <header class="cb-choice-section-header"><div><h3>Choose {{rules.cantripCount}} Cantrip{{#unless (dnd5eCharacterBuilderEq rules.cantripCount 1)}}s{{/unless}}</h3><p>Cantrips are Spell Level 0.</p></div><strong data-selection-count>{{rules.selectedCantripCount}} / {{rules.cantripCount}}</strong></header>
         {{#each rules.cantripLevelGroups}}
         <div class="cb-spell-level-group" data-spell-level-group>
           <button type="button" class="cb-spell-level-toggle" data-action="toggle-spell-level" aria-expanded="true">
@@ -322,7 +322,7 @@
 
       {{#if rules.spellCount}}
       <section class="cb-choice-section cb-spell-selection-section" data-spell-selection-section data-required="{{rules.spellCount}}">
-        <header class="cb-choice-section-header"><div><h3>Choose {{rules.spellCount}} {{rules.className}} Spell{{#unless (eq rules.spellCount 1)}}s{{/unless}}</h3><p>Each spell can fill only one choice channel during this Level Up.</p></div><strong data-selection-count>{{rules.selectedSpellCount}} / {{rules.spellCount}}</strong></header>
+        <header class="cb-choice-section-header"><div><h3>Choose {{rules.spellCount}} {{rules.className}} Spell{{#unless (dnd5eCharacterBuilderEq rules.spellCount 1)}}s{{/unless}}</h3><p>Each spell can fill only one choice channel during this Level Up.</p></div><strong data-selection-count>{{rules.selectedSpellCount}} / {{rules.spellCount}}</strong></header>
         {{#each rules.spellLevelGroups}}
         <div class="cb-spell-level-group" data-spell-level-group>
           <button type="button" class="cb-spell-level-toggle" data-action="toggle-spell-level" aria-expanded="true">
@@ -351,7 +351,7 @@
       {{#if rules.automaticCount}}
       <section class="cb-choice-section">
         <h3>Automatic Class-List Access</h3>
-        <p>{{rules.automaticCount}} newly accessible leveled spell{{#unless (eq rules.automaticCount 1)}}s{{/unless}} will be added without consuming a learned/prepared-spell choice.</p>
+        <p>{{rules.automaticCount}} newly accessible leveled spell{{#unless (dnd5eCharacterBuilderEq rules.automaticCount 1)}}s{{/unless}} will be added without consuming a learned/prepared-spell choice.</p>
         <details>
           <summary>Show automatic spells</summary>
           {{#each rules.automaticGroups}}
@@ -406,14 +406,14 @@
           <label>Replace
             <select name="levelUp.replaceSpell.remove">
               <option value="">No replacement</option>
-              {{#each rules.replacement.existing}}<option value="{{id}}" {{#if (eq ../rules.replacement.removeId id)}}selected{{/if}}>{{name}}</option>{{/each}}
+              {{#each rules.replacement.existing}}<option value="{{id}}" {{#if (dnd5eCharacterBuilderEq ../rules.replacement.removeId id)}}selected{{/if}}>{{name}}</option>{{/each}}
             </select>
           </label>
           <i class="fa-solid fa-arrow-right"></i>
           <label>With
             <select name="levelUp.replaceSpell.add">
               <option value="">No replacement</option>
-              {{#each rules.replacement.options}}<option value="{{identifier}}" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{#if disabled}}disabled{{/if}} {{#if (eq ../rules.replacement.addIdentifier identifier)}}selected{{/if}}>{{name}} — {{levelLabel}}{{#if disabled}} — {{disabledReason}}{{/if}}</option>{{/each}}
+              {{#each rules.replacement.options}}<option value="{{identifier}}" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{#if disabled}}disabled{{/if}} {{#if (dnd5eCharacterBuilderEq ../rules.replacement.addIdentifier identifier)}}selected{{/if}}>{{name}} — {{levelLabel}}{{#if disabled}} — {{disabledReason}}{{/if}}</option>{{/each}}
             </select>
           </label>
         </div>
@@ -427,7 +427,7 @@
           <label>Replace
             <select name="levelUp.replaceCantrip.remove" data-optional-pair-remove>
               <option value="">No replacement</option>
-              {{#each rules.cantripReplacement.existing}}<option value="{{id}}" {{#if (eq ../rules.cantripReplacement.removeId id)}}selected{{/if}}>{{name}}</option>{{/each}}
+              {{#each rules.cantripReplacement.existing}}<option value="{{id}}" {{#if (dnd5eCharacterBuilderEq ../rules.cantripReplacement.removeId id)}}selected{{/if}}>{{name}}</option>{{/each}}
             </select>
           </label>
           <i class="fa-solid fa-arrow-right"></i>
@@ -442,7 +442,7 @@
                 data-base-label="{{displayLabel}}"
                 data-disabled-reason="{{disabledReason}}"
                 {{#if disabled}}disabled{{/if}}
-                {{#if (eq ../rules.cantripReplacement.addIdentifier identifier)}}selected{{/if}}>{{name}}{{#if disabled}} — {{disabledReason}}{{/if}}</option>{{/each}}
+                {{#if (dnd5eCharacterBuilderEq ../rules.cantripReplacement.addIdentifier identifier)}}selected{{/if}}>{{name}}{{#if disabled}} — {{disabledReason}}{{/if}}</option>{{/each}}
             </select>
           </label>
         </div>
@@ -506,7 +506,7 @@
               {{#each rules.metamagic.replacement.existing}}
               <option value="{{id}}"
                 data-identifier="{{identifier}}"
-                {{#if (eq ../rules.metamagic.replacement.selectedRemoveId id)}}selected{{/if}}>{{name}}</option>
+                {{#if (dnd5eCharacterBuilderEq ../rules.metamagic.replacement.selectedRemoveId id)}}selected{{/if}}>{{name}}</option>
               {{/each}}
             </select>
           </label>
@@ -522,7 +522,7 @@
                   data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}"
                   data-base-label="{{name}}"
                   {{#if disabled}}disabled{{/if}}
-                  {{#if (eq ../../rules.metamagic.replacement.selectedUuid uuid)}}selected{{/if}}>{{name}}{{#if disabledReason}} — {{disabledReason}}{{/if}}</option>
+                  {{#if (dnd5eCharacterBuilderEq ../../rules.metamagic.replacement.selectedUuid uuid)}}selected{{/if}}>{{name}}{{#if disabledReason}} — {{disabledReason}}{{/if}}</option>
                 {{/each}}
               </optgroup>
               {{/each}}
@@ -619,14 +619,14 @@
           <label>Replace
             <select name="levelUp.featureReplace.{{id}}.remove" data-feature-replace-remove>
               <option value="">No replacement</option>
-              {{#each existing}}<option value="{{id}}" data-spell-level="{{level}}" {{#if (eq ../selectedRemoveId id)}}selected{{/if}}>{{name}} — Level {{level}}</option>{{/each}}
+              {{#each existing}}<option value="{{id}}" data-spell-level="{{level}}" {{#if (dnd5eCharacterBuilderEq ../selectedRemoveId id)}}selected{{/if}}>{{name}} — Level {{level}}</option>{{/each}}
             </select>
           </label>
           <i class="fa-solid fa-arrow-right"></i>
           <label>With
             <select name="levelUp.featureReplace.{{id}}.add" data-feature-replace-add>
               <option value="">No replacement</option>
-              {{#each options}}<option value="{{identifier}}" data-spell-level="{{level}}" data-base-label="{{name}} — {{levelLabel}}" {{#if (eq ../selectedAddValue identifier)}}selected{{/if}}>{{name}} — {{levelLabel}}</option>{{/each}}
+              {{#each options}}<option value="{{identifier}}" data-spell-level="{{level}}" data-base-label="{{name}} — {{levelLabel}}" {{#if (dnd5eCharacterBuilderEq ../selectedAddValue identifier)}}selected{{/if}}>{{name}} — {{levelLabel}}</option>{{/each}}
             </select>
           </label>
         </div>
@@ -640,7 +640,7 @@
         <label>{{title}}
           <select name="levelUp.featureOption.{{id}}" data-managed-required-select required>
             <option value="">Choose an option</option>
-            {{#each options}}<option value="{{value}}" {{#if (eq ../selected value)}}selected{{/if}}>{{label}}</option>{{/each}}
+            {{#each options}}<option value="{{value}}" {{#if (dnd5eCharacterBuilderEq ../selected value)}}selected{{/if}}>{{label}}</option>{{/each}}
           </select>
         </label>
       </section>
@@ -740,7 +740,7 @@
         {{#each rules.invocations.slots}}
         <div class="cb-invocation-slot" data-invocation-slot>
           <div class="cb-invocation-control-grid">
-            <label>Invocation {{add index 1}}
+            <label>Invocation {{dnd5eCharacterBuilderAdd index 1}}
               <select name="levelUp.invocation.{{index}}.uuid" data-invocation-select required>
                 <option value="">Choose an Invocation</option>
                 {{#each levelGroups}}
@@ -759,7 +759,7 @@
                     data-img="{{img}}"
                     data-detail-meta="{{detailMeta}}"
                     {{#if disabled}}disabled{{/if}}
-                    {{#if (eq ../../selectedUuid uuid)}}selected{{/if}}>{{displayLabel}}{{#if disabled}} — {{disabledReason}}{{/if}}{{#if repeatable}} — Repeatable{{/if}}</option>
+                    {{#if (dnd5eCharacterBuilderEq ../../selectedUuid uuid)}}selected{{/if}}>{{displayLabel}}{{#if disabled}} — {{disabledReason}}{{/if}}{{#if repeatable}} — Repeatable{{/if}}</option>
                   {{/each}}
                 </optgroup>
                 {{/each}}
@@ -779,7 +779,7 @@
                   data-acquisition-bindings="{{acquisitionBindingsString}}"
                   data-base-label="{{name}}"
                   {{#unless eligible}}disabled{{/unless}}
-                  {{#if (eq ../../selectedTarget identifier)}}selected{{/if}}>{{name}}{{#if pending}}{{#unless eligible}} — choose this cantrip above first{{else}} — selected during this Level Up{{/unless}}{{/if}}</option>
+                  {{#if (dnd5eCharacterBuilderEq ../../selectedTarget identifier)}}selected{{/if}}>{{name}}{{#if pending}}{{#unless eligible}} — choose this cantrip above first{{else}} — selected during this Level Up{{/unless}}{{/if}}</option>
                 {{/each}}
               </select>
             </label>
@@ -800,7 +800,7 @@
           <label>Replace
             <select name="levelUp.replaceInvocation.remove">
               <option value="">No replacement</option>
-              {{#each rules.invocations.replacement.existing}}<option value="{{id}}" data-identifier="{{identifier}}" {{#if blocked}}disabled{{/if}} {{#if (eq ../rules.invocations.replacement.selectedRemoveId id)}}selected{{/if}}>{{name}}{{#if blocked}} — {{disabledReason}}{{/if}}</option>{{/each}}
+              {{#each rules.invocations.replacement.existing}}<option value="{{id}}" data-identifier="{{identifier}}" {{#if blocked}}disabled{{/if}} {{#if (dnd5eCharacterBuilderEq ../rules.invocations.replacement.selectedRemoveId id)}}selected{{/if}}>{{name}}{{#if blocked}} — {{disabledReason}}{{/if}}</option>{{/each}}
             </select>
           </label>
           <i class="fa-solid fa-arrow-right"></i>
@@ -811,7 +811,7 @@
               <optgroup label="{{label}}">
                 {{#each items}}
                 <option value="{{uuid}}"
-                  {{#if (eq ../../selectedUuid uuid)}}selected{{/if}}
+                  {{#if (dnd5eCharacterBuilderEq ../../selectedUuid uuid)}}selected{{/if}}
                   data-identifier="{{identifier}}"
                   data-target-cantrip="{{targetCantrip}}"
                   data-minimum-level="{{minimumLevel}}"
@@ -843,7 +843,7 @@
                 data-acquisition-bindings="{{acquisitionBindingsString}}"
                 data-base-label="{{name}}"
                 {{#unless eligible}}disabled{{/unless}}
-                {{#if (eq ../rules.invocations.replacement.selectedTarget identifier)}}selected{{/if}}>{{name}}{{#if pending}}{{#unless eligible}} — choose this cantrip above first{{else}} — selected during this Level Up{{/unless}}{{/if}}</option>
+                {{#if (dnd5eCharacterBuilderEq ../rules.invocations.replacement.selectedTarget identifier)}}selected{{/if}}>{{name}}{{#if pending}}{{#unless eligible}} — choose this cantrip above first{{else}} — selected during this Level Up{{/unless}}{{/if}}</option>
               {{/each}}
             </select>
           </label>
@@ -865,7 +865,7 @@
     </section>
     {{/if}}
 
-    {{#if (eq state.step "review")}}
+    {{#if (dnd5eCharacterBuilderEq state.step "review")}}
     <section class="cb-level-up-panel">
       <header class="cb-section-heading cb-level-up-confirm-heading">
         <div>

@@ -2,6 +2,29 @@
 
 All notable changes to Character Builder are documented here.
 
+## 0.9.8f
+
+### Required libWrapper integration
+
+- Added libWrapper 1.13.5.1 as a required module dependency using the official manifest URL.
+- Moved the native AdvancementManager close-lifecycle interception into a centralized libWrapper `WRAPPER` registration.
+- Removed the direct per-instance replacement of `manager.close`.
+- Retained the official `closeApplicationV2` hook as an idempotent cleanup fallback.
+
+### Cross-module compatibility hardening
+
+- Fixed the reported `fnMapFind is not a function` failure by checking Arrays before any collection convenience method and removing reliance on external `.first()` implementations.
+- Added safe collection helpers for Arrays, Sets, Maps, and Foundry Collections.
+- Removed the second `.first()` dependency from identified Item lookup during Character Creation.
+- Namespaced all Character Builder Handlebars helpers as `dnd5eCharacterBuilderEq`, `dnd5eCharacterBuilderGt`, `dnd5eCharacterBuilderAdd`, and `dnd5eCharacterBuilderConcat` so another module cannot silently provide incompatible generic helpers.
+- Added the unique `dnd5e-character-builder` class to every module Application and used it for protected-window ownership lookup.
+- Exposed the intentional API through the module namespace while preserving the previous beta alias for compatibility.
+
+### Documentation
+
+- Documented libWrapper as a required dependency and linked the official project.
+- Added the compatibility-hardening policy and expanded conflict-report guidance.
+
 ## 0.9.8e
 
 ### Dynamic content sources

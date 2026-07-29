@@ -13,7 +13,7 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
 
   static DEFAULT_OPTIONS = {
     id: "character-builder-tool",
-    classes: ["character-builder", "character-builder-tool", "standard-form"],
+    classes: ["dnd5e-character-builder", "character-builder", "character-builder-tool", "standard-form"],
     tag: "form",
     position: { width: 680, height: 720 },
     window: { title: "Character Builder Tool", resizable: true }
