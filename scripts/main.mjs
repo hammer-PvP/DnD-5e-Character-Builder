@@ -12,19 +12,14 @@ import { ClassProgressionGuard } from "./services/class-progression-guard.mjs";
 import { RestManagementApp } from "./apps/rest-management-app.mjs";
 import { SourceRegistry } from "./services/source-registry.mjs";
 import { SplashTutorialService } from "./services/splash-tutorial-service.mjs";
-import { ContentSourceService } from "./services/content-source-service.mjs";
-import { RulesCompatibilityService } from "./services/rules-compatibility-service.mjs";
-import { LibWrapperService } from "./services/lib-wrapper-service.mjs";
 
 let scribeIconPromise = null;
 
 Hooks.once("init", async () => {
-  LibWrapperService.register();
-
-  Handlebars.registerHelper("dnd5eCharacterBuilderEq", (a, b) => a === b);
-  Handlebars.registerHelper("dnd5eCharacterBuilderGt", (a, b) => Number(a) > Number(b));
-  Handlebars.registerHelper("dnd5eCharacterBuilderAdd", (a, b) => Number(a) + Number(b));
-  Handlebars.registerHelper("dnd5eCharacterBuilderConcat", (...values) => values.slice(0, -1).join(""));
+  if (!Handlebars.helpers.eq) Handlebars.registerHelper("eq", (a, b) => a === b);
+  if (!Handlebars.helpers.gt) Handlebars.registerHelper("gt", (a, b) => Number(a) > Number(b));
+  if (!Handlebars.helpers.add) Handlebars.registerHelper("add", (a, b) => Number(a) + Number(b));
+  if (!Handlebars.helpers.concat) Handlebars.registerHelper("concat", (...values) => values.slice(0, -1).join(""));
   await loadTemplates([
     `modules/${MODULE_ID}/templates/partials/source-preview.hbs`,
     `modules/${MODULE_ID}/templates/partials/pact-of-the-tome-selection.hbs`
@@ -85,7 +80,7 @@ Hooks.once("init", async () => {
     }
   });
 
-  const api = {
+  game.characterBuilder = {
     open: actor => openForActor(actor),
     eligible: actor => isCreationEligible(actor),
     levelUpEligible: actor => LevelUpService.eligibility(actor),
@@ -96,16 +91,10 @@ Hooks.once("init", async () => {
     openTool: () => game.user.isGM ? new CharacterBuilderToolApp().render({ force: true }) : null,
     openTutorial: () => SplashTutorialService.openNow()
   };
-  game.modules.get(MODULE_ID).api = api;
-  // Backward-compatible alias retained for macros created during the beta.
-  game.characterBuilder = api;
 });
 
 Hooks.once("ready", async () => {
   console.info(`Character Builder ${MODULE_VERSION} (${MODULE_BUILD}) loaded.`);
-  if (!LibWrapperService.register() && game.user.isGM) {
-    ui.notifications.error("Character Builder requires libWrapper. Install and activate libWrapper, then reload the world.", { permanent: true });
-  }
   if (game.system.id !== "dnd5e") {
     ui.notifications.error("Character Builder requires the D&D5e system.");
     return;
@@ -114,22 +103,9 @@ Hooks.once("ready", async () => {
     ui.notifications.warn(`Character Builder ${MODULE_VERSION} was validated against D&D5e 5.3.3. Detected ${game.system.version}.`);
   }
   await ActorCommitService.recoverOwnedInterruptedTransactions();
-  if (game.user.isGM) {
-    try {
-      await ContentSourceService.synchronizeWorldSettings({ force: true, persist: true });
-    } catch (error) {
-      console.warn(`${MODULE_ID} | Initial content-source discovery failed.`, error);
-    }
-    try {
-      await RulesCompatibilityService.applyWorldPolicy();
-    } catch (error) {
-      console.warn(`${MODULE_ID} | Initial rules-policy normalization failed.`, error);
-    }
-  }
   const settings = LevelUpService.settings();
-  if (game.user.isGM && settings.sources?.some(source => source.id === "srd51" && source.enabled)
-    && settings.rulesMode !== "legacy2014") {
-    ui.notifications.info("SRD 5.1 Legacy is enabled under Modern D&D rules. Subclass selection is normalized to Class level 3.");
+  if (game.user.isGM && settings.sources?.some(source => source.id === "srd51" && source.enabled)) {
+    ui.notifications.warn("SRD 5.1 Legacy is enabled, but this beta officially supports only D&D 2024 and SRD 5.2 Modern.");
   }
   if (game.user.isGM) {
     for (const actor of game.actors.filter(candidate => candidate.type === "character"

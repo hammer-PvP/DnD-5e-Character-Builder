@@ -13,7 +13,7 @@
       <i class="fa-solid fa-book-open-reader"></i>
       <strong>Scribe Spell</strong>
       {{else}}
-      <i class="fa-solid {{#if (dnd5eCharacterBuilderEq restType 'short')}}fa-mug-hot{{else}}fa-campground{{/if}}"></i>
+      <i class="fa-solid {{#if (eq restType 'short')}}fa-mug-hot{{else}}fa-campground{{/if}}"></i>
       <strong>{{restLabel}}</strong>
       {{/if}}
       <small>Sources: {{sourceOrder}}</small>
@@ -109,13 +109,13 @@
               {{#each changeSlots}}
               <article class="cb-keeper-mastery-slot" data-mastery-change-slot data-slot-index="{{index}}">
                 <label>
-                  <span>Current Mastery {{#unless ../oneChange}}{{dnd5eCharacterBuilderAdd index 1}}{{/unless}}</span>
+                  <span>Current Mastery {{#unless ../oneChange}}{{add index 1}}{{/unless}}</span>
                   <select name="keeper.mastery.oldKey">
                     <option value="">No change</option>
                     {{#each ../currentChoiceGroups}}
                     <optgroup label="{{label}}">
                       {{#each items}}
-                      <option value="{{key}}" {{#if (dnd5eCharacterBuilderEq key ../../selectedOldKey)}}selected{{/if}}>{{label}}</option>
+                      <option value="{{key}}" {{#if (eq key ../../selectedOldKey)}}selected{{/if}}>{{label}}</option>
                       {{/each}}
                     </optgroup>
                     {{/each}}
@@ -130,7 +130,7 @@
                     <optgroup label="{{label}}">
                       {{#each items}}
                       <option value="{{masteryKey}}" data-base-item="{{baseItem}}" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}"
-                        {{#if (dnd5eCharacterBuilderEq masteryKey ../../selectedNewKey)}}selected{{/if}} {{#if disabled}}disabled{{/if}}>{{displayLabel}}</option>
+                        {{#if (eq masteryKey ../../selectedNewKey)}}selected{{/if}} {{#if disabled}}disabled{{/if}}>{{displayLabel}}</option>
                       {{/each}}
                     </optgroup>
                     {{/each}}
@@ -151,7 +151,7 @@
             {{#each selected.effectChoice.options}}
             <article class="cb-keeper-radio-card {{#if active}}current{{/if}}">
               <label class="cb-keeper-select-zone" title="Select {{label}}">
-                <input type="radio" name="keeper.effectId" value="{{id}}" {{#if (dnd5eCharacterBuilderEq id ../selected.effectChoice.selected)}}checked{{/if}}>
+                <input type="radio" name="keeper.effectId" value="{{id}}" {{#if (eq id ../selected.effectChoice.selected)}}checked{{/if}}>
               </label>
               <button type="button" class="cb-keeper-detail-zone" data-action="open-document" data-uuid="{{referenceUuid}}"
                 title="Open {{label}} details" {{#unless referenceUuid}}disabled{{/unless}}>
@@ -170,14 +170,14 @@
           <header class="cb-choice-section-header"><div><h3>Choose Feature Option</h3><p>Current: <strong>{{selected.activityChoice.currentLabel}}</strong></p></div></header>
           <div class="cb-keeper-option-grid">
             {{#each selected.activityChoice.options}}
-            <article class="cb-keeper-radio-card {{#if (dnd5eCharacterBuilderEq value ../selected.activityChoice.current)}}current{{/if}}">
+            <article class="cb-keeper-radio-card {{#if (eq value ../selected.activityChoice.current)}}current{{/if}}">
               <label class="cb-keeper-select-zone" title="Select {{label}}">
-                <input type="radio" name="keeper.activityValue" value="{{value}}" {{#if (dnd5eCharacterBuilderEq value ../selected.activityChoice.selected)}}checked{{/if}}>
+                <input type="radio" name="keeper.activityValue" value="{{value}}" {{#if (eq value ../selected.activityChoice.selected)}}checked{{/if}}>
               </label>
               <button type="button" class="cb-keeper-detail-zone" data-action="open-document" data-uuid="{{referenceUuid}}"
                 title="Open {{label}} details" {{#unless referenceUuid}}disabled{{/unless}}>
                 <img src="{{img}}" alt="">
-                <span><strong>{{label}}</strong><small>{{#if (dnd5eCharacterBuilderEq value ../selected.activityChoice.current)}}Current choice{{else}}Available choice{{/if}}</small></span>
+                <span><strong>{{label}}</strong><small>{{#if (eq value ../selected.activityChoice.current)}}Current choice{{else}}Available choice{{/if}}</small></span>
                 <i class="fa-solid fa-book-open" aria-hidden="true"></i>
               </button>
             </article>
@@ -249,7 +249,7 @@
               {{#each selected.wildShapeContext.current}}
               <article class="cb-keeper-radio-card">
                 <label class="cb-keeper-select-zone" title="Select {{name}}">
-                  <input type="radio" name="keeper.wildShape.oldUuid" value="{{uuid}}" {{#if (dnd5eCharacterBuilderEq uuid ../selected.wildShapeContext.replacingId)}}checked{{/if}}>
+                  <input type="radio" name="keeper.wildShape.oldUuid" value="{{uuid}}" {{#if (eq uuid ../selected.wildShapeContext.replacingId)}}checked{{/if}}>
                 </label>
                 <button type="button" class="cb-keeper-detail-zone" data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}} details">
                   <img src="{{img}}" alt="">
@@ -267,7 +267,7 @@
               {{#each selected.wildShapeContext.options}}
               <article class="cb-keeper-radio-card {{#if disabled}}disabled{{/if}}" data-search="{{name}} {{sourceLabel}}" {{#if disabled}}aria-disabled="true"{{/if}}>
                 <label class="cb-keeper-select-zone" title="{{#if disabled}}Already known{{else}}Select {{name}}{{/if}}">
-                  <input type="radio" name="keeper.wildShape.newUuid" value="{{uuid}}" {{#if (dnd5eCharacterBuilderEq uuid ../selected.wildShapeContext.selectedUuid)}}checked{{/if}} {{#if disabled}}disabled{{/if}}>
+                  <input type="radio" name="keeper.wildShape.newUuid" value="{{uuid}}" {{#if (eq uuid ../selected.wildShapeContext.selectedUuid)}}checked{{/if}} {{#if disabled}}disabled{{/if}}>
                 </label>
                 <button type="button" class="cb-keeper-detail-zone" data-action="open-document" data-uuid="{{uuid}}" title="{{#if disabled}}Already known{{else}}Open {{name}} details{{/if}}" {{#if disabled}}disabled{{/if}}>
                   <img src="{{img}}" alt="">
@@ -297,7 +297,7 @@
               {{#each selected.replaceCantrip.current}}
               <article class="cb-keeper-radio-card {{#if disabled}}disabled{{/if}}" title="{{disabledReason}}" {{#if disabled}}aria-disabled="true"{{/if}}>
                 <label class="cb-keeper-select-zone" title="{{#if disabled}}{{disabledReason}}{{else}}Select {{name}}{{/if}}">
-                  <input type="radio" name="keeper.cantrip.oldItemId" value="{{id}}" {{#if (dnd5eCharacterBuilderEq id ../selected.replaceCantrip.oldItemId)}}checked{{/if}} {{#if disabled}}disabled{{/if}}>
+                  <input type="radio" name="keeper.cantrip.oldItemId" value="{{id}}" {{#if (eq id ../selected.replaceCantrip.oldItemId)}}checked{{/if}} {{#if disabled}}disabled{{/if}}>
                 </label>
                 <button type="button" class="cb-keeper-detail-zone" data-action="open-document" data-uuid="{{sourceUuid}}"
                   title="{{#if disabled}}{{disabledReason}}{{else}}Open {{name}} details{{/if}}" {{#if disabled}}disabled{{else}}{{#unless sourceUuid}}disabled{{/unless}}{{/if}}>
@@ -316,7 +316,7 @@
               {{#each selected.replaceCantrip.options}}
               <article class="cb-keeper-radio-card {{#if disabled}}disabled{{/if}}" data-search="{{name}} {{sourceLabel}}" {{#if disabled}}aria-disabled="true"{{/if}}>
                 <label class="cb-keeper-select-zone" title="{{#if disabled}}Already known{{else}}Select {{name}}{{/if}}">
-                  <input type="radio" name="keeper.cantrip.newUuid" value="{{uuid}}" {{#if (dnd5eCharacterBuilderEq uuid ../selected.replaceCantrip.newUuid)}}checked{{/if}} {{#if disabled}}disabled{{/if}}>
+                  <input type="radio" name="keeper.cantrip.newUuid" value="{{uuid}}" {{#if (eq uuid ../selected.replaceCantrip.newUuid)}}checked{{/if}} {{#if disabled}}disabled{{/if}}>
                 </label>
                 <button type="button" class="cb-keeper-detail-zone" data-action="open-document" data-uuid="{{uuid}}"
                   title="{{#if disabled}}Already known{{else}}Open {{name}} details{{/if}}" {{#if disabled}}disabled{{/if}}>
@@ -339,7 +339,7 @@
               {{#each selected.spellMastery.current}}
               <article class="cb-keeper-radio-card">
                 <label class="cb-keeper-select-zone" title="Select {{name}}">
-                  <input type="radio" name="keeper.spellMastery.oldItemId" value="{{id}}" data-level="{{level}}" {{#if (dnd5eCharacterBuilderEq id ../selected.spellMastery.oldItemId)}}checked{{/if}}>
+                  <input type="radio" name="keeper.spellMastery.oldItemId" value="{{id}}" data-level="{{level}}" {{#if (eq id ../selected.spellMastery.oldItemId)}}checked{{/if}}>
                 </label>
                 <button type="button" class="cb-keeper-detail-zone" data-action="open-document" data-uuid="{{referenceUuid}}" title="Open {{name}} details" {{#unless referenceUuid}}disabled{{/unless}}>
                   <img src="{{img}}" alt="">
@@ -356,7 +356,7 @@
               {{#each selected.spellMastery.candidates}}
               <article class="cb-keeper-radio-card" data-spell-mastery-candidate data-item-id="{{id}}" data-level="{{level}}">
                 <label class="cb-keeper-select-zone" title="Select {{name}}">
-                  <input type="radio" name="keeper.spellMastery.newItemId" value="{{id}}" {{#if (dnd5eCharacterBuilderEq id ../selected.spellMastery.newItemId)}}checked{{/if}}>
+                  <input type="radio" name="keeper.spellMastery.newItemId" value="{{id}}" {{#if (eq id ../selected.spellMastery.newItemId)}}checked{{/if}}>
                 </label>
                 <button type="button" class="cb-keeper-detail-zone" data-action="open-document" data-uuid="{{referenceUuid}}" title="Open {{name}} details" {{#unless referenceUuid}}disabled{{/unless}}>
                   <img src="{{img}}" alt="">
@@ -420,7 +420,7 @@
               <label class="cb-keeper-select-zone" title="Select {{spellName}}">
                 <input type="radio" name="keeper.scribe.sourceItemId" value="{{sourceItemId}}"
                   data-affordable="{{#if affordable}}true{{else}}false{{/if}}"
-                  {{#if (dnd5eCharacterBuilderEq sourceItemId ../selected.scribeContext.selectedSourceItemId)}}checked{{/if}}>
+                  {{#if (eq sourceItemId ../selected.scribeContext.selectedSourceItemId)}}checked{{/if}}>
               </label>
               <button type="button" class="cb-keeper-detail-zone" data-action="open-document" data-uuid="{{sourceUuid}}" title="Open {{spellName}} details" {{#unless sourceUuid}}disabled{{/unless}}>
                 <img src="{{spellImg}}" alt="">

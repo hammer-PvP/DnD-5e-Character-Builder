@@ -92,7 +92,7 @@ export class ShopService {
     registry,
     budgetBreakdown,
     settings,
-    { equipmentFingerprint = null, resetOnEquipmentChange = true, markEquipmentDirty = true } = {}
+    { equipmentFingerprint = null, resetOnEquipmentChange = true } = {}
   ) {
     const state = DraftManager.getBuildState(draft);
     const previous = state.shop ?? {};
@@ -169,16 +169,7 @@ export class ShopService {
       committedRemainingCp: totalBudgetCp - committedSpentCp,
       checkout: equipmentChanged ? null : foundry.utils.deepClone(previous.checkout ?? null)
     };
-    const checkoutCurrent = Boolean(shop.checkout?.transactionId && shop.checkout.budgetFingerprint === budgetFingerprint);
-    const appliedSpentCp = checkoutCurrent ? committedSpentCp : 0;
-    const reconciledCurrency = this.cpToCurrency(Math.max(0, totalBudgetCp - appliedSpentCp));
-    if (this.currencyToCp(draft.system.currency ?? {}) !== this.currencyToCp(reconciledCurrency)) {
-      await draft.update({ "system.currency": reconciledCurrency });
-    }
-    await DraftManager.setBuildState(draft, {
-      shop,
-      ...(markEquipmentDirty ? { equipmentSaved: false } : {})
-    });
+    await DraftManager.setBuildState(draft, { shop, equipmentSaved: false });
     return { ...shop, resetPurchases: equipmentChanged && hadPurchases };
   }
 

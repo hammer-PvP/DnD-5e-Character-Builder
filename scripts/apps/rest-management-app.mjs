@@ -53,7 +53,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
 
   static DEFAULT_OPTIONS = {
     id: "dnd5e-character-keeper",
-    classes: ["dnd5e-character-builder", "character-builder", "rest-management-app", "standard-form"],
+    classes: ["character-builder", "rest-management-app", "standard-form"],
     tag: "form",
     position: { width: 1180, height: 820 },
     window: { title: "Character Keeper", resizable: true }
@@ -832,7 +832,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
       key: `scribe-confirmation:${this.actor.id}`,
       matchClass: "cb-scribe-transaction-dialog",
       dialogOptions: {
-        classes: ["dnd5e-character-builder", "character-builder", "cb-protected-transaction-dialog", "cb-scribe-transaction-dialog"],
+        classes: ["character-builder", "cb-protected-transaction-dialog", "cb-scribe-transaction-dialog"],
         window: { title: "Confirm Scribing Attempt", modal: true },
         content,
         yes: { label: `Confirm Scribing\n${cost}`, icon: "fa-solid fa-book" },

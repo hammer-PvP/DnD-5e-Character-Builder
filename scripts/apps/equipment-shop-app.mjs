@@ -20,7 +20,7 @@ export class EquipmentShopApp extends HandlebarsApplicationMixin(ApplicationV2) 
 
   static DEFAULT_OPTIONS = {
     id: "dnd5e-character-builder-shop",
-    classes: ["dnd5e-character-builder", "character-builder", "cb-shop-app"],
+    classes: ["character-builder", "cb-shop-app"],
     tag: "section",
     position: { width: 1180, height: 760 },
     window: { title: "Starting Equipment Shop", resizable: true }

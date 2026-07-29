@@ -23,7 +23,7 @@
         <article class="cb-keeper-radio-card cb-keeper-tome-card {{#if disabled}}disabled{{/if}}"
           data-search="{{search}}" data-spell-option title="{{disabledReason}}" {{#if disabled}}aria-disabled="true"{{/if}}>
           <label class="cb-keeper-select-zone" title="{{#if disabled}}{{disabledReason}}{{else}}Select {{name}}{{/if}}">
-            <input type="checkbox" name="{{dnd5eCharacterBuilderConcat ../../fieldPrefix '.cantrips'}}" value="{{identifier}}"
+            <input type="checkbox" name="{{concat ../../fieldPrefix '.cantrips'}}" value="{{identifier}}"
               data-managed-selection-control data-spell-identifier="{{identifier}}"
               data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}"
               {{checked checked}} {{#if disabled}}disabled{{/if}}>
@@ -39,7 +39,7 @@
         <article class="cb-spell-option {{#if disabled}}duplicate-disabled{{/if}}"
           data-search="{{search}}" data-spell-option title="{{disabledReason}}">
           <label class="cb-spell-toggle" title="{{#if disabled}}{{disabledReason}}{{else}}Select {{name}}{{/if}}">
-            <input type="checkbox" name="{{dnd5eCharacterBuilderConcat ../../fieldPrefix '.cantrips'}}" value="{{identifier}}"
+            <input type="checkbox" name="{{concat ../../fieldPrefix '.cantrips'}}" value="{{identifier}}"
               data-spell-identifier="{{identifier}}"
               data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}"
               {{checked checked}} {{#if disabled}}disabled{{/if}}>
@@ -74,7 +74,7 @@
         <article class="cb-keeper-radio-card cb-keeper-tome-card {{#if disabled}}disabled{{/if}}"
           data-search="{{search}}" data-spell-option title="{{disabledReason}}" {{#if disabled}}aria-disabled="true"{{/if}}>
           <label class="cb-keeper-select-zone" title="{{#if disabled}}{{disabledReason}}{{else}}Select {{name}}{{/if}}">
-            <input type="checkbox" name="{{dnd5eCharacterBuilderConcat ../../fieldPrefix '.rituals'}}" value="{{identifier}}"
+            <input type="checkbox" name="{{concat ../../fieldPrefix '.rituals'}}" value="{{identifier}}"
               data-managed-selection-control data-spell-identifier="{{identifier}}"
               data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}"
               {{checked checked}} {{#if disabled}}disabled{{/if}}>
@@ -90,7 +90,7 @@
         <article class="cb-spell-option {{#if disabled}}duplicate-disabled{{/if}}"
           data-search="{{search}}" data-spell-option title="{{disabledReason}}">
           <label class="cb-spell-toggle" title="{{#if disabled}}{{disabledReason}}{{else}}Select {{name}}{{/if}}">
-            <input type="checkbox" name="{{dnd5eCharacterBuilderConcat ../../fieldPrefix '.rituals'}}" value="{{identifier}}"
+            <input type="checkbox" name="{{concat ../../fieldPrefix '.rituals'}}" value="{{identifier}}"
               data-spell-identifier="{{identifier}}"
               data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}"
               {{checked checked}} {{#if disabled}}disabled{{/if}}>

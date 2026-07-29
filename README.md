@@ -1,6 +1,6 @@
 # Character Builder
 
-**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14 and D&D5e 5.3.3. It supports a Modern D&D progression policy and a source-authored 2014 progression policy.
+**Character Builder** is a guided D&D 2024 character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14 and D&D5e 5.3.3.
 
 It uses the official D&D5e documents and native Advancement system as its rules spine. Character Builder guides the choices, prepares them in drafts, validates the result, and commits the completed transaction to the live Actor.
 
@@ -14,29 +14,19 @@ It uses the official D&D5e documents and native Advancement system as its rules 
 - D&D5e 5.3.3
 - Player's Handbook 2024 content package
 - SRD 5.2 Modern
-- SRD 5.1 Legacy and compatible 2014 compendiums through the Legacy progression mode
-- Dynamically discovered third-party and world Item compendiums
+
+SRD 5.1 Legacy is not officially supported.
 
 ## Installation
 
 Install the module through Foundry's package browser, or use the manifest URL published on the module page.
-
-### Required dependency: libWrapper
-
-Character Builder requires **libWrapper 1.13.5.1 or newer**. The dependency is declared in `module.json` with its official manifest URL, allowing Foundry to resolve and install it with Character Builder. A world cannot enable Character Builder while the required dependency is missing or inactive.
-
-Official libWrapper project:
-
-`https://github.com/ruipin/fvtt-lib-wrapper`
-
-libWrapper coordinates the module's required D&D5e method wrapper with other packages and provides conflict diagnostics to the Game Master. Character Builder does not directly replace Foundry or D&D5e prototype methods.
 
 For GitHub releases, the canonical release assets are:
 
 - `module.json`
 - `dnd5e-character-builder.zip`
 
-Enable **Character Builder (DnD 5e)** in the world after installation.
+Enable **Character Builder (DnD 5e - 2024)** in the world after installation.
 
 ## Quick Start — Game Master
 
@@ -112,17 +102,7 @@ Character creation includes:
 
 Supported Ability Score methods include Point Buy, Standard Array, GM-defined Custom Array, rolled sets, and optional Manual entry.
 
-The Starting Equipment Shop supports mundane level-1 equipment, exact quantities, containers, returns, source equipment, captured starting budgets, and configurable GM Bonus Gold. The Draft receives the GM bonus immediately, adds Class and Background currency as those documents are selected, and keeps that currency even when the player does not open or purchase from the Shop.
-
-
-## Rules Progression Model
-
-The GM chooses one world-level progression model:
-
-- **Modern D&D (2024 / SRD 5.2):** subclass selection cannot occur before Class level 3. When an older Class document places its subclass choice at level 1 or 2, Character Builder moves that native ItemChoice Advancement to level 3. The native D&D5e workflow then delivers the subclass and all eligible subclass Advancements through level 3 together.
-- **D&D 5th Edition (2014 / SRD 5.1):** preserves the levels authored in the selected Class and Subclass documents, including subclasses selected before level 3.
-
-Character Builder changes only the Advancement schedule required by the selected policy. The actual selection and grants continue through the native D&D5e AdvancementManager.
+The Starting Equipment Shop supports mundane level-1 equipment, exact quantities, containers, returns, source equipment, captured starting budgets, and configurable GM Bonus Gold.
 
 ## Level Up and Multiclass
 
@@ -196,13 +176,10 @@ Pending gifts can be revoked before redemption. Applied boons remain on the Acto
 
 Character Builder reads enabled compendia instead of rebuilding or cloning their catalogs.
 
-The dedicated **Select Content Sources** screen scans active module, system, and world Item compendiums. Compatible packages appear automatically when they contain Classes, Subclasses, Features/Feats, Spells, Backgrounds, Species, weapons, equipment, consumables, tools, containers, or loot. The GM can enable sources and arrange their priority without relying on a fixed allowlist.
+The GM can configure:
 
-Examples include the Player's Handbook, Dungeon Master's Guide, SRD packages, third-party class/subclass modules, and world compendiums.
-
-The GM can also configure:
-
-- Modern D&D or D&D 5th Edition (2014) progression rules;
+- enabled content packages;
+- source priority;
 - Ability Score methods;
 - Level Up mode;
 - multiclass rules;
@@ -232,25 +209,6 @@ While a commit or confirmation is active:
   <img src="docs/images/protected-transaction.png" alt="Protected Level Up transaction overlay" width="780">
 </p>
 
-
-## Compatibility Hardening
-
-Character Builder is designed for worlds that may run many other modules in the same browser context.
-
-The current compatibility policy includes:
-
-- libWrapper-managed interception instead of direct prototype replacement;
-- concrete type checks before collection access;
-- no reliance on non-standard `Array.prototype.first()` or similar convenience extensions;
-- module-prefixed Handlebars helpers and Application classes;
-- a namespaced public API at `game.modules.get("dnd5e-character-builder").api`;
-- the legacy `game.characterBuilder` alias retained for existing beta macros;
-- native Application close hooks retained as a fallback for protected Advancement cleanup.
-
-These protections reduce conflicts, but Foundry modules still share one JavaScript environment. Reproducible compatibility reports should include the complete active-module list.
-
-See [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for the wrapper inventory and conflict-report checklist.
-
 ## Scope and Responsibility
 
 Character Builder is responsible for delivering the Items, spells, features, effects, ownership, Advancements, flags, and resources required by the selected rules and choices.
@@ -270,8 +228,7 @@ Useful reports include:
 - class/subclass and current level;
 - exact steps;
 - screenshots;
-- exported Actor JSON when the problem concerns Actor data;
-- complete active-module list when the stack includes another package or a generated `Bundle.js` file.
+- exported Actor JSON when the problem concerns Actor data.
 
 ## Changelog
 

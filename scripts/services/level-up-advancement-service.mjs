@@ -10,7 +10,6 @@ import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.
 import { ManagedAdvancementRegistry } from "./managed-advancement-registry.mjs";
 import { ItemChoiceReplacementIntegrityService } from "./item-choice-replacement-integrity-service.mjs";
 import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
-import { RulesCompatibilityService } from "./rules-compatibility-service.mjs";
 
 export class LevelUpAdvancementService {
   static async apply(draft, registry) {
@@ -32,7 +31,6 @@ export class LevelUpAdvancementService {
         const document = await fromUuid(state.selectedClassSourceUuid);
         if (!document) throw new Error("The selected multiclass source document could not be loaded.");
         let data = SourceResolver.filterAdvancementPools(document.toObject(), registry);
-        data = RulesCompatibilityService.prepareClassData(data, { sourceUuid: document.uuid ?? state.selectedClassSourceUuid });
         delete data._id;
         data.system ??= {};
         data.system.levels = 1;
@@ -45,7 +43,6 @@ export class LevelUpAdvancementService {
       } else {
         const classItem = draft.items.get(state.selectedClassId);
         if (!classItem) throw new Error("The selected Class no longer exists on the Level Up draft.");
-        await RulesCompatibilityService.ensureClassItemPolicy(classItem);
         manager = Manager.forLevelChange(draft, classItem.id, 1, {
           automaticApplication: true,
           showVisualizer: false

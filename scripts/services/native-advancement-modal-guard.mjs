@@ -1,5 +1,4 @@
 import { MODULE_ID } from "../constants.mjs";
-import { LibWrapperService } from "./lib-wrapper-service.mjs";
 
 /**
  * Runs a D&D5e AdvancementManager as a protected modal workflow.
@@ -36,8 +35,7 @@ export class NativeAdvancementModalGuard {
       let settled = false;
       let completionHook = null;
       let renderHook = null;
-      let closeHook = null;
-      let removeCloseObserver = null;
+      const originalClose = manager.close.bind(manager);
       const ownerElement = this.#findOwnerElement();
       const ownerInert = ownerElement?.inert ?? false;
       const overlay = this.#createOverlay();
@@ -48,13 +46,12 @@ export class NativeAdvancementModalGuard {
         ownerInert,
         completionHook: null,
         renderHook: null,
-        closeHook: null,
-        removeCloseObserver: null,
+        originalClose,
         focusApplied: false,
         released: false
       };
 
-      const cleanupSettlementHooks = () => {
+      const cleanupHooks = () => {
         if (completionHook !== null) Hooks.off("dnd5e.advancementManagerComplete", completionHook);
         if (renderHook !== null) Hooks.off("renderApplicationV2", renderHook);
         completionHook = null;
@@ -66,7 +63,7 @@ export class NativeAdvancementModalGuard {
       const settle = (result, error = null) => {
         if (settled) return;
         settled = true;
-        cleanupSettlementHooks();
+        cleanupHooks();
         if (error) reject(error);
         else resolve(result);
       };
@@ -90,21 +87,14 @@ export class NativeAdvancementModalGuard {
       });
       active.renderHook = renderHook;
 
-      const handleClose = () => {
-        if (!completed) settle({ completed: false, cancelled: true });
-        this.#release(active);
+      manager.close = async (...args) => {
+        try {
+          return await originalClose(...args);
+        } finally {
+          if (!completed) settle({ completed: false, cancelled: true });
+          this.#release(active);
+        }
       };
-
-      removeCloseObserver = LibWrapperService.observeAdvancementClose(manager, handleClose);
-      active.removeCloseObserver = removeCloseObserver;
-
-      // Core ApplicationV2 close hook is retained as a defensive fallback if a
-      // future D&D5e update moves or renames the wrapped method. Duplicate close
-      // notifications are harmless because settlement and release are idempotent.
-      closeHook = Hooks.on("closeApplicationV2", closedApp => {
-        if (closedApp === manager) handleClose();
-      });
-      active.closeHook = closeHook;
 
       try {
         this.#activate(active);
@@ -141,12 +131,8 @@ export class NativeAdvancementModalGuard {
 
     if (active.completionHook !== null) Hooks.off("dnd5e.advancementManagerComplete", active.completionHook);
     if (active.renderHook !== null) Hooks.off("renderApplicationV2", active.renderHook);
-    if (active.closeHook !== null) Hooks.off("closeApplicationV2", active.closeHook);
-    active.removeCloseObserver?.();
     active.completionHook = null;
     active.renderHook = null;
-    active.closeHook = null;
-    active.removeCloseObserver = null;
 
     active.overlay?.remove();
     if (active.ownerElement) {
@@ -185,7 +171,7 @@ export class NativeAdvancementModalGuard {
   }
 
   static #findOwnerElement() {
-    const candidates = [...document.querySelectorAll(".application.dnd5e-character-builder")]
+    const candidates = [...document.querySelectorAll(".application.character-builder")]
       .filter(element => element.isConnected && !element.hidden && getComputedStyle(element).display !== "none");
     return candidates.sort((a, b) => this.#zIndex(b) - this.#zIndex(a))[0] ?? null;
   }
@@ -193,8 +179,7 @@ export class NativeAdvancementModalGuard {
   static #isCharacterBuilderApplication(app) {
     if (!app) return false;
     const classes = app.options?.classes ?? app.constructor?.DEFAULT_OPTIONS?.classes ?? [];
-    return classes.includes?.("dnd5e-character-builder")
-      || app.element?.classList?.contains("dnd5e-character-builder");
+    return classes.includes?.("character-builder") || app.element?.classList?.contains("character-builder");
   }
 
   static #scheduleLayerSync(active, { focus = false } = {}) {

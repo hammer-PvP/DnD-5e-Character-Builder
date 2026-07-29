@@ -14,7 +14,6 @@ import { SourceResolver } from "../services/source-resolver.mjs";
 import { CustomBackgroundService, CUSTOM_BACKGROUND_UUID } from "../services/custom-background-service.mjs";
 import { ItemGrantIntegrityService } from "../services/item-grant-integrity-service.mjs";
 import { AdvancementChoiceAnnotationService } from "../services/advancement-choice-annotation-service.mjs";
-import { firstValue } from "../utils/safe-collections.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 const TextEditorImplementation = foundry.applications.ux.TextEditor.implementation;
@@ -42,7 +41,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
   static DEFAULT_OPTIONS = {
     id: "dnd5e-character-builder",
-    classes: ["dnd5e-character-builder", "character-builder", "standard-form"],
+    classes: ["character-builder", "standard-form"],
     tag: "form",
     position: { width: 1240, height: 840 },
     window: { title: "Character Builder", resizable: true }
@@ -85,8 +84,6 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     }
 
     const settings = this.#settings();
-    await EquipmentService.synchronizeDraftBudget(this.draft, this.registry, settings);
-    state = DraftManager.getBuildState(this.draft);
     const step = state.step ?? "abilitiesBackground";
     const species = this.draft.items.find(item => item.type === "race") ?? null;
     const background = this.draft.items.find(item => item.type === "background") ?? null;
@@ -1308,7 +1305,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     }
     if (systemSourceItem) {
       const directSource = this.draft.items.get(systemSourceItem)
-        ?? firstValue(this.draft.identifiedItems?.get(systemSourceItem));
+        ?? this.draft.identifiedItems?.get(systemSourceItem)?.first?.();
       if (directSource) return directSource.name;
     }
 

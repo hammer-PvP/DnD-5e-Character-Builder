@@ -27,7 +27,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
   static DEFAULT_OPTIONS = {
     id: "dnd5e-character-level-up",
-    classes: ["dnd5e-character-builder", "character-builder", "level-up-app", "standard-form"],
+    classes: ["character-builder", "level-up-app", "standard-form"],
     tag: "form",
     position: { width: 1180, height: 820 },
     window: { title: "Character Builder — Level Up", resizable: true }
