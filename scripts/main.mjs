@@ -12,6 +12,8 @@ import { ClassProgressionGuard } from "./services/class-progression-guard.mjs";
 import { RestManagementApp } from "./apps/rest-management-app.mjs";
 import { SourceRegistry } from "./services/source-registry.mjs";
 import { SplashTutorialService } from "./services/splash-tutorial-service.mjs";
+import { ContentSourceService } from "./services/content-source-service.mjs";
+import { RulesCompatibilityService } from "./services/rules-compatibility-service.mjs";
 
 let scribeIconPromise = null;
 
@@ -103,9 +105,22 @@ Hooks.once("ready", async () => {
     ui.notifications.warn(`Character Builder ${MODULE_VERSION} was validated against D&D5e 5.3.3. Detected ${game.system.version}.`);
   }
   await ActorCommitService.recoverOwnedInterruptedTransactions();
+  if (game.user.isGM) {
+    try {
+      await ContentSourceService.synchronizeWorldSettings({ force: true, persist: true });
+    } catch (error) {
+      console.warn(`${MODULE_ID} | Initial content-source discovery failed.`, error);
+    }
+    try {
+      await RulesCompatibilityService.applyWorldPolicy();
+    } catch (error) {
+      console.warn(`${MODULE_ID} | Initial rules-policy normalization failed.`, error);
+    }
+  }
   const settings = LevelUpService.settings();
-  if (game.user.isGM && settings.sources?.some(source => source.id === "srd51" && source.enabled)) {
-    ui.notifications.warn("SRD 5.1 Legacy is enabled, but this beta officially supports only D&D 2024 and SRD 5.2 Modern.");
+  if (game.user.isGM && settings.sources?.some(source => source.id === "srd51" && source.enabled)
+    && settings.rulesMode !== "legacy2014") {
+    ui.notifications.info("SRD 5.1 Legacy is enabled under Modern D&D rules. Subclass selection is normalized to Class level 3.");
   }
   if (game.user.isGM) {
     for (const actor of game.actors.filter(candidate => candidate.type === "character"

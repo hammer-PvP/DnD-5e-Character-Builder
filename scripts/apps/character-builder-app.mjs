@@ -84,6 +84,8 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     }
 
     const settings = this.#settings();
+    await EquipmentService.synchronizeDraftBudget(this.draft, this.registry, settings);
+    state = DraftManager.getBuildState(this.draft);
     const step = state.step ?? "abilitiesBackground";
     const species = this.draft.items.find(item => item.type === "race") ?? null;
     const background = this.draft.items.find(item => item.type === "background") ?? null;

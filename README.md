@@ -1,6 +1,6 @@
 # Character Builder
 
-**Character Builder** is a guided D&D 2024 character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14 and D&D5e 5.3.3.
+**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14 and D&D5e 5.3.3. It supports a Modern D&D progression policy and a source-authored 2014 progression policy.
 
 It uses the official D&D5e documents and native Advancement system as its rules spine. Character Builder guides the choices, prepares them in drafts, validates the result, and commits the completed transaction to the live Actor.
 
@@ -14,8 +14,8 @@ It uses the official D&D5e documents and native Advancement system as its rules 
 - D&D5e 5.3.3
 - Player's Handbook 2024 content package
 - SRD 5.2 Modern
-
-SRD 5.1 Legacy is not officially supported.
+- SRD 5.1 Legacy and compatible 2014 compendiums through the Legacy progression mode
+- Dynamically discovered third-party and world Item compendiums
 
 ## Installation
 
@@ -26,7 +26,7 @@ For GitHub releases, the canonical release assets are:
 - `module.json`
 - `dnd5e-character-builder.zip`
 
-Enable **Character Builder (DnD 5e - 2024)** in the world after installation.
+Enable **Character Builder (DnD 5e)** in the world after installation.
 
 ## Quick Start — Game Master
 
@@ -102,7 +102,17 @@ Character creation includes:
 
 Supported Ability Score methods include Point Buy, Standard Array, GM-defined Custom Array, rolled sets, and optional Manual entry.
 
-The Starting Equipment Shop supports mundane level-1 equipment, exact quantities, containers, returns, source equipment, captured starting budgets, and configurable GM Bonus Gold.
+The Starting Equipment Shop supports mundane level-1 equipment, exact quantities, containers, returns, source equipment, captured starting budgets, and configurable GM Bonus Gold. The Draft receives the GM bonus immediately, adds Class and Background currency as those documents are selected, and keeps that currency even when the player does not open or purchase from the Shop.
+
+
+## Rules Progression Model
+
+The GM chooses one world-level progression model:
+
+- **Modern D&D (2024 / SRD 5.2):** subclass selection cannot occur before Class level 3. When an older Class document places its subclass choice at level 1 or 2, Character Builder moves that native ItemChoice Advancement to level 3. The native D&D5e workflow then delivers the subclass and all eligible subclass Advancements through level 3 together.
+- **D&D 5th Edition (2014 / SRD 5.1):** preserves the levels authored in the selected Class and Subclass documents, including subclasses selected before level 3.
+
+Character Builder changes only the Advancement schedule required by the selected policy. The actual selection and grants continue through the native D&D5e AdvancementManager.
 
 ## Level Up and Multiclass
 
@@ -176,10 +186,13 @@ Pending gifts can be revoked before redemption. Applied boons remain on the Acto
 
 Character Builder reads enabled compendia instead of rebuilding or cloning their catalogs.
 
-The GM can configure:
+The dedicated **Select Content Sources** screen scans active module, system, and world Item compendiums. Compatible packages appear automatically when they contain Classes, Subclasses, Features/Feats, Spells, Backgrounds, Species, weapons, equipment, consumables, tools, containers, or loot. The GM can enable sources and arrange their priority without relying on a fixed allowlist.
 
-- enabled content packages;
-- source priority;
+Examples include the Player's Handbook, Dungeon Master's Guide, SRD packages, third-party class/subclass modules, and world compendiums.
+
+The GM can also configure:
+
+- Modern D&D or D&D 5th Edition (2014) progression rules;
 - Ability Score methods;
 - Level Up mode;
 - multiclass rules;

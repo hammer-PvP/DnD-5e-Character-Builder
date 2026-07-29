@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.8d";
-export const MODULE_BUILD = "community-beta-098d-user-scoped-tutorial-and-github-docs";
+export const MODULE_VERSION = "0.9.8e";
+export const MODULE_BUILD = "community-beta-098e-dynamic-sources-rules-policy-and-starting-gold";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -22,13 +22,27 @@ export const SOURCE_DEFINITIONS = {
   },
   srd51: {
     id: "srd51",
-    label: "SRD 5.1 LEGACY (UNSUPPORTED)",
+    label: "SRD 5.1 LEGACY",
     packageId: "dnd5e",
     sourceBook: "SRD 5.1",
     defaultEnabled: false,
     defaultPriority: 2
   }
 };
+
+
+export const RULES_MODES = Object.freeze({
+  modern2024: {
+    id: "modern2024",
+    label: "Modern D&D (2024 / SRD 5.2)",
+    subclassLevelFloor: 3
+  },
+  legacy2014: {
+    id: "legacy2014",
+    label: "D&D 5th Edition (2014 / SRD 5.1)",
+    subclassLevelFloor: null
+  }
+});
 
 export const ABILITIES = [
   { key: "str", label: "Strength" },
@@ -96,6 +110,7 @@ export const WIZARD_SCHOOLS = Object.freeze({
 export function defaultSettings() {
   return {
     promptOnCreate: true,
+    rulesMode: "modern2024",
     shopBonusGold: 0,
     sources: Object.values(SOURCE_DEFINITIONS).map(source => ({
       id: source.id,

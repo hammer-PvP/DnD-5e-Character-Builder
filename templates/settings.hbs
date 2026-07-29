@@ -4,7 +4,7 @@
     <div>
       <h1>Character Builder</h1>
       {{#if isGM}}
-      <p>Configure D&D 2024 / SRD 5.2 Modern character creation and Level Up behavior.</p>
+      <p>Configure Character Builder rules, content sources, character creation, Level Up, and Character Keeper behavior.</p>
       {{else}}
       <p>Manage the Character Builder splash tutorial for your user.</p>
       {{/if}}
@@ -35,28 +35,32 @@
       </fieldset>
 
       {{#if isGM}}
-      <fieldset class="cb-settings-wide">
-        <legend>Content Sources and Priority</legend>
-        <p class="hint">Sources are complete packages or logical SRD sources. Higher rows have higher priority.</p>
-        <div class="cb-source-order">
-          {{#each sources}}
-          <div class="cb-source-setting" data-source-id="{{id}}">
-            <input type="checkbox" {{checked enabled}} {{#unless installed}}disabled{{/unless}}>
-            <strong>{{label}}</strong>
-            {{#if legacy}}<span class="cb-badge warning">Not Officially Supported</span>{{/if}}
-            {{#unless installed}}<span class="cb-badge warning">Not Installed</span>{{/unless}}
-            <div class="cb-order-buttons">
-              <button type="button" data-action="move-source" data-direction="up" aria-label="Move Up">
-                <i class="fa-solid fa-arrow-up"></i>
-              </button>
-              <button type="button" data-action="move-source" data-direction="down" aria-label="Move Down">
-                <i class="fa-solid fa-arrow-down"></i>
-              </button>
-            </div>
+      <fieldset class="cb-settings-wide cb-content-source-summary-card">
+        <legend>Content Sources</legend>
+        <div class="cb-content-source-summary-layout">
+          <div>
+            <p><strong>{{enabledSourceCount}}</strong> of <strong>{{availableSourceCount}}</strong> discovered sources are enabled.</p>
+            <p class="hint">{{#if enabledSourceLabels}}Priority: {{enabledSourceLabels}}{{else}}No installed source is currently enabled.{{/if}}</p>
+            <p class="hint">Character Builder scans active module, system, and world Item compendiums for Classes, Subclasses, Features, Spells, Backgrounds, Species, and equipment.</p>
           </div>
-          {{/each}}
+          <button type="button" class="gold-button" data-action="configure-sources">
+            <i class="fa-solid fa-books"></i> Select Content Sources
+          </button>
         </div>
-        <p class="hint"><strong>Official compatibility:</strong> Player's Handbook 2024 and SRD 5.2 Modern. SRD 5.1 Legacy remains available only for future validation.</p>
+      </fieldset>
+
+      <fieldset class="cb-settings-wide cb-rules-mode-setting">
+        <legend>Rules Progression Model</legend>
+        <div class="form-group cb-settings-form-group">
+          <label>Rules Generation</label>
+          <select name="rulesMode">
+            {{#each rulesModes}}
+            <option value="{{id}}" {{#if selected}}selected{{/if}}>{{label}}</option>
+            {{/each}}
+          </select>
+        </div>
+        <p class="hint"><strong>Modern D&amp;D:</strong> subclass selection is held until Class level 3. Native subclass Advancements originally assigned to levels 1 or 2 are delivered together when the subclass is chosen at level 3.</p>
+        <p class="hint"><strong>D&amp;D 5th Edition (2014):</strong> preserves the levels declared by the selected Class and Subclass documents, including subclasses chosen before level 3.</p>
       </fieldset>
 
       <fieldset>
@@ -105,7 +109,7 @@
         <div class="form-group cb-settings-form-group">
           <label>Shop Bonus Gold</label>
           <input type="number" name="shopBonusGold" value="{{settings.shopBonusGold}}" min="0" step="1">
-          <p class="hint">Additional GP added to every new character's Shop budget. The value is captured when the Draft first opens the Shop.</p>
+          <p class="hint">Additional GP added to the Draft as soon as character creation begins. It remains available whether or not the player opens the Shop.</p>
         </div>
       </fieldset>
 

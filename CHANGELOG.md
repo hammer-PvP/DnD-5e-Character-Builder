@@ -2,6 +2,29 @@
 
 All notable changes to Character Builder are documented here.
 
+## 0.9.8e
+
+### Dynamic content sources
+
+- Replaced the fixed Content Sources list with discovery of compatible active module, system, and world Item compendiums.
+- Added a dedicated **Select Content Sources** window with search, enable/disable controls, source priority, rescan, package identity, and detected-content summaries.
+- New packages such as Dungeon Master's Guide and third-party class/subclass modules can now be enabled without a hardcoded allowlist.
+- Preserved separate logical entries for Player's Handbook 2024, SRD 5.2 Modern, and SRD 5.1 Legacy.
+
+### Rules progression model
+
+- Added a GM setting for **Modern D&D (2024 / SRD 5.2)** or **D&D 5th Edition (2014 / SRD 5.1)** progression.
+- Modern mode moves native subclass ItemChoice Advancements authored at levels 1 or 2 to Class level 3.
+- Legacy mode preserves the levels authored by the source Class/Subclass documents.
+- Existing Class Items, creation Classes, and multiclass additions are normalized through native Advancement data rather than replacing the D&D5e Advancement workflow.
+
+### Starting currency
+
+- The configured GM bonus is now added to the Draft when character creation begins.
+- Class and Background currency contributions are recalculated when those source documents or their equipment modes change.
+- Starting currency no longer depends on entering the Shop or buying an item.
+- Shop purchases remain a separate subtraction from the reconciled Draft budget, with existing checkout and rollback protections preserved.
+
 ## 0.9.8d
 
 ### Splash tutorial

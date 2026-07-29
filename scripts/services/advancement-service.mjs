@@ -4,6 +4,7 @@ import { SourceResolver } from "./source-resolver.mjs";
 import { ItemGrantIntegrityService } from "./item-grant-integrity-service.mjs";
 import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
+import { RulesCompatibilityService } from "./rules-compatibility-service.mjs";
 
 export class AdvancementService {
   static async replacePrimaryDocument(draft, document, type, onComplete, options = {}) {
@@ -29,6 +30,9 @@ export class AdvancementService {
     const beforeItemIds = new Set(draft.items.map(item => item.id));
 
     let data = document.toObject();
+    if (type === "class") {
+      data = RulesCompatibilityService.prepareClassData(data, { sourceUuid: document.uuid ?? null });
+    }
     delete data._id;
 
     if (abilityAssignments && type === "background") {
