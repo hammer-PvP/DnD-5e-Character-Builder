@@ -1,4 +1,5 @@
-import { MODULE_ID, SOURCE_DEFINITIONS } from "../constants.mjs";
+import { MODULE_ID } from "../constants.mjs";
+import { ContentSourceService } from "./content-source-service.mjs";
 
 const TextEditorImplementation = foundry.applications.ux.TextEditor.implementation;
 
@@ -43,13 +44,16 @@ export class SourceRegistry {
   static orderedSources() {
     const rows = this.settings.sources ?? [];
     return rows
-      .filter(row => row.enabled && SOURCE_DEFINITIONS[row.id])
+      .filter(row => row.enabled)
       .sort((a, b) => Number(a.priority) - Number(b.priority))
-      .map(row => SOURCE_DEFINITIONS[row.id]);
+      .map(row => ContentSourceService.sourceFromConfiguredRow(row))
+      .filter(source => source.id && (source.packageId || source.packCollections.length));
   }
 
   async load({ force = false } = {}) {
-    const signature = SourceRegistry.orderedSources().map(source => source.id).join("|");
+    const signature = SourceRegistry.orderedSources()
+      .map(source => `${source.id}:${source.packCollections.join(",")}`)
+      .join("|");
     if (this.loaded && !force && signature === this.settingsSignature) return this;
 
     this.groups = [];
@@ -62,7 +66,7 @@ export class SourceRegistry {
     sources.forEach((source, rank) => this.sourceRanks.set(source.id, rank));
 
     for (const source of sources) {
-      if (source.packageId !== "dnd5e" && !game.modules.get(source.packageId)?.active) continue;
+      if (source.packageType === "module" && source.packageId && !game.modules.get(source.packageId)?.active) continue;
 
       const packs = [...game.packs].filter(pack => this.#belongsToSource(pack, source));
       const items = [];
@@ -242,6 +246,7 @@ export class SourceRegistry {
 
   #belongsToSource(pack, source) {
     if (pack.documentName !== "Item") return false;
+    if (source.packCollections?.length) return source.packCollections.includes(pack.collection);
     const packageId = pack.metadata.packageName ?? pack.metadata.package ?? pack.collection.split(".")[0];
     if (packageId !== source.packageId) return false;
     if (!source.sourceBook) return true;

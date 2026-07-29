@@ -18,7 +18,7 @@ Character Builder registers one `WRAPPER` target:
 
 `dnd5e.applications.advancement.AdvancementManager.prototype._onClose`
 
-The wrapper always continues the original call. It is used only to settle and clean up the protected native Advancement workflow. An official `closeApplicationV2` hook remains as an idempotent fallback.
+The wrapper always continues the original call. It is used only to settle and clean up the protected native Advancement workflow. An official `closeApplicationV2` hook remains as an idempotent fallback. Sequential native remove/add transactions also reserve the Character Builder Advancement lane until both native windows finish, preventing another Builder workflow from entering between them.
 
 ## Shared-environment safeguards
 

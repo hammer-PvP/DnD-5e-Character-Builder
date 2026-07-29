@@ -2,6 +2,7 @@ import { MODULE_ID } from "../constants.mjs";
 import { DraftManager } from "./draft-manager.mjs";
 import { LevelUpDraftManager } from "./level-up-draft-manager.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
+import { firstValue } from "../utils/safe-collections.mjs";
 
 /**
  * Shared mandatory ItemGrant integrity audit for both Character Creation and
@@ -531,11 +532,7 @@ export class ItemGrantIntegrityService {
   }
 
   static #first(value) {
-    if (!value) return null;
-    if (typeof value.first === "function") return value.first();
-    if (Array.isArray(value)) return value[0] ?? null;
-    if (value instanceof Set) return value.values().next().value ?? null;
-    return null;
+    return firstValue(value);
   }
 
   static #summaryRow(item, owner, raw, advancementId, { repaired, recoveredFromNativeClone }) {

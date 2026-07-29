@@ -2,33 +2,56 @@ import { MODULE_ID } from "../constants.mjs";
 import { HitPointService } from "./hit-point-service.mjs";
 import { SourceResolver } from "./source-resolver.mjs";
 import { ItemGrantIntegrityService } from "./item-grant-integrity-service.mjs";
-import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
+import { NativeAdvancementBusyError, NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
+import { RulesCompatibilityService } from "./rules-compatibility-service.mjs";
 
 export class AdvancementService {
   static async replacePrimaryDocument(draft, document, type, onComplete, options = {}) {
+    const reservationToken = NativeAdvancementModalGuard.reserve(`Replace ${type}`);
     const rollbackSnapshot = this.snapshotDraft(draft);
+    let removedCurrent = false;
     try {
       const current = draft.items.find(item => item.type === type);
       if (current) {
-        const removed = await this.removeItem(draft, current);
+        const removed = await this.removeItem(draft, current, { reservationToken });
         if (!removed) return null;
+        removedCurrent = true;
       }
-      const added = await this.addItem(draft, document, type, onComplete, options);
+      const added = await this.addItem(draft, document, type, onComplete, {
+        ...options,
+        reservationToken
+      });
       if (!added) await this.restoreDraft(draft, rollbackSnapshot);
       return added;
     } catch (error) {
-      await this.restoreDraft(draft, rollbackSnapshot);
+      // A rejected operation that never changed this Draft must not restore a
+      // snapshot over a legitimate manager still in flight. A reserved sequence
+      // cannot be interrupted between remove/add, but retain the ownership check
+      // as a defensive fallback if an external caller bypasses the reservation.
+      if (!NativeAdvancementBusyError.is(error) || removedCurrent) {
+        await this.restoreDraft(draft, rollbackSnapshot);
+      }
       throw error;
+    } finally {
+      NativeAdvancementModalGuard.releaseReservation(reservationToken);
     }
   }
 
-  static async addItem(draft, document, type, onComplete, { abilityAssignments = null, registry = null } = {}) {
+  static async addItem(draft, document, type, onComplete, {
+    abilityAssignments = null,
+    registry = null,
+    reservationToken = null
+  } = {}) {
+    NativeAdvancementModalGuard.assertAvailable(reservationToken);
     const Manager = globalThis.dnd5e?.applications?.advancement?.AdvancementManager;
     if (!Manager) throw new Error("D&D5e AdvancementManager is unavailable.");
     const beforeItemIds = new Set(draft.items.map(item => item.id));
 
     let data = document.toObject();
+    if (type === "class") {
+      data = RulesCompatibilityService.prepareClassData(data, { sourceUuid: document.uuid ?? null });
+    }
     delete data._id;
 
     if (abilityAssignments && type === "background") {
@@ -72,13 +95,17 @@ export class AdvancementService {
     }
 
     recoveryActor = manager.clone;
-    const result = await NativeAdvancementModalGuard.run(manager, { onComplete: finish });
+    const result = await NativeAdvancementModalGuard.run(manager, {
+      onComplete: finish,
+      reservationToken
+    });
     if (!result.completed) return null;
 
     return draft.items.find(item => item.type === type && item.system?.identifier === data.system?.identifier);
   }
 
-  static async removeItem(draft, item) {
+  static async removeItem(draft, item, { reservationToken = null } = {}) {
+    NativeAdvancementModalGuard.assertAvailable(reservationToken);
     const Manager = globalThis.dnd5e?.applications?.advancement?.AdvancementManager;
     if (!Manager) {
       await item.delete();
@@ -95,7 +122,7 @@ export class AdvancementService {
       return true;
     }
 
-    const result = await NativeAdvancementModalGuard.run(manager);
+    const result = await NativeAdvancementModalGuard.run(manager, { reservationToken });
     return result.completed;
   }
 

@@ -17,7 +17,7 @@
       </label>
 
       <nav class="cb-shop-categories" aria-label="Shop Categories">
-        <button type="button" class="cb-shop-category {{#if (eq selectedCategory 'all')}}active{{/if}}"
+        <button type="button" class="cb-shop-category {{#if (dnd5eCharacterBuilderEq selectedCategory 'all')}}active{{/if}}"
                 data-action="shop-category" data-category="all">
           <span>All Items</span><small>{{shop.items.length}}</small>
         </button>

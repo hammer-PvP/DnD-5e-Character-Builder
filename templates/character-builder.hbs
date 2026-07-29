@@ -7,7 +7,7 @@
         <h2 id="cb-creation-commit-title">{{commitDialog.title}}</h2>
       </header>
 
-      {{#if (eq commitDialog.mode "confirmation")}}
+      {{#if (dnd5eCharacterBuilderEq commitDialog.mode "confirmation")}}
       <div class="cb-commit-confirmation-copy">
         <i class="fa-solid fa-arrow-up-right-dots cb-commit-confirm-icon" aria-hidden="true"></i>
         <p>Create <strong>{{commitDialog.actorName}}</strong> from the completed Character Builder Draft?</p>
@@ -19,11 +19,11 @@
       </footer>
       {{else}}
       <div class="cb-commit-progress-copy">
-        {{#if (eq commitDialog.mode "success")}}
+        {{#if (dnd5eCharacterBuilderEq commitDialog.mode "success")}}
         <i class="fa-solid fa-circle-check cb-commit-state-icon success" aria-hidden="true"></i>
-        {{else if (eq commitDialog.mode "error")}}
+        {{else if (dnd5eCharacterBuilderEq commitDialog.mode "error")}}
         <i class="fa-solid fa-rotate-left cb-commit-state-icon error" aria-hidden="true"></i>
-        {{else if (eq commitDialog.mode "critical")}}
+        {{else if (dnd5eCharacterBuilderEq commitDialog.mode "critical")}}
         <i class="fa-solid fa-triangle-exclamation cb-commit-state-icon critical" aria-hidden="true"></i>
         {{else}}
         <i class="fa-solid fa-gears cb-commit-state-icon working" aria-hidden="true"></i>
@@ -36,12 +36,12 @@
         </div>
         <small data-commit-progress-value>{{commitDialog.percent}}%</small>
       </div>
-      {{#if (eq commitDialog.mode "error")}}
+      {{#if (dnd5eCharacterBuilderEq commitDialog.mode "error")}}
       <footer>
         <button type="button" class="cb-primary-confirm" data-action="return-to-review-after-failed-creation"><i class="fa-solid fa-rotate-left"></i> Return to Review</button>
       </footer>
       {{/if}}
-      {{#if (eq commitDialog.mode "critical")}}
+      {{#if (dnd5eCharacterBuilderEq commitDialog.mode "critical")}}
       <footer>
         <button type="button" class="cb-danger-button" data-action="close-critical-creation-commit"><i class="fa-solid fa-lock"></i> Close Character Builder</button>
       </footer>
@@ -83,7 +83,7 @@
   </aside>
 
   <main class="cb-main">
-    {{#if (eq step "abilitiesBackground")}}
+    {{#if (dnd5eCharacterBuilderEq step "abilitiesBackground")}}
     <section class="cb-step-content abilities-background-step">
             <div class="cb-creation-fixed-header">
 <header class="cb-section-header">
@@ -97,26 +97,26 @@
         <div class="cb-methods">
           {{#each enabledMethods}}
           <label class="cb-method-card">
-            <input type="radio" name="abilityMethod" value="{{id}}" {{checked (eq ../abilityMethod id)}}>
+            <input type="radio" name="abilityMethod" value="{{id}}" {{checked (dnd5eCharacterBuilderEq ../abilityMethod id)}}>
             <strong>{{label}}</strong>
           </label>
           {{/each}}
         </div>
         <div class="cb-primary-actions">
           <button type="button" class="cb-primary-confirm" data-action="save-abilities-background"
-                  {{#unless selectedBackgroundUuid}}disabled{{/unless}}>
+                  {{#if abilityBackgroundConfirmDisabled}}disabled{{/if}}>
             <i class="fa-solid fa-circle-check"></i>
-            <span><strong>Confirm</strong><small>Ability Scores & Background</small></span>
+            <span><strong>{{#if abilityBackgroundConfirmed}}Confirmed{{else}}Confirm{{/if}}</strong><small>Ability Scores & Background</small></span>
           </button>
           <button type="button" class="cb-primary-continue" data-action="continue"
-                  {{#unless state.abilitiesSaved}}disabled{{/unless}}>
+                  {{#unless abilityBackgroundCanContinue}}disabled{{/unless}}>
             <span>Continue</span><i class="fa-solid fa-chevron-right"></i>
           </button>
         </div>
       </div>
       </div>
 
-      {{#if (eq abilityMethod "roll")}}
+      {{#if (dnd5eCharacterBuilderEq abilityMethod "roll")}}
       <section class="cb-roll-panel">
         <div class="cb-inline-heading">
           <h3>Rolled Sets</h3>
@@ -141,10 +141,13 @@
         <section class="cb-compact-abilities">
           <header>
             <h3>Base Ability Scores</h3>
-            {{#if (eq abilityMethod "pointBuy")}}
+            {{#if (dnd5eCharacterBuilderEq abilityMethod "pointBuy")}}
             <span class="cb-budget {{#unless pointBuy.valid}}invalid{{/unless}}">{{pointBuy.remaining}} Points Remaining</span>
             {{/if}}
           </header>
+          {{#if abilityAssignmentHint}}
+          <p class="cb-array-assignment-hint"><i class="fa-solid fa-arrow-right-arrow-left"></i> Selecting a value already assigned to another Ability moves it here and clears the previous Ability.</p>
+          {{/if}}
 
           <div class="cb-ability-table compact">
             <div class="cb-ability-row header">
@@ -164,7 +167,7 @@
               {{else if usesSelect}}
               <select name="abilities.{{key}}">
                 <option value="" {{#unless base}}selected{{/unless}}>— Select —</option>
-                {{#each options}}<option value="{{id}}" {{#if selected}}selected{{/if}}>{{value}}</option>{{/each}}
+                {{#each options}}<option value="{{id}}" {{#if selected}}selected{{/if}}>{{label}}</option>{{/each}}
               </select>
               {{else}}
               <input type="number" name="abilities.{{key}}" value="{{base}}" min="1" max="20" step="1">
@@ -230,7 +233,7 @@
     </section>
     {{/if}}
 
-    {{#if (eq step "species")}}
+    {{#if (dnd5eCharacterBuilderEq step "species")}}
     <section class="cb-step-content species-step">
             <div class="cb-creation-fixed-header">
 <header class="cb-section-header">
@@ -278,7 +281,7 @@
     </section>
     {{/if}}
 
-    {{#if (eq step "class")}}
+    {{#if (dnd5eCharacterBuilderEq step "class")}}
     <section class="cb-step-content class-step">
             <div class="cb-creation-fixed-header">
 <header class="cb-section-header">
@@ -326,7 +329,7 @@
     </section>
     {{/if}}
 
-    {{#if (eq step "spells")}}
+    {{#if (dnd5eCharacterBuilderEq step "spells")}}
     <section class="cb-step-content spells-step">
             <div class="cb-creation-fixed-header">
 <header class="cb-section-header">
@@ -342,11 +345,11 @@
         </div>
         <div class="cb-primary-actions">
           <button type="button" class="cb-primary-confirm" data-action="save-spell-access"
-                  {{#unless characterClass}}disabled{{else}}{{#if state.spellAccessSaved}}disabled{{/if}}{{/unless}}>
+                  {{#if spellConfirmDisabled}}disabled{{/if}}>
             <i class="fa-solid fa-circle-check"></i>
-            <span><strong>{{#if state.spellAccessSaved}}Confirmed{{else}}Confirm{{/if}}</strong><small>{{#if spellAccess.pactOfTheTome.active}}Spells & Book of Shadows{{else}}Spell Selection{{/if}}</small></span>
+            <span><strong>{{#if spellConfirmed}}Confirmed{{else}}Confirm{{/if}}</strong><small>{{#if spellAccess.pactOfTheTome.active}}Spells & Book of Shadows{{else}}Spell Selection{{/if}}</small></span>
           </button>
-          <button type="button" class="cb-primary-continue" data-action="continue" {{#unless state.spellAccessSaved}}disabled{{/unless}}>
+          <button type="button" class="cb-primary-continue" data-action="continue" {{#unless spellCanContinue}}disabled{{/unless}}>
             <span>Continue</span><i class="fa-solid fa-chevron-right"></i>
           </button>
         </div>
@@ -418,7 +421,7 @@
       {{#if spellAccess.needsSpellChoice}}
       <section class="cb-spell-section" data-spell-selection data-maximum="{{spellAccess.spellCount}}">
         <div class="cb-inline-heading">
-          <h3>{{#if (eq spellAccess.model 'spellbook')}}Choose Starting Spellbook Spells{{else}}Choose Class Spells{{/if}}</h3>
+          <h3>{{#if (dnd5eCharacterBuilderEq spellAccess.model 'spellbook')}}Choose Starting Spellbook Spells{{else}}Choose Class Spells{{/if}}</h3>
           <span data-selection-count>{{spellAccess.selectedSpellCount}} / {{spellAccess.spellCount}}</span>
         </div>
         <input type="search" placeholder="Search Level 1 Spells" data-filter-target="#cb-level-spell-options">
@@ -455,7 +458,7 @@
       </section>
       {{/if}}
 
-      {{#if (eq spellAccess.model "fullList")}}
+      {{#if (dnd5eCharacterBuilderEq spellAccess.model "fullList")}}
       <section class="cb-spell-section">
         <div class="cb-inline-heading">
           <h3>Automatically Added Class Spells</h3>
@@ -484,7 +487,7 @@
     </section>
     {{/if}}
 
-    {{#if (eq step "equipment")}}
+    {{#if (dnd5eCharacterBuilderEq step "equipment")}}
     <section class="cb-step-content equipment-step">
             <div class="cb-creation-fixed-header">
 <header class="cb-section-header">
@@ -500,8 +503,8 @@
             <i class="fa-solid fa-cart-shopping"></i>
             <span><strong>Open Shop</strong><small>Configure additional equipment</small></span>
           </button>
-          <button type="button" class="cb-primary-continue cb-confirm-equipment" data-action="save-equipment" {{#if shoppingCart.overspent}}disabled{{else}}{{#if shoppingCart.checkoutRequired}}disabled{{/if}}{{/if}}>
-            <i class="fa-solid fa-circle-check"></i><span>Confirm Equipment</span>
+          <button type="button" class="cb-primary-continue cb-confirm-equipment" data-action="{{#if equipmentConfirmed}}continue{{else}}save-equipment{{/if}}" {{#if equipmentConfirmDisabled}}disabled{{/if}}>
+            <i class="fa-solid {{#if equipmentConfirmed}}fa-chevron-right{{else}}fa-circle-check{{/if}}"></i><span>{{#if equipmentConfirmed}}Continue to Review{{else}}Confirm Equipment{{/if}}</span>
           </button>
         </div>
       </div>
@@ -522,7 +525,7 @@
           {{#each shoppingCart.cart}}
           <article class="cb-main-cart-item">
             <img src="{{img}}" alt="">
-            <span><strong>{{#if (gt quantity 1)}}{{quantity}}× {{/if}}{{name}}</strong><small>Shop Purchase · {{lineTotalLabel}}</small></span>
+            <span><strong>{{#if (dnd5eCharacterBuilderGt quantity 1)}}{{quantity}}× {{/if}}{{name}}</strong><small>Shop Purchase · {{lineTotalLabel}}</small></span>
 
           </article>
           {{/each}}
@@ -538,15 +541,15 @@
         <input type="hidden" name="equipment.{{itemId}}.mode" value="package">
         {{else}}
         <div class="cb-equipment-modes">
-          <label><input type="radio" name="equipment.{{itemId}}.mode" value="package" {{checked (eq mode 'package')}} {{#unless hasPackages}}disabled{{/unless}}> Equipment Package</label>
-          <label><input type="radio" name="equipment.{{itemId}}.mode" value="wealth" {{checked (eq mode 'wealth')}} {{#unless wealth}}disabled{{/unless}}> Starting Currency {{#if wealth}}({{wealth}} GP){{/if}}</label>
+          <label><input type="radio" name="equipment.{{itemId}}.mode" value="package" {{checked (dnd5eCharacterBuilderEq mode 'package')}} {{#unless hasPackages}}disabled{{/unless}}> Equipment Package</label>
+          <label><input type="radio" name="equipment.{{itemId}}.mode" value="wealth" {{checked (dnd5eCharacterBuilderEq mode 'wealth')}} {{#unless wealth}}disabled{{/unless}}> Starting Currency {{#if wealth}}({{wealth}} GP){{/if}}</label>
         </div>
         {{/if}}
         <div data-package-options>
           {{#if packages.length}}
           {{#unless fixedOnly}}
           <select name="equipment.{{itemId}}.packageIndex">
-            {{#each packages}}<option value="{{index}}" {{#if (eq index ../selectedPackage)}}selected{{/if}}>{{label}}</option>{{/each}}
+            {{#each packages}}<option value="{{index}}" {{#if (dnd5eCharacterBuilderEq index ../selectedPackage)}}selected{{/if}}>{{label}}</option>{{/each}}
           </select>
           {{/unless}}
           {{/if}}
@@ -554,10 +557,10 @@
           <div class="cb-equipment-package" data-package-index="{{index}}">
             {{#each entries}}
               {{#if fixed}}
-              <div class="cb-equipment-entry fixed"><img src="{{img}}" alt=""><span>{{#if (gt count 1)}}{{count}}× {{/if}}{{name}}</span></div>
+              <div class="cb-equipment-entry fixed"><img src="{{img}}" alt=""><span>{{#if (dnd5eCharacterBuilderGt count 1)}}{{count}}× {{/if}}{{name}}</span></div>
               {{else}}
               <label class="cb-equipment-entry choice">
-                <span>{{label}}{{#if (gt count 1)}} ({{count}}){{/if}}</span>
+                <span>{{label}}{{#if (dnd5eCharacterBuilderGt count 1)}} ({{count}}){{/if}}</span>
                 <select name="equipment.{{../../itemId}}.selection.{{id}}" required>
                   <option value="">Choose...</option>
                   {{#each groups}}
@@ -576,7 +579,7 @@
     </section>
     {{/if}}
 
-    {{#if (eq step "review")}}
+    {{#if (dnd5eCharacterBuilderEq step "review")}}
     <section class="cb-step-content review-step">
             <div class="cb-creation-fixed-header cb-creation-fixed-header-compact">
 <header class="cb-section-header"><div><h2>Review Character</h2><p>The original Actor remains unchanged until Finish Character is pressed.</p></div></header>
@@ -599,27 +602,27 @@
         {{#each review.spells}}<button type="button" class="cb-mini-item" data-action="open-document" data-uuid="{{uuid}}" title="{{name}}"><img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{source}}</small></span></button>{{/each}}
       </div></section>
       <section class="cb-summary-list"><h3>Equipment ({{review.equipment.length}})</h3><div class="cb-item-grid">
-        {{#each review.equipment}}<button type="button" class="cb-mini-item" data-action="open-document" data-uuid="{{uuid}}" title="{{name}}"><img src="{{img}}" alt=""><span><strong>{{#if (gt quantity 1)}}{{quantity}}× {{/if}}{{name}}</strong><small>{{source}}</small></span></button>{{/each}}
+        {{#each review.equipment}}<button type="button" class="cb-mini-item" data-action="open-document" data-uuid="{{uuid}}" title="{{name}}"><img src="{{img}}" alt=""><span><strong>{{#if (dnd5eCharacterBuilderGt quantity 1)}}{{quantity}}× {{/if}}{{name}}</strong><small>{{source}}</small></span></button>{{/each}}
       </div></section>
     </section>
     {{/if}}
 
-    <footer class="cb-navigation {{#if (eq step 'review')}}review-actions{{/if}}">
-      <button type="button" data-action="back" {{#if (eq step 'abilitiesBackground')}}disabled{{/if}}><i class="fa-solid fa-chevron-left"></i> Back</button>
-      {{#if (eq step "review")}}
+    <footer class="cb-navigation {{#if (dnd5eCharacterBuilderEq step 'review')}}review-actions{{/if}}">
+      <button type="button" data-action="back" {{#if (dnd5eCharacterBuilderEq step 'abilitiesBackground')}}disabled{{/if}}><i class="fa-solid fa-chevron-left"></i> Back</button>
+      {{#if (dnd5eCharacterBuilderEq step "review")}}
       <button type="button" class="cb-finish-character" data-action="finalize" {{#unless canFinalize}}disabled{{/unless}}>
         <i class="fa-solid fa-circle-check"></i>
         <span><strong>Finish Character</strong><small>Apply the completed Draft</small></span>
       </button>
-      {{else if (eq step "abilitiesBackground")}}
+      {{else if (dnd5eCharacterBuilderEq step "abilitiesBackground")}}
       <span class="cb-footer-status">Confirm the current selections above to continue.</span>
-      {{else if (eq step "species")}}
+      {{else if (dnd5eCharacterBuilderEq step "species")}}
       <span class="cb-footer-status">Confirm the Species above to continue.</span>
-      {{else if (eq step "class")}}
+      {{else if (dnd5eCharacterBuilderEq step "class")}}
       <span class="cb-footer-status">Confirm the Class above to continue.</span>
-      {{else if (eq step "spells")}}
+      {{else if (dnd5eCharacterBuilderEq step "spells")}}
       <span class="cb-footer-status">Confirm Spell Selection above to continue.</span>
-      {{else if (eq step "equipment")}}
+      {{else if (dnd5eCharacterBuilderEq step "equipment")}}
       <span class="cb-footer-status">Confirm the complete equipment and Shopping Cart selection above.</span>
       {{/if}}
     </footer>

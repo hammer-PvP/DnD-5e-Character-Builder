@@ -14,11 +14,32 @@ import { SourceResolver } from "../services/source-resolver.mjs";
 import { CustomBackgroundService, CUSTOM_BACKGROUND_UUID } from "../services/custom-background-service.mjs";
 import { ItemGrantIntegrityService } from "../services/item-grant-integrity-service.mjs";
 import { AdvancementChoiceAnnotationService } from "../services/advancement-choice-annotation-service.mjs";
+import { firstValue } from "../utils/safe-collections.mjs";
+import { CreationEditService } from "../services/creation-edit-service.mjs";
+import { ProtectedTransactionDialogService } from "../services/protected-transaction-dialog-service.mjs";
+import { NativeAdvancementBusyError, NativeAdvancementModalGuard } from "../services/native-advancement-modal-guard.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 const TextEditorImplementation = foundry.applications.ux.TextEditor.implementation;
 
 export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV2) {
+  static #instances = new Map();
+
+  static open(actor, options = {}) {
+    const key = actor?.uuid ?? actor?.id;
+    const existing = key ? this.#instances.get(key) : null;
+    if (existing) {
+      existing.render({ force: true });
+      existing.bringToFront?.();
+      existing.bringToTop?.();
+      return existing;
+    }
+    const app = new this(actor, options);
+    if (key) this.#instances.set(key, app);
+    app.render({ force: true });
+    return app;
+  }
+
   constructor(actor, options = {}) {
     super(options);
     this.actor = actor;
@@ -37,11 +58,15 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     this.commitInProgress = false;
     this.commitTransactionToken = null;
     this.rollBusy = false;
+    this.abilityBackgroundBusy = false;
+    this.spellAccessBusy = false;
+    this.equipmentBusy = false;
+    this.editConfirmationBusy = false;
   }
 
   static DEFAULT_OPTIONS = {
     id: "dnd5e-character-builder",
-    classes: ["character-builder", "standard-form"],
+    classes: ["dnd5e-character-builder", "character-builder", "standard-form"],
     tag: "form",
     position: { width: 1240, height: 840 },
     window: { title: "Character Builder", resizable: true }
@@ -84,6 +109,8 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     }
 
     const settings = this.#settings();
+    await EquipmentService.synchronizeDraftBudget(this.draft, this.registry, settings);
+    state = DraftManager.getBuildState(this.draft);
     const step = state.step ?? "abilitiesBackground";
     const species = this.draft.items.find(item => item.type === "race") ?? null;
     const background = this.draft.items.find(item => item.type === "background") ?? null;
@@ -140,7 +167,6 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     const abilitySlots = this.#abilitySlots(effectiveMethod, settings, state);
     const methodAssignments = foundry.utils.deepClone(state.abilitySlotAssignments?.[effectiveMethod] ?? {});
     const validSlotIds = new Set(abilitySlots.map(slot => slot.id));
-    const usedSlotIds = new Set(Object.values(methodAssignments).filter(id => validSlotIds.has(id)));
 
     const abilities = ABILITIES.map(ability => {
       const selectedSlotId = validSlotIds.has(methodAssignments[ability.key])
@@ -165,13 +191,12 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         usesInput: effectiveMethod === "manual",
         canDecrease: base > 8,
         canIncrease: base < 15 && pointBuy.remaining >= nextCost,
-        options: abilitySlots
-          .filter(slot => slot.id === selectedSlotId || !usedSlotIds.has(slot.id))
-          .map(slot => ({
-            id: slot.id,
-            value: slot.value,
-            selected: slot.id === selectedSlotId
-          }))
+        options: abilitySlots.map(slot => ({
+          id: slot.id,
+          value: slot.value,
+          label: CreationEditService.optionLabel(slot, methodAssignments, ability.key),
+          selected: slot.id === selectedSlotId
+        }))
       };
     });
 
@@ -209,6 +234,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       };
     }
 
+    const editingStages = CreationEditService.editingStages(state);
     const equipmentState = state.equipment ?? {};
     const equipmentPanels = [characterClass, background].filter(Boolean).map(item =>
       EquipmentService.buildPanel(item, this.registry, this.draft, equipmentState[item.id] ?? {})
@@ -217,16 +243,23 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     const spellAccess = await SpellAccessService.buildContext(this.draft, this.registry);
 
     const steps = [
-      { id: "abilitiesBackground", label: "Ability Scores & Background", complete: Boolean(background && state.abilitiesSaved) },
-      { id: "species", label: "Species", complete: Boolean(species) },
-      { id: "class", label: "Class", complete: Boolean(characterClass) },
-      { id: "spells", label: "Spell Selection", complete: Boolean(state.spellAccessSaved) },
-      { id: "equipment", label: "Starting Equipment", complete: Boolean(state.equipmentSaved) },
+      {
+        id: "abilitiesBackground",
+        label: "Ability Scores & Background",
+        complete: Boolean(background && state.abilitiesSaved && !editingStages.abilitiesBackground)
+      },
+      { id: "species", label: "Species", complete: Boolean(species && !editingStages.species) },
+      { id: "class", label: "Class", complete: Boolean(characterClass && !editingStages.class) },
+      { id: "spells", label: "Spell Selection", complete: Boolean(state.spellAccessSaved && !editingStages.spells) },
+      { id: "equipment", label: "Starting Equipment", complete: Boolean(state.equipmentSaved && !editingStages.equipment) },
       {
         id: "review",
         label: "Review",
-        complete: Boolean(background && state.abilitiesSaved && species && characterClass &&
-          state.spellAccessSaved && state.equipmentSaved)
+        complete: Boolean(background && state.abilitiesSaved && !editingStages.abilitiesBackground
+          && species && !editingStages.species
+          && characterClass && !editingStages.class
+          && state.spellAccessSaved && !editingStages.spells
+          && state.equipmentSaved && !editingStages.equipment)
       }
     ].map(entry => ({ ...entry, active: entry.id === step }));
 
@@ -261,9 +294,10 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       speciesGroups: decoratePrimaryGroups(
         this.registry.optionsByType("race"), selectedSpeciesUuid, pendingSpeciesUuid, effectiveSpeciesUuid
       ),
-      speciesConfirmed: Boolean(selectedSpeciesUuid && !pendingSpeciesUuid),
-      speciesConfirmDisabled: !effectiveSpeciesUuid || effectiveSpeciesUuid === selectedSpeciesUuid,
-      speciesCanContinue: Boolean(selectedSpeciesUuid && !pendingSpeciesUuid),
+      speciesConfirmed: Boolean(selectedSpeciesUuid && !pendingSpeciesUuid && !editingStages.species),
+      speciesConfirmDisabled: this.primarySelectionBusy || !effectiveSpeciesUuid
+        || (effectiveSpeciesUuid === selectedSpeciesUuid && !editingStages.species),
+      speciesCanContinue: Boolean(selectedSpeciesUuid && !pendingSpeciesUuid && !editingStages.species),
       backgroundGroups,
       selectedBackgroundUuid,
       selectedBackgroundOption,
@@ -271,11 +305,26 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       classGroups: decoratePrimaryGroups(
         this.registry.optionsByType("class"), selectedClassUuid, pendingClassUuid, effectiveClassUuid
       ),
-      classConfirmed: Boolean(selectedClassUuid && !pendingClassUuid),
-      classConfirmDisabled: !effectiveClassUuid || effectiveClassUuid === selectedClassUuid,
-      classCanContinue: Boolean(selectedClassUuid && !pendingClassUuid),
+      classConfirmed: Boolean(selectedClassUuid && !pendingClassUuid && !editingStages.class),
+      classConfirmDisabled: this.primarySelectionBusy || !effectiveClassUuid
+        || (effectiveClassUuid === selectedClassUuid && !editingStages.class),
+      classCanContinue: Boolean(selectedClassUuid && !pendingClassUuid && !editingStages.class),
       abilities,
       abilityMethod: effectiveMethod,
+      abilityAssignmentHint: ["standardArray", "customArray", "roll"].includes(effectiveMethod),
+      abilityBackgroundConfirmed: Boolean(background && state.abilitiesSaved && !editingStages.abilitiesBackground),
+      abilityBackgroundConfirmDisabled: this.abilityBackgroundBusy || !selectedBackgroundUuid
+        || Boolean(background && state.abilitiesSaved && !editingStages.abilitiesBackground),
+      abilityBackgroundCanContinue: Boolean(background && state.abilitiesSaved && !editingStages.abilitiesBackground),
+      spellConfirmed: Boolean(state.spellAccessSaved && !editingStages.spells),
+      spellConfirmDisabled: this.spellAccessBusy || !characterClass
+        || Boolean(state.spellAccessSaved && !editingStages.spells),
+      spellCanContinue: Boolean(state.spellAccessSaved && !editingStages.spells),
+      equipmentConfirmed: Boolean(state.equipmentSaved && !editingStages.equipment),
+      equipmentConfirmDisabled: this.equipmentBusy
+        || Boolean(shoppingCart.overspent || shoppingCart.checkoutRequired),
+      equipmentCanContinue: Boolean(state.equipmentSaved && !editingStages.equipment),
+      editingStages,
       enabledMethods,
       rollSets: (state.rollSets ?? []).map((values, index) => ({
         index,
@@ -321,39 +370,43 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
     root.querySelectorAll('[name="abilityMethod"]').forEach(input => {
       input.addEventListener("change", async event => {
-        const method = String(event.currentTarget.value ?? "pointBuy");
-        const state = DraftManager.getBuildState(this.draft);
-        await DraftManager.setBuildState(this.draft, {
-          abilityMethod: method,
-          baseAbilities: this.#methodBaseAbilities(method, state),
-          abilitiesSaved: false
-        });
-        this.render({ force: true });
+        if (this.abilityBackgroundBusy || NativeAdvancementModalGuard.busy) {
+          NativeAdvancementModalGuard.focusActive();
+          return this.render({ force: true });
+        }
+        await this.#changeAbilityMethod(event.currentTarget);
       });
     });
 
     root.querySelectorAll('[name^="abilities."]').forEach(input => {
       input.addEventListener("change", async event => {
+        if (this.abilityBackgroundBusy || NativeAdvancementModalGuard.busy) {
+          NativeAdvancementModalGuard.focusActive();
+          return this.render({ force: true });
+        }
+        const allowed = await this.#authorizeConfirmedStageChange("abilitiesBackground", {
+          choiceLabel: "Ability Scores"
+        });
+        if (!allowed) return this.render({ force: true });
         if (event.currentTarget.tagName === "SELECT") await this.#storeAbilitySlotAssignment(event.currentTarget);
         else await this.#storeVisibleBaseAbilities();
       });
     });
 
     root.querySelectorAll('input[name="pendingSpecies"], input[name="pendingClass"]').forEach(input => {
-      input.addEventListener("change", event => {
-        const kind = event.currentTarget.dataset.kind;
-        if (!kind || !Object.hasOwn(this.pendingPrimaryUuid, kind)) return;
-        this.#rememberPrimaryListScroll(kind);
-        const checked = event.currentTarget.checked;
-        this.pendingPrimaryUuid[kind] = checked ? event.currentTarget.value : null;
-        this.previewUuid = checked ? event.currentTarget.value : null;
-        this.previewKind = checked ? kind : null;
-        this.render({ force: true });
+      input.addEventListener("click", async event => {
+        event.preventDefault();
+        await this.#handlePrimarySelectionAttempt(event.currentTarget);
       });
     });
 
     root.querySelectorAll('input[name^="spellAccess."][type="checkbox"]').forEach(input => {
       input.addEventListener("change", async () => {
+        if (this.spellAccessBusy) return this.render({ force: true });
+        const allowed = await this.#authorizeConfirmedStageChange("spells", {
+          choiceLabel: "Spell Selection"
+        });
+        if (!allowed) return this.render({ force: true });
         await this.#storeVisibleSpellSelections();
         this.#updateSpellCounters();
         const proceed = this.element.querySelector('.spells-step [data-action="continue"]');
@@ -365,6 +418,11 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
     root.querySelectorAll('[name^="equipment."]').forEach(input => {
       input.addEventListener("change", async () => {
+        if (this.equipmentBusy) return this.render({ force: true });
+        const allowed = await this.#authorizeConfirmedStageChange("equipment", {
+          choiceLabel: "Starting Equipment"
+        });
+        if (!allowed) return this.render({ force: true });
         this.#refreshEquipmentVisibility();
         await this.#captureEquipmentSelection();
         this.render({ force: true });
@@ -389,6 +447,13 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     event.preventDefault();
     const target = event.currentTarget;
     const action = target.dataset.action;
+
+    if ((this.abilityBackgroundBusy || this.primarySelectionBusy || this.spellAccessBusy || this.equipmentBusy || this.editConfirmationBusy) && ![
+      "open-preview", "open-document"
+    ].includes(action)) {
+      NativeAdvancementModalGuard.focusActive();
+      return;
+    }
 
     switch (action) {
       case "step":
@@ -422,12 +487,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         break;
       }
       case "select-background":
-        await DraftManager.setBuildState(this.draft, {
-          selectedBackgroundUuid: target.dataset.uuid || null,
-          abilitiesSaved: false,
-          equipmentSaved: false
-        });
-        this.render({ force: true });
+        await this.#selectBackground(target.dataset.uuid || null);
         break;
       case "continue":
         await this.#continue();
@@ -438,18 +498,9 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       case "roll-set":
         await this.#rollSet();
         break;
-      case "select-roll-set": {
-        const state = DraftManager.getBuildState(this.draft);
-        const assignments = foundry.utils.deepClone(state.abilitySlotAssignments ?? {});
-        assignments.roll = {};
-        await DraftManager.setBuildState(this.draft, {
-          selectedRollSet: Number(target.dataset.index),
-          abilitySlotAssignments: assignments,
-          abilitiesSaved: false
-        });
-        this.render({ force: true });
+      case "select-roll-set":
+        await this.#selectRollSet(Number(target.dataset.index));
         break;
-      }
       case "ability-adjust":
         await this.#adjustAbility(target.dataset.ability, Number(target.dataset.delta));
         break;
@@ -495,6 +546,189 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     }
   }
 
+  async #changeAbilityMethod(input) {
+    const method = String(input?.value ?? "pointBuy");
+    const state = DraftManager.getBuildState(this.draft);
+    if (method === String(state.abilityMethod ?? "pointBuy")) return;
+
+    const allowed = await this.#authorizeConfirmedStageChange("abilitiesBackground", {
+      choiceLabel: "Ability Score method"
+    });
+    if (!allowed) return this.render({ force: true });
+
+    await DraftManager.setBuildState(this.draft, {
+      abilityMethod: method,
+      baseAbilities: this.#methodBaseAbilities(method, state),
+      abilitiesSaved: false
+    });
+    this.render({ force: true });
+  }
+
+  async #selectBackground(uuid) {
+    const state = DraftManager.getBuildState(this.draft);
+    const current = String(state.selectedBackgroundUuid ?? "");
+    const requested = String(uuid ?? "");
+    if (requested === current) return;
+
+    const allowed = await this.#authorizeConfirmedStageChange("abilitiesBackground", {
+      choiceLabel: "Background"
+    });
+    if (!allowed) return this.render({ force: true });
+
+    await DraftManager.setBuildState(this.draft, {
+      selectedBackgroundUuid: requested || null,
+      abilitiesSaved: false,
+      equipmentSaved: false
+    });
+    this.render({ force: true });
+  }
+
+  async #selectRollSet(index) {
+    const state = DraftManager.getBuildState(this.draft);
+    if (Number(state.selectedRollSet) === Number(index)) return;
+
+    const allowed = await this.#authorizeConfirmedStageChange("abilitiesBackground", {
+      choiceLabel: "rolled Ability Score set"
+    });
+    if (!allowed) return this.render({ force: true });
+
+    const assignments = foundry.utils.deepClone(state.abilitySlotAssignments ?? {});
+    assignments.roll = {};
+    await DraftManager.setBuildState(this.draft, {
+      selectedRollSet: Number(index),
+      abilitySlotAssignments: assignments,
+      abilitiesSaved: false
+    });
+    this.render({ force: true });
+  }
+
+  async #handlePrimarySelectionAttempt(input) {
+    const kind = String(input?.dataset?.kind ?? "");
+    if (!Object.hasOwn(this.pendingPrimaryUuid, kind)) return;
+    const uuid = String(input?.value ?? "");
+    if (!uuid) return;
+
+    this.#rememberPrimaryListScroll(kind);
+    const type = kind === "species" ? "race" : "class";
+    const committed = this.draft.items.find(item => item.type === type) ?? null;
+    const committedUuid = this.#primarySourceUuid(committed);
+    const pendingUuid = this.pendingPrimaryUuid[kind];
+
+    if (pendingUuid === uuid) {
+      this.pendingPrimaryUuid[kind] = null;
+      this.previewUuid = committedUuid;
+      this.previewKind = committedUuid ? kind : null;
+      if (committedUuid) await this.#setStageEditing(kind, false);
+      this.render({ force: true });
+      return;
+    }
+
+    if (uuid === committedUuid) {
+      this.pendingPrimaryUuid[kind] = null;
+      this.previewUuid = uuid;
+      this.previewKind = kind;
+      await this.#setStageEditing(kind, false);
+      this.render({ force: true });
+      return;
+    }
+
+    const allowed = await this.#authorizeConfirmedStageChange(kind, {
+      choiceLabel: kind === "species" ? "Species" : "Class"
+    });
+    if (!allowed) return this.render({ force: true });
+
+    this.pendingPrimaryUuid[kind] = uuid;
+    this.previewUuid = uuid;
+    this.previewKind = kind;
+    this.render({ force: true });
+  }
+
+  /**
+   * Public bridge used by child creation applications, such as the Shop, to
+   * request the same confirmed-stage edit protection as the main Builder.
+   */
+  async requestCreationStageEdit(stage, options = {}) {
+    return this.#authorizeConfirmedStageChange(stage, options);
+  }
+
+  async #authorizeConfirmedStageChange(stage, { choiceLabel = "choice" } = {}) {
+    if (this.abilityBackgroundBusy || this.primarySelectionBusy || this.spellAccessBusy || this.equipmentBusy) {
+      NativeAdvancementModalGuard.focusActive();
+      return false;
+    }
+    if (NativeAdvancementModalGuard.busy) {
+      NativeAdvancementModalGuard.focusActive();
+      return false;
+    }
+    const state = DraftManager.getBuildState(this.draft);
+    if (CreationEditService.isEditing(state, stage)) return true;
+    if (!this.#stageConfirmed(stage, state)) return true;
+
+    if (this.editConfirmationBusy) return false;
+    this.editConfirmationBusy = true;
+    try {
+      const stageLabel = {
+        abilitiesBackground: "Ability Scores & Background",
+        species: "Species",
+        class: "Class",
+        spells: "Spell Selection",
+        equipment: "Starting Equipment"
+      }[stage] ?? "Character Creation";
+      const escapedStage = foundry.utils.escapeHTML(stageLabel);
+      const escapedChoice = foundry.utils.escapeHTML(choiceLabel);
+      const content = `
+        <section class="cb-stage-edit-confirmation">
+          <p><strong>${escapedStage}</strong> has already been confirmed.</p>
+          <p>Do you really want to discard the confirmed ${escapedChoice} choice and edit this stage?</p>
+          <p>Character Builder will invalidate only dependent choices that must be selected or confirmed again. Unrelated confirmed choices are preserved.</p>
+        </section>`;
+      const confirmed = await ProtectedTransactionDialogService.confirm({
+        key: `creation-stage-edit:${this.actor.id}:${stage}`,
+        matchClass: "cb-creation-stage-edit-dialog",
+        dialogOptions: {
+          classes: [
+            "dnd5e-character-builder",
+            "character-builder",
+            "cb-protected-transaction-dialog",
+            "cb-creation-stage-edit-dialog"
+          ],
+          window: { title: "Change Confirmed Choice", modal: true },
+          content,
+          yes: { label: "Discard and Edit", icon: "fa-solid fa-rotate-left" },
+          no: { label: "Keep Confirmed Choice", icon: "fa-solid fa-xmark" }
+        },
+        fallback: () => Dialog.confirm({
+          title: "Change Confirmed Choice",
+          content,
+          defaultYes: false
+        })
+      });
+      if (!confirmed) return false;
+      await this.#setStageEditing(stage, true);
+      return true;
+    } finally {
+      this.editConfirmationBusy = false;
+    }
+  }
+
+  #stageConfirmed(stage, state = DraftManager.getBuildState(this.draft)) {
+    if (stage === "abilitiesBackground") {
+      return Boolean(state.abilitiesSaved && this.draft.items.some(item => item.type === "background"));
+    }
+    if (stage === "species") return this.draft.items.some(item => item.type === "race");
+    if (stage === "class") return this.draft.items.some(item => item.type === "class");
+    if (stage === "spells") return Boolean(state.spellAccessSaved);
+    if (stage === "equipment") return Boolean(state.equipmentSaved);
+    return false;
+  }
+
+  async #setStageEditing(stage, editing) {
+    const state = DraftManager.getBuildState(this.draft);
+    const editingStages = CreationEditService.withEditing(state, stage, editing);
+    if (CreationEditService.isEditing(state, stage) === Boolean(editing)) return;
+    await DraftManager.setBuildState(this.draft, { editingStages });
+  }
+
   async #storeCharacterName(value) {
     const characterName = String(value ?? "").trim();
     if (!characterName) return;
@@ -521,19 +755,19 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       const current = this.draft.items.find(item => item.type === type);
       if (this.#primarySourceUuid(current) === uuid) {
         this.pendingPrimaryUuid[kind] = null;
+        await this.#setStageEditing(kind, false);
         return;
       }
 
-      if (type === "class") {
-        await SpellAccessService.invalidate(this.draft);
-        await EquipmentService.invalidate(this.draft);
-      }
+      NativeAdvancementModalGuard.assertAvailable();
       ui.notifications.info(`Selecting ${document.name} with the native D&D5e Advancement flow.`);
 
       const selected = await AdvancementService.replacePrimaryDocument(this.draft, document, type, async () => {
         this.previewUuid = document.uuid;
         const changes = {};
         if (type === "class") {
+          await SpellAccessService.invalidate(this.draft);
+          await EquipmentService.invalidate(this.draft);
           changes.spellAccess = {};
           changes.spellAccessSaved = false;
           changes.equipment = {};
@@ -544,11 +778,21 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         await SourceResolver.enforceAllowedSources(this.draft, this.registry);
       }, { registry: this.registry });
       if (!selected) {
+        this.pendingPrimaryUuid[kind] = null;
+        await this.#setStageEditing(kind, false);
         ui.notifications.info(`${document.name} Advancement was cancelled.`);
         return;
       }
       this.pendingPrimaryUuid[kind] = null;
+      await this.#setStageEditing(kind, false);
     } catch (error) {
+      if (NativeAdvancementBusyError.is(error)) {
+        NativeAdvancementModalGuard.focusActive();
+        ui.notifications.warn(error.message);
+        return;
+      }
+      this.pendingPrimaryUuid[kind] = null;
+      await this.#setStageEditing(kind, false);
       console.error(`${MODULE_ID} | ${kind} selection failed.`, error);
       ui.notifications.error(`Character Builder could not select that ${kind}: ${error.message}`);
     } finally {
@@ -594,6 +838,9 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
     if (step === "equipment") {
       this.#clearTransientPrimaryState();
+      if (state.equipmentSaved && !CreationEditService.isEditing(state, "equipment")) {
+        return this.#navigateToStep("review");
+      }
       return this.#saveEquipment({ advance: true });
     }
 
@@ -629,19 +876,24 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
   #stepValidation(step) {
     const state = DraftManager.getBuildState(this.draft);
+    const editingStages = CreationEditService.editingStages(state);
     if (step === "abilitiesBackground") {
       if (!this.draft.items.some(item => item.type === "background")) return "Select and confirm a Background.";
-      if (!state.abilitiesSaved) return "Confirm valid Ability Scores and Background bonuses before continuing.";
+      if (!state.abilitiesSaved || editingStages.abilitiesBackground) return "Confirm valid Ability Scores and Background bonuses before continuing.";
     }
-    if (step === "species" && !this.draft.items.some(item => item.type === "race")) return "Select a Species.";
-    if (step === "class" && !this.draft.items.some(item => item.type === "class")) return "Select a Class.";
-    if (step === "spells" && !state.spellAccessSaved) return "Complete the Class spell access selections before continuing.";
-    if (step === "equipment" && !state.equipmentSaved) return "Save Starting Equipment before continuing.";
+    if (step === "species" && (!this.draft.items.some(item => item.type === "race") || editingStages.species)) return "Confirm the Species before continuing.";
+    if (step === "class" && (!this.draft.items.some(item => item.type === "class") || editingStages.class)) return "Confirm the Class before continuing.";
+    if (step === "spells" && (!state.spellAccessSaved || editingStages.spells)) return "Complete and confirm the Class spell access selections before continuing.";
+    if (step === "equipment" && (!state.equipmentSaved || editingStages.equipment)) return "Save and confirm Starting Equipment before continuing.";
     return null;
   }
 
   async #rollSet() {
     if (this.rollBusy) return;
+    const allowed = await this.#authorizeConfirmedStageChange("abilitiesBackground", {
+      choiceLabel: "rolled Ability Score set"
+    });
+    if (!allowed) return this.render({ force: true });
     const settings = this.#settings();
     const state = DraftManager.getBuildState(this.draft);
     const rollSets = foundry.utils.deepClone(state.rollSets ?? []);
@@ -673,6 +925,10 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
   async #adjustAbility(key, delta) {
     if (!ABILITIES.some(ability => ability.key === key) || ![-1, 1].includes(delta)) return;
+    const allowed = await this.#authorizeConfirmedStageChange("abilitiesBackground", {
+      choiceLabel: "Ability Scores"
+    });
+    if (!allowed) return this.render({ force: true });
     const state = DraftManager.getBuildState(this.draft);
     if ((state.abilityMethod ?? "pointBuy") !== "pointBuy") return;
 
@@ -722,23 +978,15 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     if (!["standardArray", "customArray", "roll"].includes(method)) return;
 
     const slots = this.#abilitySlots(method, settings, state);
-    const slotById = new Map(slots.map(slot => [slot.id, slot]));
+    const validSlotIds = new Set(slots.map(slot => slot.id));
     const selectedId = String(select.value ?? "");
     const allAssignments = foundry.utils.deepClone(state.abilitySlotAssignments ?? {});
-    const assignments = foundry.utils.deepClone(allAssignments[method] ?? {});
-    const previousId = assignments[abilityKey] ?? null;
-
-    if (!selectedId) delete assignments[abilityKey];
-    else if (slotById.has(selectedId)) {
-      const occupiedAbility = ABILITIES.find(ability =>
-        ability.key !== abilityKey && assignments[ability.key] === selectedId
-      )?.key;
-      if (occupiedAbility) {
-        if (previousId && slotById.has(previousId)) assignments[occupiedAbility] = previousId;
-        else delete assignments[occupiedAbility];
-      }
-      assignments[abilityKey] = selectedId;
-    }
+    const assignments = CreationEditService.moveAbilitySlot(
+      allAssignments[method] ?? {},
+      abilityKey,
+      selectedId,
+      validSlotIds
+    );
 
     allAssignments[method] = assignments;
     const base = this.#baseAbilitiesFromAssignments(assignments, slots, state.baseAbilities ?? {});
@@ -752,7 +1000,19 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
 
   async #saveAbilitiesAndBackground({ advance = false } = {}) {
+    if (this.abilityBackgroundBusy) {
+      NativeAdvancementModalGuard.focusActive();
+      return;
+    }
+    if (NativeAdvancementModalGuard.busy) {
+      NativeAdvancementModalGuard.focusActive();
+      return ui.notifications.warn("Complete or close the active D&D5e Advancement window before confirming this stage.");
+    }
+
+    this.abilityBackgroundBusy = true;
     let nativeRollbackSnapshot = null;
+    let draftMutationStarted = false;
+    let advancementReservation = null;
     try {
       const form = new FormData(this.element);
       const method = String(form.get("abilityMethod") ?? "pointBuy");
@@ -786,35 +1046,47 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
       const fingerprint = JSON.stringify({ method, base, assignments, backgroundUuid });
       const existing = this.draft.items.find(item => item.type === "background");
-      if (state.abilitiesSaved && state.abilityBackgroundFingerprint === fingerprint && existing) {
-        if (advance) await DraftManager.setBuildState(this.draft, { step: "species" });
-        return this.render({ force: true });
+      if (state.abilityBackgroundFingerprint === fingerprint && existing) {
+        await this.#setStageEditing("abilitiesBackground", false);
+        await DraftManager.setBuildState(this.draft, {
+          abilitiesSaved: true,
+          ...(advance ? { step: "species" } : {})
+        });
+        return;
       }
 
+      advancementReservation = NativeAdvancementModalGuard.reserve("Replace Character Creation Background");
       nativeRollbackSnapshot = AdvancementService.snapshotDraft(this.draft);
 
       // Remove the previous Background first so its native Advancement changes,
       // including Ability Score bonuses, are fully reversed by D&D5e.
       if (existing) {
-        const removed = await AdvancementService.removeItem(this.draft, existing);
+        const removed = await AdvancementService.removeItem(this.draft, existing, {
+          reservationToken: advancementReservation
+        });
         if (!removed) {
+          await this.#setStageEditing("abilitiesBackground", false);
           ui.notifications.info("Background Advancement was cancelled.");
           return;
         }
+        draftMutationStarted = true;
       }
 
       const baseUpdate = {};
       for (const ability of ABILITIES) baseUpdate[`system.abilities.${ability.key}.value`] = base[ability.key];
       await this.draft.update(baseUpdate);
+      draftMutationStarted = true;
 
       // The Background is passed to the native D&D5e AdvancementManager intact.
       // Its Ability Score Improvement is selected exactly once in the system UI,
       // alongside any other choices provided by the Background.
       const addedBackground = await AdvancementService.addItem(this.draft, source, "background", null, {
-        registry: this.registry
+        registry: this.registry,
+        reservationToken: advancementReservation
       });
       if (!addedBackground) {
         await AdvancementService.restoreDraft(this.draft, nativeRollbackSnapshot);
+        await this.#setStageEditing("abilitiesBackground", false);
         ui.notifications.info("Background Advancement was cancelled.");
         return;
       }
@@ -838,21 +1110,36 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         backgroundAbilityAssignments: {},
         abilityBackgroundFingerprint: fingerprint,
         abilitiesSaved: true,
+        editingStages: CreationEditService.withEditing(state, "abilitiesBackground", false),
         equipmentSaved: false,
         ...(advance ? { step: "species" } : {})
       });
       ui.notifications.info("Ability Scores and Background confirmed.");
-      this.render({ force: true });
     } catch (error) {
+      if (NativeAdvancementBusyError.is(error) && !draftMutationStarted) {
+        NativeAdvancementModalGuard.focusActive();
+        ui.notifications.warn(error.message);
+        return;
+      }
       if (nativeRollbackSnapshot) {
         try {
           await AdvancementService.restoreDraft(this.draft, nativeRollbackSnapshot);
+          await this.#setStageEditing("abilitiesBackground", false);
         } catch (rollbackError) {
           console.error(`${MODULE_ID} | Background Advancement rollback failed.`, rollbackError);
         }
       }
+      if (NativeAdvancementBusyError.is(error)) {
+        NativeAdvancementModalGuard.focusActive();
+        ui.notifications.warn(error.message);
+        return;
+      }
       console.error(`${MODULE_ID} | Ability Scores and Background failure`, error);
       ui.notifications.error(error.message);
+    } finally {
+      NativeAdvancementModalGuard.releaseReservation(advancementReservation);
+      this.abilityBackgroundBusy = false;
+      this.render({ force: true });
     }
   }
 
@@ -890,15 +1177,20 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   }
 
   async #saveSpellAccess({ advance = false } = {}) {
+    if (this.spellAccessBusy) return;
+    this.spellAccessBusy = true;
     try {
       const form = new FormData(this.element);
       const result = await SpellAccessService.save(this.draft, this.registry, form);
+      await this.#setStageEditing("spells", false);
       if (advance) await this.#navigateToStep("equipment");
       ui.notifications.info(`Class spell access saved (${result.created} Spell Items added).`);
-      this.render({ force: true });
     } catch (error) {
       console.error(`${MODULE_ID} | Spell access failure`, error);
       ui.notifications.error(error.message);
+    } finally {
+      this.spellAccessBusy = false;
+      this.render({ force: true });
     }
   }
 
@@ -929,6 +1221,10 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
   async #removeCartItem(uuid) {
     if (!uuid) return;
+    const allowed = await this.#authorizeConfirmedStageChange("equipment", {
+      choiceLabel: "Shop purchases"
+    });
+    if (!allowed) return this.render({ force: true });
     try {
       const context = await ShopService.context(this.draft, this.registry);
       const row = context.cart.find(item => item.uuid === uuid);
@@ -941,18 +1237,24 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   }
 
   async #saveEquipment({ advance = false } = {}) {
+    if (this.equipmentBusy) return;
+    this.equipmentBusy = true;
     try {
       const formData = Object.fromEntries(new FormData(this.element).entries());
       await EquipmentService.apply(this.draft, this.registry, formData);
+      const state = DraftManager.getBuildState(this.draft);
       await DraftManager.setBuildState(this.draft, {
         equipmentSaved: true,
+        editingStages: CreationEditService.withEditing(state, "equipment", false),
         ...(advance ? { step: "review" } : {})
       });
       ui.notifications.info("Starting Equipment saved to the draft.");
-      this.render({ force: true });
     } catch (error) {
       console.error(`${MODULE_ID} | Starting Equipment failure`, error);
       ui.notifications.error(error.message);
+    } finally {
+      this.equipmentBusy = false;
+      this.render({ force: true });
     }
   }
 
@@ -1036,6 +1338,10 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       this.commitTransactionToken = null;
       this.commitDialog = null;
       await super.close();
+      const instanceKey = this.actor?.uuid ?? this.actor?.id;
+      if (instanceKey && CharacterBuilderApp.#instances.get(instanceKey) === this) {
+        CharacterBuilderApp.#instances.delete(instanceKey);
+      }
       this.actor.sheet?.render?.(true);
       return result;
     } catch (commitError) {
@@ -1098,7 +1404,12 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       ui.notifications.warn("The Character Creation commit is in progress and cannot be closed.");
       return this;
     }
-    return super.close(options);
+    const result = await super.close(options);
+    const key = this.actor?.uuid ?? this.actor?.id;
+    if (key && CharacterBuilderApp.#instances.get(key) === this) {
+      CharacterBuilderApp.#instances.delete(key);
+    }
+    return result;
   }
 
   async #discard() {
@@ -1305,7 +1616,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     }
     if (systemSourceItem) {
       const directSource = this.draft.items.get(systemSourceItem)
-        ?? this.draft.identifiedItems?.get(systemSourceItem)?.first?.();
+        ?? firstValue(this.draft.identifiedItems?.get(systemSourceItem));
       if (directSource) return directSource.name;
     }
 
@@ -1363,7 +1674,8 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       allComplete &&= complete;
     });
     const confirm = this.element.querySelector('[data-action="save-spell-access"]');
-    const saved = Boolean(DraftManager.getBuildState(this.draft).spellAccessSaved);
+    const spellState = DraftManager.getBuildState(this.draft);
+    const saved = Boolean(spellState.spellAccessSaved && !CreationEditService.isEditing(spellState, "spells"));
     if (confirm) confirm.disabled = saved || !allComplete;
     return allComplete;
   }

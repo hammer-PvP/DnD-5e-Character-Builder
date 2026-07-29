@@ -20,7 +20,7 @@ export class EquipmentShopApp extends HandlebarsApplicationMixin(ApplicationV2) 
 
   static DEFAULT_OPTIONS = {
     id: "dnd5e-character-builder-shop",
-    classes: ["character-builder", "cb-shop-app"],
+    classes: ["dnd5e-character-builder", "character-builder", "cb-shop-app"],
     tag: "section",
     position: { width: 1180, height: 760 },
     window: { title: "Starting Equipment Shop", resizable: true }
@@ -101,6 +101,10 @@ export class EquipmentShopApp extends HandlebarsApplicationMixin(ApplicationV2) 
 
   async #changeQuantity(event) {
     event.preventDefault();
+    const allowed = await this.parentApp?.requestCreationStageEdit?.("equipment", {
+      choiceLabel: "Shop purchases"
+    });
+    if (allowed === false) return;
     this.#rememberScroll();
     const action = event.currentTarget.dataset.action;
     const delta = action === "shop-decrease" ? -1 : 1;
@@ -134,6 +138,12 @@ export class EquipmentShopApp extends HandlebarsApplicationMixin(ApplicationV2) 
       this.checkoutBusy = false;
       this.render({ force: true });
     }
+  }
+
+  async close(options = {}) {
+    const result = await super.close(options);
+    this.parentApp?.render?.({ force: true });
+    return result;
   }
 
   #rememberScroll() {

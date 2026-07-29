@@ -1,4 +1,18 @@
 import { MODULE_ID } from "../constants.mjs";
+import { LibWrapperService } from "./lib-wrapper-service.mjs";
+
+export class NativeAdvancementBusyError extends Error {
+  constructor(message = "Complete or close the active D&D5e Advancement window before opening another one.") {
+    super(message);
+    this.name = "NativeAdvancementBusyError";
+    this.code = "DND5E_CHARACTER_BUILDER_ADVANCEMENT_BUSY";
+  }
+
+  static is(error) {
+    return error instanceof NativeAdvancementBusyError
+      || error?.code === "DND5E_CHARACTER_BUILDER_ADVANCEMENT_BUSY";
+  }
+}
 
 /**
  * Runs a D&D5e AdvancementManager as a protected modal workflow.
@@ -9,33 +23,42 @@ import { MODULE_ID } from "../constants.mjs";
  */
 export class NativeAdvancementModalGuard {
   static #active = null;
+  static #reservation = null;
 
   /**
    * Render a native AdvancementManager and wait for completion or cancellation.
-   * Only one guarded manager can be active at a time.
+   * The returned Promise settles only after the native window is closed, so a
+   * sequential remove/add workflow cannot accidentally overlap two managers.
    *
    * @param {ApplicationV2} manager
    * @param {object} [options]
    * @param {Function|null} [options.onComplete]
    * @returns {Promise<{completed: boolean, cancelled?: boolean}>}
    */
-  static run(manager, { onComplete = null } = {}) {
+  static run(manager, { onComplete = null, reservationToken = null } = {}) {
     if (!manager) return Promise.reject(new Error("A native AdvancementManager is required."));
 
+    this.#releaseStaleActive();
+    if (this.#reservation && this.#reservation.token !== reservationToken) {
+      this.focusActive();
+      return Promise.reject(new NativeAdvancementBusyError());
+    }
     const current = this.#active;
     if (current && current.manager !== manager) {
-      this.#syncLayers(current, { focus: true });
-      return Promise.reject(new Error(
-        "Complete or close the active D&D5e Advancement window before opening another one."
-      ));
+      this.#scheduleLayerSync(current, { focus: true });
+      return Promise.reject(new NativeAdvancementBusyError());
     }
 
     return new Promise((resolve, reject) => {
       let completed = false;
+      let closed = false;
+      let completionFinished = false;
+      let completionError = null;
       let settled = false;
       let completionHook = null;
       let renderHook = null;
-      const originalClose = manager.close.bind(manager);
+      let closeHook = null;
+      let removeCloseObserver = null;
       const ownerElement = this.#findOwnerElement();
       const ownerInert = ownerElement?.inert ?? false;
       const overlay = this.#createOverlay();
@@ -46,12 +69,14 @@ export class NativeAdvancementModalGuard {
         ownerInert,
         completionHook: null,
         renderHook: null,
-        originalClose,
+        closeHook: null,
+        removeCloseObserver: null,
         focusApplied: false,
-        released: false
+        released: false,
+        settleStale: null
       };
 
-      const cleanupHooks = () => {
+      const cleanupSettlementHooks = () => {
         if (completionHook !== null) Hooks.off("dnd5e.advancementManagerComplete", completionHook);
         if (renderHook !== null) Hooks.off("renderApplicationV2", renderHook);
         completionHook = null;
@@ -63,9 +88,20 @@ export class NativeAdvancementModalGuard {
       const settle = (result, error = null) => {
         if (settled) return;
         settled = true;
-        cleanupHooks();
+        cleanupSettlementHooks();
         if (error) reject(error);
         else resolve(result);
+      };
+
+      const maybeSettle = () => {
+        if (settled || !closed) return;
+        if (!completed) {
+          settle({ completed: false, cancelled: true });
+          return;
+        }
+        if (!completionFinished) return;
+        if (completionError) settle(null, completionError);
+        else settle({ completed: true });
       };
 
       completionHook = Hooks.on("dnd5e.advancementManagerComplete", async completedManager => {
@@ -73,9 +109,11 @@ export class NativeAdvancementModalGuard {
         completed = true;
         try {
           await onComplete?.();
-          settle({ completed: true });
         } catch (error) {
-          settle(null, error);
+          completionError = error;
+        } finally {
+          completionFinished = true;
+          maybeSettle();
         }
       });
       active.completionHook = completionHook;
@@ -87,14 +125,32 @@ export class NativeAdvancementModalGuard {
       });
       active.renderHook = renderHook;
 
-      manager.close = async (...args) => {
-        try {
-          return await originalClose(...args);
-        } finally {
-          if (!completed) settle({ completed: false, cancelled: true });
-          this.#release(active);
-        }
+      const handleClose = () => {
+        if (closed) return;
+        closed = true;
+        this.#release(active);
+        // Give the D&D5e completion hook in the same event turn a chance to run
+        // before treating the close as a cancellation.
+        queueMicrotask(maybeSettle);
       };
+
+      active.settleStale = () => {
+        if (closed) return;
+        closed = true;
+        this.#release(active);
+        settle({ completed: false, cancelled: true, stale: true });
+      };
+
+      removeCloseObserver = LibWrapperService.observeAdvancementClose(manager, handleClose);
+      active.removeCloseObserver = removeCloseObserver;
+
+      // Core ApplicationV2 close hook is retained as a defensive fallback if a
+      // future D&D5e update moves or renames the wrapped method. Duplicate close
+      // notifications are harmless because settlement and release are idempotent.
+      closeHook = Hooks.on("closeApplicationV2", closedApp => {
+        if (closedApp === manager) handleClose();
+      });
+      active.closeHook = closeHook;
 
       try {
         this.#activate(active);
@@ -108,12 +164,59 @@ export class NativeAdvancementModalGuard {
   }
 
   static get active() {
+    this.#releaseStaleActive();
     return this.#active?.manager ?? null;
   }
 
+  static get busy() {
+    this.#releaseStaleActive();
+    return Boolean(this.#active || this.#reservation);
+  }
+
+  static focusActive() {
+    this.#releaseStaleActive();
+    if (!this.#active) return false;
+    this.#scheduleLayerSync(this.#active, { focus: true });
+    return true;
+  }
+
+  static assertAvailable(reservationToken = null) {
+    this.#releaseStaleActive();
+    if (this.#reservation && this.#reservation.token !== reservationToken) {
+      this.focusActive();
+      throw new NativeAdvancementBusyError();
+    }
+    if (!this.#active) return true;
+    this.#scheduleLayerSync(this.#active, { focus: true });
+    throw new NativeAdvancementBusyError();
+  }
+
+  /**
+   * Reserve the complete native Advancement lane for a sequential transaction
+   * such as remove-old then add-new. The reservation prevents another Builder
+   * workflow from entering the tiny gap between the two native windows.
+   */
+  static reserve(label = "Character Builder Advancement transaction") {
+    this.#releaseStaleActive();
+    if (this.#active || this.#reservation) {
+      this.focusActive();
+      throw new NativeAdvancementBusyError();
+    }
+    const token = Symbol(label);
+    this.#reservation = { token, label };
+    return token;
+  }
+
+  static releaseReservation(token) {
+    if (!token || this.#reservation?.token !== token) return false;
+    this.#reservation = null;
+    return true;
+  }
+
   static #activate(active) {
+    this.#releaseStaleActive();
     if (this.#active && this.#active !== active) {
-      throw new Error("Another native D&D5e Advancement window is already active.");
+      throw new NativeAdvancementBusyError("Another native D&D5e Advancement window is already active.");
     }
     this.#active = active;
     document.body.classList.add("cb-native-advancement-active");
@@ -125,14 +228,35 @@ export class NativeAdvancementModalGuard {
     }
   }
 
+  static #releaseStaleActive() {
+    const active = this.#active;
+    if (!active || active.released) {
+      if (active?.released && this.#active === active) this.#active = null;
+      return;
+    }
+
+    const element = active.manager?.element;
+    const hasConnectedElement = element instanceof HTMLElement && element.isConnected;
+    const hasRenderedState = active.manager?.rendered === true
+      || Number(active.manager?._state ?? 0) > 0;
+    if (hasConnectedElement || hasRenderedState) return;
+
+    console.warn(`${MODULE_ID} | Releasing stale native Advancement guard state.`);
+    active.settleStale?.();
+  }
+
   static #release(active) {
     if (!active || active.released) return;
     active.released = true;
 
     if (active.completionHook !== null) Hooks.off("dnd5e.advancementManagerComplete", active.completionHook);
     if (active.renderHook !== null) Hooks.off("renderApplicationV2", active.renderHook);
+    if (active.closeHook !== null) Hooks.off("closeApplicationV2", active.closeHook);
+    active.removeCloseObserver?.();
     active.completionHook = null;
     active.renderHook = null;
+    active.closeHook = null;
+    active.removeCloseObserver = null;
 
     active.overlay?.remove();
     if (active.ownerElement) {
@@ -171,7 +295,7 @@ export class NativeAdvancementModalGuard {
   }
 
   static #findOwnerElement() {
-    const candidates = [...document.querySelectorAll(".application.character-builder")]
+    const candidates = [...document.querySelectorAll(".application.dnd5e-character-builder")]
       .filter(element => element.isConnected && !element.hidden && getComputedStyle(element).display !== "none");
     return candidates.sort((a, b) => this.#zIndex(b) - this.#zIndex(a))[0] ?? null;
   }
@@ -179,7 +303,8 @@ export class NativeAdvancementModalGuard {
   static #isCharacterBuilderApplication(app) {
     if (!app) return false;
     const classes = app.options?.classes ?? app.constructor?.DEFAULT_OPTIONS?.classes ?? [];
-    return classes.includes?.("character-builder") || app.element?.classList?.contains("character-builder");
+    return classes.includes?.("dnd5e-character-builder")
+      || app.element?.classList?.contains("dnd5e-character-builder");
   }
 
   static #scheduleLayerSync(active, { focus = false } = {}) {
@@ -219,6 +344,9 @@ export class NativeAdvancementModalGuard {
         "button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
       );
       (focusTarget ?? managerElement).focus?.({ preventScroll: true });
+    } else if (focus) {
+      active.manager.bringToFront?.();
+      managerElement.focus?.({ preventScroll: true });
     }
   }
 

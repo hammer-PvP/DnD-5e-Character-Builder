@@ -1,5 +1,8 @@
-import { MODULE_ID, SOURCE_DEFINITIONS, CUSTOM_ARRAY_SLOT_COUNT, defaultSettings } from "../constants.mjs";
+import { MODULE_ID, CUSTOM_ARRAY_SLOT_COUNT, RULES_MODES, defaultSettings } from "../constants.mjs";
 import { SplashTutorialService } from "../services/splash-tutorial-service.mjs";
+import { ContentSourceService } from "../services/content-source-service.mjs";
+import { RulesCompatibilityService } from "../services/rules-compatibility-service.mjs";
+import { ContentSourcesApp } from "./content-sources-app.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -8,7 +11,7 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
 
   static DEFAULT_OPTIONS = {
     id: "character-builder-settings",
-    classes: ["character-builder", "settings-app"],
+    classes: ["dnd5e-character-builder", "character-builder", "settings-app"],
     tag: "form",
     position: { width: 900, height: 820 },
     window: { title: "Character Builder Settings", resizable: true }
@@ -36,19 +39,25 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       const value = Number(settings.customArray?.[index] ?? [15, 14, 13, 12, 10, 8][index]);
       return Number.isInteger(value) ? Math.min(20, Math.max(1, value)) : [15, 14, 13, 12, 10, 8][index];
     });
-    const ordered = [...settings.sources].sort((a, b) => Number(a.priority) - Number(b.priority));
+    if (game.user.isGM) {
+      settings.sources = await ContentSourceService.synchronizedRows(settings.sources, { force: true });
+    }
+    const enabledSources = settings.sources.filter(row => row.enabled && row.installed !== false);
     return {
       isGM: game.user.isGM,
       tutorialSuppressed: SplashTutorialService.isSuppressed(),
       settings,
-      sources: ordered.map((row, index) => ({
-        ...row,
-        index,
-        label: SOURCE_DEFINITIONS[row.id]?.label ?? row.id,
-        legacy: row.id === "srd51",
-        installed: SOURCE_DEFINITIONS[row.id]?.packageId === "dnd5e" ||
-          game.modules.get(SOURCE_DEFINITIONS[row.id]?.packageId)?.active
-      }))
+      rulesModes: Object.values(RULES_MODES).map(mode => ({
+        ...mode,
+        selected: settings.rulesMode === mode.id
+      })),
+      enabledSourceCount: enabledSources.length,
+      availableSourceCount: settings.sources.length,
+      enabledSourceLabels: enabledSources
+        .sort((a, b) => Number(a.priority) - Number(b.priority))
+        .slice(0, 4)
+        .map(row => row.label ?? row.id)
+        .join(" → ")
     };
   }
 
@@ -71,8 +80,9 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       SplashTutorialService.openNow();
     });
     root.querySelector('[data-action="force-tutorial"]')?.addEventListener("click", event => this.#forceTutorial(event));
-    root.querySelectorAll('[data-action="move-source"]').forEach(button => {
-      button.addEventListener("click", event => this.#moveSource(event));
+    root.querySelector('[data-action="configure-sources"]')?.addEventListener("click", event => {
+      event.preventDefault();
+      new ContentSourcesApp(this).render({ force: true });
     });
     root.querySelectorAll('[name^="hpMethod."]').forEach(input => {
       input.addEventListener("change", () => this.#refreshHpDefaults());
@@ -102,13 +112,6 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       if (!tutorialSuppressed) setTimeout(() => SplashTutorialService.openNow(), 150);
       return;
     }
-    const sourceRows = [...form.querySelectorAll("[data-source-id]")];
-    const sources = sourceRows.map((row, priority) => ({
-      id: row.dataset.sourceId,
-      enabled: row.querySelector('input[type="checkbox"]')?.checked ?? false,
-      priority
-    }));
-
     const rollMode = String(form.querySelector('[name="rollMode"]')?.value ?? "limited");
     const rawRollLimit = Number(form.querySelector('[name="rollLimit"]')?.value ?? 2);
     const rollLimit = Math.max(1, Math.trunc(Number.isFinite(rawRollLimit) ? rawRollLimit : 2));
@@ -130,9 +133,15 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     const requestedDefault = String(form.querySelector('[name="hpDefaultMethod"]')?.value ?? "average");
     const defaultMethod = enabledHpMethods.includes(requestedDefault) ? requestedDefault : enabledHpMethods[0];
 
+    const storedWorldSettings = foundry.utils.mergeObject(
+      defaultSettings(),
+      game.settings.get(MODULE_ID, "settings") ?? {},
+      { inplace: false }
+    );
     const settings = {
       promptOnCreate: form.querySelector('[name="promptOnCreate"]')?.checked ?? true,
-      sources,
+      rulesMode: String(form.querySelector('[name="rulesMode"]')?.value ?? "modern2024"),
+      sources: foundry.utils.deepClone(storedWorldSettings.sources ?? []),
       abilityMethods: {
         pointBuy: form.querySelector('[name="pointBuy"]')?.checked ?? false,
         standardArray: form.querySelector('[name="standardArray"]')?.checked ?? false,
@@ -177,8 +186,11 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     if (rollMode === "limited" && (!Number.isInteger(rawRollLimit) || rawRollLimit < 1)) {
       return ui.notifications.error("Limited Rolls requires a positive whole-number set limit.");
     }
-    if (!settings.sources.some(source => source.enabled)) {
-      return ui.notifications.error("Enable at least one content source.");
+    if (!settings.sources.some(source => source.enabled && source.installed !== false)) {
+      return ui.notifications.error("Enable at least one installed content source.");
+    }
+    if (!Object.hasOwn(RULES_MODES, settings.rulesMode)) {
+      return ui.notifications.error("Choose a valid rules progression model.");
     }
     if (!enabledHpMethods.length) {
       return ui.notifications.error("Enable at least one Hit Point advancement method.");
@@ -188,7 +200,12 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     }
 
     await SplashTutorialService.setSuppressed(tutorialSuppressed);
+    const previousRulesMode = String((game.settings.get(MODULE_ID, "settings") ?? {}).rulesMode ?? "modern2024");
     await game.settings.set(MODULE_ID, "settings", settings);
+    if (previousRulesMode !== settings.rulesMode) {
+      const result = await RulesCompatibilityService.applyWorldPolicy();
+      if (result.failed) ui.notifications.warn(`Rules mode saved, but ${result.failed} Class Items could not be normalized.`);
+    }
     ui.notifications.info("Character Builder settings saved.");
     await this.close();
     if (!tutorialSuppressed) setTimeout(() => SplashTutorialService.openNow(), 150);
@@ -259,15 +276,4 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     }
   }
 
-  #moveSource(event) {
-    event.preventDefault();
-    const button = event.currentTarget;
-    const row = button.closest("[data-source-id]");
-    if (!row) return;
-    const direction = button.dataset.direction;
-    const target = direction === "up" ? row.previousElementSibling : row.nextElementSibling;
-    if (!target) return;
-    if (direction === "up") row.parentElement.insertBefore(row, target);
-    else row.parentElement.insertBefore(target, row);
-  }
 }

@@ -15,6 +15,27 @@ export class EquipmentService {
     return JSON.stringify(normalized);
   }
 
+
+  /**
+   * Reconciles the Draft's starting-currency ledger even when the player never
+   * opens the Shop. The GM bonus is captured on the first Draft render, while
+   * Class and Background currency contributions are recalculated from the
+   * currently selected native source documents and equipment mode.
+   */
+  static async synchronizeDraftBudget(draft, registry, settings = null) {
+    const resolvedSettings = settings ?? foundry.utils.mergeObject(
+      defaultSettings(),
+      game.settings.get(MODULE_ID, "settings") ?? {},
+      { inplace: false }
+    );
+    const plan = await this.#buildSelectionPlan(draft, registry, {}, { requireChoices: false });
+    const shop = await ShopService.initializeDraft(draft, registry, plan.budgetBreakdown, resolvedSettings, {
+      equipmentFingerprint: this.selectionFingerprint(plan.equipmentState),
+      markEquipmentDirty: false
+    });
+    return { plan, shop };
+  }
+
   static buildPanel(item, registry, actor, saved = {}) {
     if (!item) return null;
     const sourceSnapshot = item.getFlag(MODULE_ID, "sourceSnapshot") ?? {};
