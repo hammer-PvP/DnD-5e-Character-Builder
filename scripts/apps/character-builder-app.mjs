@@ -59,6 +59,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     this.commitTransactionToken = null;
     this.rollBusy = false;
     this.abilityBackgroundBusy = false;
+    this.arrayAssignmentBusy = false;
     this.spellAccessBusy = false;
     this.equipmentBusy = false;
     this.editConfirmationBusy = false;
@@ -161,37 +162,47 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     const backgroundSource = selectedBackgroundUuid
       ? await this.#resolveBackgroundDocument(selectedBackgroundUuid)
       : null;
-    const abilitySlots = this.#abilitySlots(effectiveMethod, settings, state);
-    const validSlotIds = new Set(abilitySlots.map(slot => slot.id));
-    const rawMethodAssignments = foundry.utils.deepClone(state.abilitySlotAssignments?.[effectiveMethod] ?? {});
-    const methodAssignments = CreationEditService.normalizeAbilitySlotAssignments(
-      rawMethodAssignments,
-      validSlotIds
-    );
+    const usesArrayMethod = ["standardArray", "customArray", "roll"].includes(effectiveMethod);
+    const abilitySlotDefinitions = this.#abilitySlots(effectiveMethod, settings, state);
+    let methodArraySlots = usesArrayMethod
+      ? CreationEditService.normalizeAbilityArraySlots(
+        abilitySlotDefinitions,
+        state.abilityArraySlots?.[effectiveMethod] ?? [],
+        state.abilitySlotAssignments?.[effectiveMethod] ?? {}
+      )
+      : [];
+    let methodAssignments = CreationEditService.assignmentsFromArraySlots(methodArraySlots);
 
-    // Repair stale or duplicated array-slot ownership from an interrupted or
-    // older Draft before the UI is rendered. This keeps the visible selects and
-    // the stored state in lockstep and prevents an impossible duplicate score.
-    if (JSON.stringify(methodAssignments) !== JSON.stringify(rawMethodAssignments)) {
-      const allAssignments = foundry.utils.deepClone(state.abilitySlotAssignments ?? {});
-      allAssignments[effectiveMethod] = methodAssignments;
-      await DraftManager.setBuildState(this.draft, {
-        abilitySlotAssignments: allAssignments,
-        baseAbilities: this.#baseAbilitiesFromAssignments(methodAssignments, abilitySlots),
-        abilitiesSaved: false
-      });
-      state = DraftManager.getBuildState(this.draft);
+    // One-way migration and repair for pre-v0.9.8i Drafts. The live source of
+    // truth is now slot -> assignedAbility. The old ability -> slot object is
+    // kept only as a derived compatibility mirror.
+    if (usesArrayMethod) {
+      const rawMethodSlots = foundry.utils.deepClone(state.abilityArraySlots?.[effectiveMethod] ?? []);
+      const rawMethodAssignments = foundry.utils.deepClone(state.abilitySlotAssignments?.[effectiveMethod] ?? {});
+      if (JSON.stringify(methodArraySlots) !== JSON.stringify(rawMethodSlots)
+          || JSON.stringify(methodAssignments) !== JSON.stringify(rawMethodAssignments)) {
+        const allArraySlots = foundry.utils.deepClone(state.abilityArraySlots ?? {});
+        const allAssignments = foundry.utils.deepClone(state.abilitySlotAssignments ?? {});
+        allArraySlots[effectiveMethod] = methodArraySlots;
+        allAssignments[effectiveMethod] = methodAssignments;
+        await DraftManager.setBuildState(this.draft, {
+          abilityArraySlots: allArraySlots,
+          abilitySlotAssignments: allAssignments,
+          baseAbilities: CreationEditService.baseAbilitiesFromArraySlots(methodArraySlots)
+        });
+        state = DraftManager.getBuildState(this.draft);
+      }
     }
 
-    const baseAbilities = this.#methodBaseAbilities(effectiveMethod, state);
+    const baseAbilities = usesArrayMethod
+      ? CreationEditService.baseAbilitiesFromArraySlots(methodArraySlots)
+      : this.#methodBaseAbilities(effectiveMethod, state);
     const backgroundApplied = Boolean(background && state.abilitiesSaved);
     const pointBuy = this.#pointBuySummary(baseAbilities);
 
     const abilities = ABILITIES.map(ability => {
-      const selectedSlotId = validSlotIds.has(methodAssignments[ability.key])
-        ? methodAssignments[ability.key]
-        : null;
-      const selectedSlot = abilitySlots.find(slot => slot.id === selectedSlotId) ?? null;
+      const selectedSlot = methodArraySlots.find(slot => slot.assignedAbility === ability.key) ?? null;
+      const selectedSlotId = selectedSlot?.id ?? null;
       const rawBase = Number(baseAbilities[ability.key] ?? 8);
       const base = selectedSlot ? selectedSlot.value : rawBase;
       const hasAssignedSlot = Boolean(selectedSlot);
@@ -211,10 +222,10 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         usesInput: effectiveMethod === "manual",
         canDecrease: base > 8,
         canIncrease: base < 15 && pointBuy.remaining >= nextCost,
-        options: abilitySlots.map(slot => ({
+        options: methodArraySlots.map(slot => ({
           id: slot.id,
           value: slot.value,
-          label: CreationEditService.optionLabel(slot, methodAssignments, ability.key),
+          label: CreationEditService.optionLabel(slot, methodArraySlots, ability.key),
           selected: slot.id === selectedSlotId
         }))
       };
@@ -333,7 +344,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       abilityMethod: effectiveMethod,
       abilityAssignmentHint: ["standardArray", "customArray", "roll"].includes(effectiveMethod),
       abilityBackgroundConfirmed: Boolean(background && state.abilitiesSaved && !editingStages.abilitiesBackground),
-      abilityBackgroundConfirmDisabled: this.abilityBackgroundBusy || !selectedBackgroundUuid
+      abilityBackgroundConfirmDisabled: this.abilityBackgroundBusy || this.arrayAssignmentBusy || !selectedBackgroundUuid
         || Boolean(background && state.abilitiesSaved && !editingStages.abilitiesBackground),
       abilityBackgroundCanContinue: Boolean(background && state.abilitiesSaved && !editingStages.abilitiesBackground),
       spellConfirmed: Boolean(state.spellAccessSaved && !editingStages.spells),
@@ -390,6 +401,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
     root.querySelectorAll('[name="abilityMethod"]').forEach(input => {
       input.addEventListener("change", async event => {
+        if (this.arrayAssignmentBusy) return;
         if (this.abilityBackgroundBusy || NativeAdvancementModalGuard.busy) {
           NativeAdvancementModalGuard.focusActive();
           return this.render({ force: true });
@@ -400,6 +412,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
     root.querySelectorAll('[name^="abilities."]').forEach(input => {
       input.addEventListener("change", async event => {
+        if (this.arrayAssignmentBusy) return;
         if (this.abilityBackgroundBusy || NativeAdvancementModalGuard.busy) {
           NativeAdvancementModalGuard.focusActive();
           return this.render({ force: true });
@@ -412,12 +425,13 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         const abilityKey = String(control.name ?? "").replace(/^abilities\./, "");
         const selectedId = isSelect ? String(control.value ?? "") : null;
 
+        if (isSelect) return this.#storeAbilitySlotAssignment(abilityKey, selectedId);
+
         const allowed = await this.#authorizeConfirmedStageChange("abilitiesBackground", {
           choiceLabel: "Ability Scores"
         });
         if (!allowed) return this.render({ force: true });
-        if (isSelect) await this.#storeAbilitySlotAssignment(abilityKey, selectedId);
-        else await this.#storeVisibleBaseAbilities();
+        await this.#storeVisibleBaseAbilities();
       });
     });
 
@@ -476,7 +490,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     const target = event.currentTarget;
     const action = target.dataset.action;
 
-    if ((this.abilityBackgroundBusy || this.primarySelectionBusy || this.spellAccessBusy || this.equipmentBusy || this.editConfirmationBusy) && ![
+    if ((this.abilityBackgroundBusy || this.arrayAssignmentBusy || this.primarySelectionBusy || this.spellAccessBusy || this.equipmentBusy || this.editConfirmationBusy) && ![
       "open-preview", "open-document"
     ].includes(action)) {
       NativeAdvancementModalGuard.focusActive();
@@ -584,9 +598,22 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     });
     if (!allowed) return this.render({ force: true });
 
+    const settings = this.#settings();
+    const usesArrayMethod = ["standardArray", "customArray", "roll"].includes(method);
+    const arraySlots = usesArrayMethod ? this.#arraySlotsForMethod(method, settings, state) : [];
+    const allArraySlots = foundry.utils.deepClone(state.abilityArraySlots ?? {});
+    const allAssignments = foundry.utils.deepClone(state.abilitySlotAssignments ?? {});
+    if (usesArrayMethod) {
+      allArraySlots[method] = arraySlots;
+      allAssignments[method] = CreationEditService.assignmentsFromArraySlots(arraySlots);
+    }
     await DraftManager.setBuildState(this.draft, {
       abilityMethod: method,
-      baseAbilities: this.#methodBaseAbilities(method, state),
+      baseAbilities: usesArrayMethod
+        ? CreationEditService.baseAbilitiesFromArraySlots(arraySlots)
+        : this.#methodBaseAbilities(method, state),
+      abilityArraySlots: allArraySlots,
+      abilitySlotAssignments: allAssignments,
       abilitiesSaved: false
     });
     this.render({ force: true });
@@ -620,11 +647,18 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     });
     if (!allowed) return this.render({ force: true });
 
-    const assignments = foundry.utils.deepClone(state.abilitySlotAssignments ?? {});
-    assignments.roll = {};
+    const nextState = { ...state, selectedRollSet: Number(index) };
+    const definitions = this.#abilitySlots("roll", this.#settings(), nextState);
+    const rollSlots = CreationEditService.normalizeAbilityArraySlots(definitions);
+    const allArraySlots = foundry.utils.deepClone(state.abilityArraySlots ?? {});
+    const allAssignments = foundry.utils.deepClone(state.abilitySlotAssignments ?? {});
+    allArraySlots.roll = rollSlots;
+    allAssignments.roll = {};
     await DraftManager.setBuildState(this.draft, {
       selectedRollSet: Number(index),
-      abilitySlotAssignments: assignments,
+      abilityArraySlots: allArraySlots,
+      abilitySlotAssignments: allAssignments,
+      ...(String(state.abilityMethod ?? "") === "roll" ? { baseAbilities: {} } : {}),
       abilitiesSaved: false
     });
     this.render({ force: true });
@@ -937,12 +971,20 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         results.push(Number(roll.total));
       }
       rollSets.push(results);
-      const assignments = foundry.utils.deepClone(state.abilitySlotAssignments ?? {});
-      assignments.roll = {};
+      const selectedRollSet = rollSets.length - 1;
+      const nextState = { ...state, rollSets, selectedRollSet };
+      const definitions = this.#abilitySlots("roll", settings, nextState);
+      const rollSlots = CreationEditService.normalizeAbilityArraySlots(definitions);
+      const allArraySlots = foundry.utils.deepClone(state.abilityArraySlots ?? {});
+      const allAssignments = foundry.utils.deepClone(state.abilitySlotAssignments ?? {});
+      allArraySlots.roll = rollSlots;
+      allAssignments.roll = {};
       await DraftManager.setBuildState(this.draft, {
         rollSets,
-        selectedRollSet: rollSets.length - 1,
-        abilitySlotAssignments: assignments,
+        selectedRollSet,
+        abilityArraySlots: allArraySlots,
+        abilitySlotAssignments: allAssignments,
+        ...(String(state.abilityMethod ?? "") === "roll" ? { baseAbilities: {} } : {}),
         abilitiesSaved: false
       });
     } finally {
@@ -998,32 +1040,63 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
   async #storeAbilitySlotAssignment(abilityKey, selectedId) {
     if (!ABILITIES.some(ability => ability.key === abilityKey)) return;
+    if (this.arrayAssignmentBusy) return this.render({ force: true });
 
-    const settings = this.#settings();
-    const state = DraftManager.getBuildState(this.draft);
-    const method = String(state.abilityMethod ?? "pointBuy");
-    if (!["standardArray", "customArray", "roll"].includes(method)) return;
+    this.arrayAssignmentBusy = true;
+    this.#setAbilitySelectsDisabled(true);
+    try {
+      const allowed = await this.#authorizeConfirmedStageChange("abilitiesBackground", {
+        choiceLabel: "Ability Scores"
+      });
+      if (!allowed) return;
 
-    const slots = this.#abilitySlots(method, settings, state);
-    const validSlotIds = new Set(slots.map(slot => slot.id));
-    const allAssignments = foundry.utils.deepClone(state.abilitySlotAssignments ?? {});
-    const assignments = CreationEditService.moveAbilitySlot(
-      allAssignments[method] ?? {},
-      abilityKey,
-      String(selectedId ?? ""),
-      validSlotIds
-    );
+      this.#reflectAbilitySlotIntention(abilityKey, String(selectedId ?? ""));
+      const settings = this.#settings();
+      await DraftManager.mutateAbilityArrayState(this.draft, currentState => {
+        const method = String(currentState.abilityMethod ?? "pointBuy");
+        if (!["standardArray", "customArray", "roll"].includes(method)) return null;
 
-    allAssignments[method] = assignments;
-    await DraftManager.setBuildState(this.draft, {
-      abilitySlotAssignments: allAssignments,
-      // Array methods have no implicit fallback score. An unassigned Ability
-      // must remain empty until the player explicitly chooses another slot.
-      baseAbilities: this.#baseAbilitiesFromAssignments(assignments, slots),
-      abilitiesSaved: false
-    });
-    this.render({ force: true });
+        const currentSlots = this.#arraySlotsForMethod(method, settings, currentState);
+        const nextSlots = CreationEditService.assignArraySlot(
+          currentSlots,
+          abilityKey,
+          String(selectedId ?? "")
+        );
+        if (JSON.stringify(nextSlots) === JSON.stringify(currentSlots)) return null;
+
+        const allArraySlots = foundry.utils.deepClone(currentState.abilityArraySlots ?? {});
+        const allAssignments = foundry.utils.deepClone(currentState.abilitySlotAssignments ?? {});
+        allArraySlots[method] = nextSlots;
+        allAssignments[method] = CreationEditService.assignmentsFromArraySlots(nextSlots);
+        return {
+          abilityArraySlots: allArraySlots,
+          abilitySlotAssignments: allAssignments,
+          baseAbilities: CreationEditService.baseAbilitiesFromArraySlots(nextSlots),
+          abilitiesSaved: false
+        };
+      });
+    } finally {
+      this.arrayAssignmentBusy = false;
+      this.render({ force: true });
+    }
   }
+
+  #setAbilitySelectsDisabled(disabled) {
+    this.element?.querySelectorAll?.('select[name^="abilities."]').forEach(control => {
+      control.disabled = Boolean(disabled);
+    });
+  }
+
+  #reflectAbilitySlotIntention(targetAbilityKey, selectedSlotId) {
+    const selects = [...(this.element?.querySelectorAll?.('select[name^="abilities."]') ?? [])];
+    for (const select of selects) {
+      const abilityKey = String(select.name ?? "").replace(/^abilities\./, "");
+      if (abilityKey !== targetAbilityKey && selectedSlotId && String(select.value ?? "") === selectedSlotId) {
+        select.value = "";
+      }
+    }
+  }
+
 
 
   async #saveAbilitiesAndBackground({ advance = false } = {}) {
@@ -1046,10 +1119,10 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       const state = DraftManager.getBuildState(this.draft);
       const settings = this.#settings();
       const selectMethod = ["standardArray", "customArray", "roll"].includes(method);
-      const slots = this.#abilitySlots(method, settings, state);
-      const assignments = foundry.utils.deepClone(state.abilitySlotAssignments?.[method] ?? {});
+      const slots = selectMethod ? this.#arraySlotsForMethod(method, settings, state) : [];
+      const assignments = CreationEditService.assignmentsFromArraySlots(slots);
       const base = selectMethod
-        ? this.#baseAbilitiesFromAssignments(assignments, slots, {})
+        ? CreationEditService.baseAbilitiesFromArraySlots(slots)
         : {};
 
       if (!selectMethod) {
@@ -1071,7 +1144,12 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       const source = await this.#resolveBackgroundDocument(backgroundUuid);
       if (!source) return ui.notifications.error("The selected Background could not be loaded.");
 
-      const fingerprint = JSON.stringify({ method, base, assignments, backgroundUuid });
+      const fingerprint = JSON.stringify({
+        method,
+        base,
+        arraySlots: selectMethod ? slots.map(slot => ({ id: slot.id, assignedAbility: slot.assignedAbility })) : [],
+        backgroundUuid
+      });
       const existing = this.draft.items.find(item => item.type === "background");
       if (state.abilityBackgroundFingerprint === fingerprint && existing) {
         await this.#setStageEditing("abilitiesBackground", false);
@@ -1124,12 +1202,17 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       await HitPointService.enforceFirstLevelMaximum(this.draft);
       const abilityMethodValues = foundry.utils.deepClone(state.abilityMethodValues ?? {});
       if (["pointBuy", "manual"].includes(method)) abilityMethodValues[method] = foundry.utils.deepClone(base);
+      const abilityArraySlots = foundry.utils.deepClone(state.abilityArraySlots ?? {});
       const abilitySlotAssignments = foundry.utils.deepClone(state.abilitySlotAssignments ?? {});
-      if (selectMethod) abilitySlotAssignments[method] = foundry.utils.deepClone(assignments);
+      if (selectMethod) {
+        abilityArraySlots[method] = foundry.utils.deepClone(slots);
+        abilitySlotAssignments[method] = foundry.utils.deepClone(assignments);
+      }
       await DraftManager.setBuildState(this.draft, {
         abilityMethod: method,
         baseAbilities: base,
         abilityMethodValues,
+        abilityArraySlots,
         abilitySlotAssignments,
         selectedBackgroundUuid: backgroundUuid,
         backgroundAbilityAssignments: {},
@@ -1511,6 +1594,15 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     else if (method === "roll") values = state.rollSets?.[state.selectedRollSet] ?? [];
     const setKey = method === "roll" ? (state.selectedRollSet ?? "none") : "base";
     return values.map((value, index) => ({ id: `${method}:${setKey}:${index}`, value: Number(value), index }));
+  }
+
+  #arraySlotsForMethod(method, settings, state) {
+    const definitions = this.#abilitySlots(method, settings, state);
+    return CreationEditService.normalizeAbilityArraySlots(
+      definitions,
+      state.abilityArraySlots?.[method] ?? [],
+      state.abilitySlotAssignments?.[method] ?? {}
+    );
   }
 
   #baseAbilitiesFromAssignments(assignments, slots, fallback = {}) {

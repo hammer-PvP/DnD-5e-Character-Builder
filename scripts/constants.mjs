@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.8h";
-export const MODULE_BUILD = "community-beta-098h-array-persistence-settings-reset";
+export const MODULE_VERSION = "0.9.8i";
+export const MODULE_BUILD = "community-beta-098i-slot-owned-ability-arrays";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {

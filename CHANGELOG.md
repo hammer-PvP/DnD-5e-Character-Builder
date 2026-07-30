@@ -2,6 +2,24 @@
 
 All notable changes to Character Builder are documented here.
 
+## 0.9.8i
+
+### Slot-owned Ability Score arrays
+
+- Rebuilt Standard Array, Custom Array, and rolled-set assignment around one canonical list of six named slots (`slot 0` through `slot 5`) instead of six independent Ability ownership fields.
+- Every slot now stores exactly one `assignedAbility`, making it structurally impossible for the same Array token to remain in Strength and another Ability at the same time.
+- Selecting an occupied value moves that slot to the destination and immediately leaves its former Ability on `— Select —`.
+- The destination's previous value is released back to the pool; values are never swapped automatically.
+- `— Select —` remains a real control and clears any of the six Abilities directly.
+- Custom and rolled arrays support repeated numeric results because slot identity is based on position, not score value.
+- Added one-way migration from the previous `abilitySlotAssignments` Draft state while retaining a derived compatibility mirror.
+- Serialized Array mutations per Draft and disabled the six selects during persistence so delayed events from an older render cannot apply later or overwrite the current choice.
+- Rolled sets receive the same stable positional slot IDs and reset to six unassigned controls whenever a new set is selected or generated.
+
+### Maintenance
+
+- Retained the approved GM-only **Restore Current Version Defaults** tool and its protected `RESET` confirmation from v0.9.8h.
+
 ## 0.9.8h
 
 ### Ability Score array correction

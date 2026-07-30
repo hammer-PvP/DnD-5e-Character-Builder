@@ -110,7 +110,7 @@ Character creation includes:
 - Review;
 - protected Finish Character transaction.
 
-Supported Ability Score methods include Point Buy, Standard Array, GM-defined Custom Array, rolled sets, and optional Manual entry. Standard, Custom, and rolled arrays show where each occupied value is currently assigned; selecting that slot on another Ability moves it and returns the previous Ability to `— Select —`. Every dropdown can also be cleared manually by selecting `— Select —`, and equal numeric results remain independent through unique slot IDs.
+Supported Ability Score methods include Point Buy, Standard Array, GM-defined Custom Array, rolled sets, and optional Manual entry. Standard, Custom, and rolled arrays use six positional slot tokens as a single source of truth. Selecting an occupied slot on another Ability moves it there and immediately returns the previous Ability to `— Select —`; the destination's former value is released rather than swapped. Every dropdown can also be cleared manually by selecting `— Select —`, and equal numeric results remain independent through unique positional slot IDs.
 
 Confirmed creation steps remain reviewable. Returning to Ability Scores & Background, Species, Class, Spell Selection, or Starting Equipment does not discard anything and does not show a warning. A protected confirmation appears only when the player actually changes a confirmed option, including Shop purchases. After confirmation, the affected stage is unlocked, dependent choices are invalidated only when required, and the stage must be confirmed again before Character Creation can finish.
 

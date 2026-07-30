@@ -3,6 +3,7 @@ import { ActorCommitService } from "./actor-commit-service.mjs";
 
 export class DraftManager {
   static #pendingByActor = new Map();
+  static #abilityArrayPendingByDraft = new Map();
 
   static getOrCreate(actor) {
     const key = actor?.uuid ?? actor?.id;
@@ -70,6 +71,7 @@ export class DraftManager {
             pointBuy: { str: 8, dex: 8, con: 8, int: 8, wis: 8, cha: 8 },
             manual: { str: 8, dex: 8, con: 8, int: 8, wis: 8, cha: 8 }
           },
+          abilityArraySlots: {},
           abilitySlotAssignments: {},
           selectedBackgroundUuid: null,
           backgroundAbilityAssignments: {},
@@ -140,7 +142,7 @@ export class DraftManager {
     // value. Array Ability assignments are one such branch: retaining a
     // removed Ability resurrects the previous slot owner after a move or after
     // choosing the real “— Select —” option.
-    const replaceKeys = new Set(["abilitySlotAssignments", "baseAbilities"]);
+    const replaceKeys = new Set(["abilityArraySlots", "abilitySlotAssignments", "baseAbilities"]);
     for (const [key, value] of Object.entries(changes ?? {})) {
       const plainObject = value && value.constructor === Object;
       if (replaceKeys.has(key) || (plainObject && Object.keys(value).length === 0)) {
@@ -149,6 +151,31 @@ export class DraftManager {
     }
     await draft.setFlag(MODULE_ID, "buildState", next);
     return next;
+  }
+
+  /**
+   * Serialize Array Ability mutations per Draft. The mutator always receives
+   * the latest persisted Build State after every earlier select operation has
+   * completed, so an old render cannot write a stale snapshot over a newer
+   * selection.
+   */
+  static mutateAbilityArrayState(draft, mutator) {
+    const key = draft?.uuid ?? draft?.id;
+    if (!key) return Promise.reject(new Error("A Draft is required to update Ability Array slots."));
+    if (typeof mutator !== "function") return Promise.reject(new TypeError("Ability Array mutator must be a function."));
+
+    const previous = this.#abilityArrayPendingByDraft.get(key) ?? Promise.resolve();
+    const operation = previous.catch(() => undefined).then(async () => {
+      const current = this.getBuildState(draft);
+      const changes = await mutator(foundry.utils.deepClone(current));
+      if (!changes) return current;
+      return this.setBuildState(draft, changes);
+    }).finally(() => {
+      if (this.#abilityArrayPendingByDraft.get(key) === operation) this.#abilityArrayPendingByDraft.delete(key);
+    });
+
+    this.#abilityArrayPendingByDraft.set(key, operation);
+    return operation;
   }
 
   static #linkedDraft(actor) {
