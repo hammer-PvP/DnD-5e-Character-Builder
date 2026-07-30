@@ -6,13 +6,23 @@ All notable changes to Character Builder are documented here.
 
 ### Ability Score array correction
 
-- Standard Array, Custom Array, and rolled-set dropdowns now treat `— Select —` as a real reversible choice.
+- Standard Array, Custom Array, and rolled-set dropdowns treat `— Select —` as a real reversible choice.
 - Selecting `— Select —` explicitly clears that Ability and returns its previous slot to the available pool.
-- Moving an occupied slot to another Ability now removes every stale reference to that slot and immediately resets the previous Ability to `— Select —`.
+- Moving an occupied slot to another Ability removes every stale reference to that slot and immediately resets the previous Ability to `— Select —`.
+- Fixed the Draft persistence layer that previously merged removed Ability keys back into `abilitySlotAssignments`, causing Strength, Dexterity, or Constitution to reclaim a moved slot on the next render.
+- `abilitySlotAssignments` and array-derived `baseAbilities` are now persisted as complete atomic snapshots rather than recursive partial merges.
 - Array-slot ownership is normalized before rendering, repairing duplicated or interrupted Draft state without requiring an F5 reload.
-- The requested dropdown value is captured before any protected edit confirmation can rerender the Application, preventing detached controls from restoring the previous selection.
 - Equal numeric values in Custom or rolled arrays remain independent because uniqueness is enforced by slot ID rather than score value.
 - Confirmation remains blocked until all six unique slots are assigned exactly once.
+
+### Restore Current Version Defaults
+
+- Added the GM-only **Restore Current Version Defaults** maintenance action to Character Builder Settings.
+- The action restores only the module's world configuration to the defaults declared by the installed version, then refreshes dynamic content-source discovery.
+- Actors, Items, levels, progress records, transactions, Drafts, progression ledgers, Scenes, and campaign data are never deleted or modified by this reset.
+- The confirmation is protected as a true foreground modal and requires the GM to type `RESET` before **Reset Settings** becomes available.
+- Added the optional **Also reset individual user preferences** choice for tutorial suppression and tutorial revision state.
+- The separate **Show Splash Tutorial to Everyone Once** action remains independent and is not triggered by restoring defaults.
 
 ## 0.9.8g
 

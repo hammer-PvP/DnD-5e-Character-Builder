@@ -2,6 +2,7 @@ import { MODULE_ID, CUSTOM_ARRAY_SLOT_COUNT, RULES_MODES, defaultSettings } from
 import { SplashTutorialService } from "../services/splash-tutorial-service.mjs";
 import { ContentSourceService } from "../services/content-source-service.mjs";
 import { RulesCompatibilityService } from "../services/rules-compatibility-service.mjs";
+import { SettingsResetService } from "../services/settings-reset-service.mjs";
 import { ContentSourcesApp } from "./content-sources-app.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
@@ -84,6 +85,7 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       event.preventDefault();
       new ContentSourcesApp(this).render({ force: true });
     });
+    root.querySelector('[data-action="restore-defaults"]')?.addEventListener("click", event => this.#restoreDefaults(event));
     root.querySelectorAll('[name^="hpMethod."]').forEach(input => {
       input.addEventListener("change", () => this.#refreshHpDefaults());
     });
@@ -209,6 +211,25 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     ui.notifications.info("Character Builder settings saved.");
     await this.close();
     if (!tutorialSuppressed) setTimeout(() => SplashTutorialService.openNow(), 150);
+  }
+
+
+  async #restoreDefaults(event) {
+    event.preventDefault();
+    if (!game.user.isGM) return;
+    try {
+      const result = await SettingsResetService.confirmAndRestore();
+      if (!result.restored) return;
+      this._settingsScrollTop = 0;
+      await this.render({ force: true });
+      const userSummary = result.resetUserPreferences
+        ? ` Individual preferences were reset for ${result.resetUsers} user${result.resetUsers === 1 ? "" : "s"}${result.failedUsers ? `; ${result.failedUsers} failed` : ""}.`
+        : "";
+      ui.notifications.info(`Character Builder settings were restored to the defaults for the installed version.${userSummary}`);
+    } catch (error) {
+      console.error(`${MODULE_ID} | Could not restore current-version defaults.`, error);
+      ui.notifications.error(error.message);
+    }
   }
 
   async #forceTutorial(event) {

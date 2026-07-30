@@ -196,6 +196,20 @@
         <legend>Creation Prompt</legend>
         <label><input type="checkbox" name="promptOnCreate" {{checked settings.promptOnCreate}}> Ask whether to use Character Builder when a new Player Character Actor is created.</label>
       </fieldset>
+
+      <fieldset class="cb-settings-wide cb-settings-maintenance">
+        <legend>Maintenance</legend>
+        <div class="cb-settings-maintenance-layout">
+          <div>
+            <h3>Restore Current Version Defaults</h3>
+            <p>Restore every Character Builder setting to the defaults declared by the currently installed version.</p>
+            <p class="hint">This does not delete or modify characters, Items, levels, progress records, transactions, Drafts, or campaign data.</p>
+          </div>
+          <button type="button" class="cb-settings-reset-button" data-action="restore-defaults">
+            <i class="fa-solid fa-rotate-left"></i> Restore Current Version Defaults
+          </button>
+        </div>
+      </fieldset>
       {{/if}}
     </div>
   </div>

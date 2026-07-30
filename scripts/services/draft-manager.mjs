@@ -134,11 +134,18 @@ export class DraftManager {
       overwrite: true
     });
 
-    // Foundry's recursive merge intentionally retains nested keys when an
-    // empty object is supplied. In the Build Plan, an explicit empty top-level
-    // object means “clear this stage state” (for example after changing Class).
+    // Most Build Plan branches are intentionally merged so unrelated stage
+    // state survives a focused update. A few branches represent complete,
+    // authoritative snapshots and must never retain keys omitted by the new
+    // value. Array Ability assignments are one such branch: retaining a
+    // removed Ability resurrects the previous slot owner after a move or after
+    // choosing the real “— Select —” option.
+    const replaceKeys = new Set(["abilitySlotAssignments", "baseAbilities"]);
     for (const [key, value] of Object.entries(changes ?? {})) {
-      if (value && value.constructor === Object && Object.keys(value).length === 0) next[key] = {};
+      const plainObject = value && value.constructor === Object;
+      if (replaceKeys.has(key) || (plainObject && Object.keys(value).length === 0)) {
+        next[key] = foundry.utils.deepClone(value);
+      }
     }
     await draft.setFlag(MODULE_ID, "buildState", next);
     return next;

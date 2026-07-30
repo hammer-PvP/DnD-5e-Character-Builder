@@ -1124,15 +1124,13 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       await HitPointService.enforceFirstLevelMaximum(this.draft);
       const abilityMethodValues = foundry.utils.deepClone(state.abilityMethodValues ?? {});
       if (["pointBuy", "manual"].includes(method)) abilityMethodValues[method] = foundry.utils.deepClone(base);
+      const abilitySlotAssignments = foundry.utils.deepClone(state.abilitySlotAssignments ?? {});
+      if (selectMethod) abilitySlotAssignments[method] = foundry.utils.deepClone(assignments);
       await DraftManager.setBuildState(this.draft, {
         abilityMethod: method,
         baseAbilities: base,
         abilityMethodValues,
-        abilitySlotAssignments: foundry.utils.mergeObject(
-          foundry.utils.deepClone(state.abilitySlotAssignments ?? {}),
-          selectMethod ? { [method]: assignments } : {},
-          { inplace: false }
-        ),
+        abilitySlotAssignments,
         selectedBackgroundUuid: backgroundUuid,
         backgroundAbilityAssignments: {},
         abilityBackgroundFingerprint: fingerprint,

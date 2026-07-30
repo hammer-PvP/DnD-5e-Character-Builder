@@ -216,6 +216,12 @@ The GM can also configure:
 - Wizard scribing rules;
 - tutorial display controls.
 
+### Restore Current Version Defaults
+
+Character Builder Settings includes the GM-only **Restore Current Version Defaults** maintenance action. It replaces the module's world configuration with the defaults declared by the installed version and refreshes discovered content sources.
+
+The reset never deletes or modifies Actors, Items, levels, progress records, transactions, Drafts, progression ledgers, Scenes, or campaign data. A protected modal requires the GM to type `RESET`. The optional **Also reset individual user preferences** choice clears per-user tutorial suppression and tutorial revision state; the separate tutorial broadcast action remains independent.
+
 <p align="center">
   <img src="docs/images/content-sources.png" alt="Character Builder content source settings" width="780">
 </p>

@@ -4857,3 +4857,61 @@
   margin-bottom: 0;
   color: var(--cb-muted);
 }
+
+/* 0.9.8h regenerated — current-version settings reset */
+.character-builder .cb-settings-maintenance {
+  border-color: rgba(183, 76, 82, .62);
+  background: rgba(125, 49, 49, .08);
+}
+.character-builder .cb-settings-maintenance-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, auto);
+  gap: 16px;
+  align-items: center;
+}
+.character-builder .cb-settings-maintenance h3 {
+  margin: 0 0 5px;
+  color: #ffb4b4;
+}
+.character-builder .cb-settings-maintenance p { margin: 3px 0; }
+.character-builder .cb-settings-reset-button {
+  min-height: 42px;
+  color: #ffcece;
+  border-color: #8f4146;
+  background: rgba(143, 65, 70, .16);
+}
+.character-builder .cb-settings-reset-button:hover,
+.character-builder .cb-settings-reset-button:focus {
+  border-color: #c16066;
+  background: rgba(143, 65, 70, .28);
+}
+.cb-settings-reset-confirmation {
+  display: grid;
+  gap: 12px;
+  min-width: min(520px, calc(100vw - 96px));
+}
+.cb-settings-reset-confirmation p { margin: 0; line-height: 1.4; }
+.cb-settings-reset-user-option,
+.cb-settings-reset-typed-confirmation {
+  display: grid;
+  gap: 7px;
+}
+.cb-settings-reset-user-option {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+}
+.cb-settings-reset-typed-confirmation input {
+  width: 100%;
+  min-height: 36px;
+  box-sizing: border-box;
+  font-family: monospace;
+  letter-spacing: .12em;
+}
+.cb-settings-reset-dialog footer button[data-action="yes"]:disabled,
+.cb-settings-reset-dialog .form-footer button[data-action="yes"]:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+@media (max-width: 700px) {
+  .character-builder .cb-settings-maintenance-layout { grid-template-columns: 1fr; }
+}
