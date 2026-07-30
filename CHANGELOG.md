@@ -2,6 +2,18 @@
 
 All notable changes to Character Builder are documented here.
 
+## 0.9.8j
+
+### Automatic native Advancement restoration
+
+- Restored the generic D&D5e 5.3.3 automatic Advancement behavior for mandatory steps that require no player decision.
+- Mandatory Item Grants, traits, proficiencies, spells, effects, and other deterministic results are applied directly to the Draft and continue into the Character Builder summary without opening a native Advancement window.
+- The protected modal backdrop and Builder input lock now activate only after D&D5e actually renders an interactive Advancement application.
+- Fully automatic Advancement processing no longer creates a modal ghost, leaves the Builder inert, or allows an Actor sheet rerender to become an unclosable foreground blocker.
+- Interactive, optional, replacement, and player-choice Advancements continue to use the authoritative native D&D5e window with the existing single-flight and transactional protections.
+- The correction is global for Species, Backgrounds, Classes, Subclasses, Multiclass, Feats, Level Up, and every other Character Builder workflow that invokes native Advancement.
+- Preserved the v0.9.8i slot-owned Standard, Custom, and rolled Array behavior and the approved **Restore Current Version Defaults** maintenance tool.
+
 ## 0.9.8i
 
 ### Slot-owned Ability Score arrays

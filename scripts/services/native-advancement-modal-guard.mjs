@@ -72,6 +72,7 @@ export class NativeAdvancementModalGuard {
         closeHook: null,
         removeCloseObserver: null,
         focusApplied: false,
+        modalActivated: false,
         released: false,
         settleStale: null
       };
@@ -119,8 +120,16 @@ export class NativeAdvancementModalGuard {
       active.completionHook = completionHook;
 
       renderHook = Hooks.on("renderApplicationV2", app => {
-        if (app === manager || this.#isCharacterBuilderApplication(app)) {
-          this.#scheduleLayerSync(active, { focus: app === manager && !active.focusApplied });
+        if (app === manager) {
+          // D&D5e 5.3.3 may process every mandatory Advancement step through
+          // automaticApplication without ever creating a visible application.
+          // Only promote the workflow to a true modal after the native manager
+          // actually renders an interactive window.
+          this.#scheduleLayerSync(active, { focus: !active.focusApplied });
+          return;
+        }
+        if (active.modalActivated && this.#isCharacterBuilderApplication(app)) {
+          this.#scheduleLayerSync(active);
         }
       });
       active.renderHook = renderHook;
@@ -155,6 +164,10 @@ export class NativeAdvancementModalGuard {
       try {
         this.#activate(active);
         manager.render(true);
+        // For an interactive step the native element may be inserted before the
+        // public render hook reaches us. Repeated synchronization detects that
+        // element and activates the modal. Fully automatic workflows never gain
+        // a connected element and therefore never block the Builder.
         this.#scheduleLayerSync(active, { focus: true });
       } catch (error) {
         this.#release(active);
@@ -219,6 +232,14 @@ export class NativeAdvancementModalGuard {
       throw new NativeAdvancementBusyError("Another native D&D5e Advancement window is already active.");
     }
     this.#active = active;
+  }
+
+  static #activateModal(active) {
+    if (!active || active.released || active.modalActivated || this.#active !== active) return false;
+    const managerElement = active.manager?.element;
+    if (!(managerElement instanceof HTMLElement) || !managerElement.isConnected) return false;
+
+    active.modalActivated = true;
     document.body.classList.add("cb-native-advancement-active");
     document.body.append(active.overlay);
     if (active.ownerElement) {
@@ -226,6 +247,7 @@ export class NativeAdvancementModalGuard {
       active.ownerElement.inert = true;
       active.ownerElement.setAttribute("aria-busy", "true");
     }
+    return true;
   }
 
   static #releaseStaleActive() {
@@ -234,6 +256,11 @@ export class NativeAdvancementModalGuard {
       if (active?.released && this.#active === active) this.#active = null;
       return;
     }
+
+    // A manager that is resolving mandatory steps automatically is intentionally
+    // active without a rendered element. Its completion/close hooks own cleanup.
+    // Stale-window recovery applies only after a real modal was displayed.
+    if (!active.modalActivated) return;
 
     const element = active.manager?.element;
     const hasConnectedElement = element instanceof HTMLElement && element.isConnected;
@@ -259,12 +286,12 @@ export class NativeAdvancementModalGuard {
     active.removeCloseObserver = null;
 
     active.overlay?.remove();
-    if (active.ownerElement) {
+    if (active.modalActivated && active.ownerElement) {
       active.ownerElement.classList.remove("cb-native-advancement-blocked");
       active.ownerElement.inert = active.ownerInert;
       active.ownerElement.removeAttribute("aria-busy");
     }
-    document.body.classList.remove("cb-native-advancement-active");
+    if (active.modalActivated) document.body.classList.remove("cb-native-advancement-active");
     if (this.#active === active) this.#active = null;
 
     // The closed native window naturally leaves the Builder immediately below
@@ -273,6 +300,14 @@ export class NativeAdvancementModalGuard {
     queueMicrotask(() => {
       const owner = active.ownerElement;
       if (!owner?.isConnected) return;
+      if (!active.modalActivated) {
+        // Automatic Advancement can rerender the Draft Actor sheet even though
+        // no native prompt was opened. Preserve the initiating Builder as the
+        // foreground application rather than letting that sheet cover it.
+        const maximum = this.#maximumApplicationZ(owner);
+        const ownerZ = this.#zIndex(owner);
+        if (ownerZ <= maximum) owner.style.zIndex = String(maximum + 1);
+      }
       const focusTarget = owner.querySelector(
         "button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
       );
@@ -318,6 +353,8 @@ export class NativeAdvancementModalGuard {
     if (!active || active.released || this.#active !== active) return;
     const managerElement = active.manager?.element;
     if (!(managerElement instanceof HTMLElement) || !managerElement.isConnected) return;
+
+    this.#activateModal(active);
 
     active.manager.bringToFront?.();
     active.manager.bringToTop?.();
