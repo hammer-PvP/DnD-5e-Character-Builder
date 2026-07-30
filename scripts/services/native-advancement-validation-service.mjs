@@ -50,6 +50,7 @@ export class NativeAdvancementValidationService {
       updateOptions: { characterBuilderNativeAdvancementValidation: true }
     });
     const added = draft.items.filter(item => !beforeItemIds.has(item.id));
+    this.#validateGenericAbilityScoreImprovementItem(added, draft, workflow);
     this.#validateNonRepeatableDuplicates(draft, added, workflow);
     this.#validateProgressionChoicePolicy(draft, added, state, workflow);
     this.#validateEpicBoonEligibility(draft, added, state, workflow);
@@ -57,6 +58,22 @@ export class NativeAdvancementValidationService {
     await this.#validateNativePrerequisites(draft, added, state, workflow);
     this.#validateRequiredAdvancementCounts(draft, state, workflow, new Set(added.map(item => item.id)), { validateManagedCounts });
     return { addedItemIds: added.map(item => item.id) };
+  }
+
+  static #validateGenericAbilityScoreImprovementItem(added, draft, workflow) {
+    const invalid = added.find(item => NativeFeatChoiceGuard.isAbilityScoreImprovement(item));
+    if (!invalid) return;
+
+    throw new StructuralLevelUpError(
+      `${invalid.name} cannot be selected from the Feat Browser.`,
+      {
+        title: "Invalid Ability Score Improvement Selection",
+        choiceName: invalid.name,
+        reason: "The Ability Score Improvement item from the Feat Browser is not a valid choice here. Use Ability Score Improvement Feat in the Advancement window to assign your two Ability Score points.",
+        diagnostic: `[Character Builder Level Up] ${draft.name} selected the generic Ability Score Improvement Item from the native Feat Browser during ${workflow}. The attempt was rejected so the native ASI assignment route can be chosen instead.`,
+        actionLabel: "Choose Ability Score Improvement Feat"
+      }
+    );
   }
 
   static #validateNonRepeatableDuplicates(draft, added, workflow) {

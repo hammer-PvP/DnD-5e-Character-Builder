@@ -2,6 +2,18 @@
 
 All notable changes to Character Builder are documented here.
 
+## 0.9.8l
+
+### Native Ability Score Improvement placeholder guard
+
+- Restored the post-Advancement rejection for the generic `Ability Score Improvement` Item exposed by the native Feat Compendium Browser.
+- The native D&D5e Advancement window and Compendium Browser remain completely untouched: no filtering, hiding, DOM manipulation, or monkeypatching is used.
+- Selecting the generic Item now completes only on the temporary Level Up Draft, is detected by its native feat identity, and is rolled back to the pre-choice snapshot before any live Actor commit.
+- The player receives an explicit explanation to use **Ability Score Improvement Feat** in the Advancement window so the native two-point Ability Score assignment step can run.
+- The valid native ASI route remains available, as do ordinary Feats and explicitly repeatable options.
+- Preserved the global non-repeatable Item/Feat validation, including source/identifier-based duplicate detection rather than name-only checks.
+- Preserved the v0.9.8k automatic Advancement settlement, slot-owned Ability Score arrays, and **Restore Current Version Defaults**.
+
 ## 0.9.8k
 
 ### Automatic Advancement terminal settlement
