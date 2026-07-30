@@ -1,4 +1,5 @@
 import { MODULE_ID, MODULE_VERSION } from "../constants.mjs";
+import { AgonizingBlastBindingService } from "./agonizing-blast-binding-service.mjs";
 import { LevelUpDraftManager } from "./level-up-draft-manager.mjs";
 import { LevelUpService } from "./level-up-service.mjs";
 import { HitPointAdvancementService } from "./hit-point-advancement-service.mjs";
@@ -103,6 +104,7 @@ export class LevelUpCommitService {
           characterBuilderLevelUp: true,
           characterBuilderTransactionToken: token
         });
+        await AgonizingBlastBindingService.reconcileActor(actor, { reason: "level-up-commit" });
         const missing = itemData.filter(item => !actor.items.get(item._id));
         if (missing.length) throw new Error(`${missing.length} Level Up Item document(s) were not created on the live Actor.`);
       }

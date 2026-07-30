@@ -11,6 +11,7 @@ import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mj
 import { MetamagicService } from "./metamagic-service.mjs";
 import { WarlockProjectedCantripService } from "./warlock-projected-cantrip-service.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
+import { AgonizingBlastBindingService } from "./agonizing-blast-binding-service.mjs";
 
 export class LevelUpRulesService {
   static async buildContext(sourceActor, draft, registry) {
@@ -559,6 +560,7 @@ export class LevelUpRulesService {
       transactionId: state.transactionId
     });
     await this.#refreshCantripAugments(draft);
+    await AgonizingBlastBindingService.reconcileActor(draft, { reason: "level-up-draft" });
     const integrityResult = await ItemGrantIntegrityService.reconcile(draft, registry, { context: "levelUp", state });
     await FeatureSpellOwnershipService.reconcile(draft, integrityResult, state);
     await NativeAdvancementValidationService.validate(draft, {

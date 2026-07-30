@@ -174,6 +174,24 @@ The player may perform a change or continue the rest without changing anything. 
   <img src="docs/images/rest-management.png" alt="Character Keeper optional Long Rest action" width="780">
 </p>
 
+## Rules Assistance
+
+Character Builder includes an optional GM-controlled runtime layer named **Assist with Dice Automation**. It is disabled by default and is intended to help newer players avoid missing deterministic passive bonuses that the D&D5e system does not fully apply on its own.
+
+The initial supported rules are:
+
+- Great Weapon Fighting;
+- Thrown Weapon Fighting;
+- Cleric — Blessed Strikes: Potent Spellcasting;
+- Druid — Elemental Fury: Potent Spellcasting;
+- Wizard — Empowered Evocation.
+
+The service uses native D&D5e roll hooks and changes only the current roll configuration. It never creates duplicate weapons, duplicate spells, duplicate Activities, replacement chat commands, or permanent formula edits.
+
+Agonizing Blast is handled separately as a native configuration binding. Character Builder already records the selected Warlock cantrip; it now also applies and maintains the official PHB enchantment on that same cantrip. The native enchantment supplies the visible `, Agonizing` suffix and the dynamic `@abilities.cha.mod` damage bonus.
+
+The Keeper-side reconciliation is event-driven rather than a polling loop. It checks relevant Item and Active Effect changes, adopts an already-correct native enchantment, repairs a missing managed application, and removes only an orphaned enchantment owned by the affected Invocation instance.
+
 ## Wizard Spellbook Management
 
 Eligible Wizards receive a spellbook-management launcher.
@@ -214,6 +232,7 @@ The GM can also configure:
 - Starting Equipment Shop bonus gold;
 - Hit Point advancement methods;
 - Wizard scribing rules;
+- optional deterministic dice assistance;
 - tutorial display controls.
 
 ### Restore Current Version Defaults

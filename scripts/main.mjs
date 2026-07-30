@@ -16,6 +16,7 @@ import { ContentSourceService } from "./services/content-source-service.mjs";
 import { RulesCompatibilityService } from "./services/rules-compatibility-service.mjs";
 import { LibWrapperService } from "./services/lib-wrapper-service.mjs";
 import { ModalStackService } from "./services/modal-stack-service.mjs";
+import { RulesAssistanceService } from "./services/rules-assistance-service.mjs";
 
 let scribeIconPromise = null;
 
@@ -46,6 +47,8 @@ Hooks.once("init", async () => {
     default: { entries: [] }
   });
 
+
+  RulesAssistanceService.initialize();
 
   game.settings.register(MODULE_ID, "tutorialForceRevision", {
     scope: "world",
@@ -95,6 +98,8 @@ Hooks.once("init", async () => {
     claimEpicBoon: actor => EpicBoonService.claim(actor),
     openKeeper: (actor, restType = "long", config = {}) => RestManagementApp.launch(actor, restType, config),
     scribeSpell: actor => RestManagementApp.launchScribe(actor),
+    reconcileRulesAssistance: actor => RulesAssistanceService.reconcileActor(actor),
+    rulesAssistanceDiagnostics: actor => RulesAssistanceService.diagnostics(actor),
     openTool: () => game.user.isGM ? new CharacterBuilderToolApp().render({ force: true }) : null,
     openTutorial: () => SplashTutorialService.openNow()
   };
@@ -145,6 +150,7 @@ Hooks.once("ready", async () => {
     }
   }
 
+  await RulesAssistanceService.ready();
   await SplashTutorialService.initializeForCurrentUser();
 });
 

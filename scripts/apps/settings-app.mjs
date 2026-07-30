@@ -172,6 +172,7 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       chargeWizardScribingCosts: form.querySelector('[name="chargeWizardScribingCosts"]')?.checked ?? true,
       requireArcanaCheckForSpellScrollScribing: form.querySelector('[name="requireArcanaCheckForSpellScrollScribing"]')?.checked ?? true,
       chargeScribingCostOnFailedCheck: form.querySelector('[name="chargeScribingCostOnFailedCheck"]')?.checked ?? true,
+      assistWithDiceAutomation: form.querySelector('[name="assistWithDiceAutomation"]')?.checked ?? false,
       hitPointAdvancement: {
         methods: hpMethods,
         defaultMethod,

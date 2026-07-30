@@ -2,6 +2,22 @@
 
 All notable changes to Character Builder are documented here.
 
+## 0.9.8n
+
+### Rules Assistance foundation
+
+- Added the GM-controlled **Assist with Dice Automation** world setting. It is disabled by default and applies only to the approved deterministic mechanics in this initial test package.
+- Added a silent, hook-based runtime rules engine that modifies only the current native D&D5e damage-roll configuration. It does not duplicate Items, weapons, Activities, buttons, chat commands, or persist altered formulas.
+- Added **Great Weapon Fighting** support: eligible damage dice from a Melee weapon used with two hands receive a temporary minimum result of 3. Versatile weapons require the native Two-Handed attack mode.
+- Added **Thrown Weapon Fighting** support: a temporary +2 damage bonus is applied only when a weapon with the Thrown property is actually used in a native Thrown attack mode.
+- Added **Blessed Strikes: Potent Spellcasting** and **Elemental Fury: Potent Spellcasting** support for Character Builder-tagged Cleric and Druid cantrips, using the Actor's current Wisdom modifier.
+- Added **Empowered Evocation** support. A confirmed cast of a Wizard Evocation spell creates a short-lived cast context, and the Actor's current Intelligence modifier is added to one damage roll from that cast.
+- Added native **Agonizing Blast** binding reconciliation. Character Builder's existing Invocation-to-cantrip target now applies and maintains the official PHB `Make Agonizing` enchantment, including the native `, Agonizing` display suffix and `@abilities.cha.mod` damage bonus.
+- Agonizing Blast reconciliation runs during Level Up preparation and commit, Character Creation commit, relevant Item/Effect changes, and an authoritative GM startup audit. Existing native applications are adopted instead of duplicated.
+- Added ownership metadata for managed native enchantments so retargeting or removing an Invocation removes only the enchantment belonging to that Invocation instance.
+- Added a small in-memory diagnostics API for GM/Keeper auditing and possible duplicate-automation warnings.
+- Added regression coverage for the new formula transformer, native binding reconciliation, Great Weapon Fighting, Thrown Weapon Fighting, Potent Spellcasting, and cast-scoped Empowered Evocation.
+
 ## 0.9.8m
 
 ### Global parent-child modal stack security
