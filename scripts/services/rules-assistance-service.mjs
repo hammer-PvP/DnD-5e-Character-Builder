@@ -1,6 +1,7 @@
 import { MODULE_ID, defaultSettings } from "../constants.mjs";
 import { AgonizingBlastBindingService } from "./agonizing-blast-binding-service.mjs";
 import { RulesAssistanceFormulaService } from "./rules-assistance-formula-service.mjs";
+import { MageArmorAssistanceService } from "./mage-armor-assistance-service.mjs";
 
 const RULES = Object.freeze({
   GREAT_WEAPON_FIGHTING: "great-weapon-fighting",
@@ -24,6 +25,7 @@ export class RulesAssistanceService {
     if (this.#initialized) return;
     this.#initialized = true;
     AgonizingBlastBindingService.initialize();
+    MageArmorAssistanceService.initialize();
 
     Hooks.on("dnd5e.preUseActivity", (activity, usageConfig, dialogConfig, messageConfig) =>
       this.#prepareCast(activity, usageConfig, dialogConfig, messageConfig)
@@ -42,6 +44,7 @@ export class RulesAssistanceService {
 
   static async ready() {
     await AgonizingBlastBindingService.ready();
+    await MageArmorAssistanceService.ready();
   }
 
   static enabled() {
@@ -63,7 +66,10 @@ export class RulesAssistanceService {
   static diagnostics(actor) {
     const actorId = actor?.id ?? actor;
     const rows = this.#audit.get(String(actorId ?? "")) ?? [];
-    return rows.map(row => ({ ...row }));
+    return [
+      ...rows.map(row => ({ ...row })),
+      ...MageArmorAssistanceService.diagnostics(actor)
+    ].sort((a, b) => Number(a.at ?? 0) - Number(b.at ?? 0));
   }
 
   static #prepareCast(activity, usageConfig, _dialogConfig, messageConfig) {

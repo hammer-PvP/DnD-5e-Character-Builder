@@ -176,7 +176,7 @@ The player may perform a change or continue the rest without changing anything. 
 
 ## Rules Assistance
 
-Character Builder includes an optional GM-controlled runtime layer named **Assist with Dice Automation**. It is disabled by default and is intended to help newer players avoid missing deterministic passive bonuses that the D&D5e system does not fully apply on its own.
+Character Builder includes an optional GM-controlled runtime layer named **Rules Automation Assistance**. It is disabled by default and is intended to help newer players avoid missing deterministic passive bonuses that the D&D5e system does not fully apply on its own.
 
 The initial supported rules are:
 
@@ -184,9 +184,14 @@ The initial supported rules are:
 - Thrown Weapon Fighting;
 - Cleric — Blessed Strikes: Potent Spellcasting;
 - Druid — Elemental Fury: Potent Spellcasting;
-- Wizard — Empowered Evocation.
+- Wizard — Empowered Evocation;
+- Mage Armor native effect application, including Armor of Shadows.
 
-The service uses native D&D5e roll hooks and changes only the current roll configuration. It never creates duplicate weapons, duplicate spells, duplicate Activities, replacement chat commands, or permanent formula edits.
+Damage assistance uses native D&D5e roll hooks and changes only the current roll configuration. Effect assistance reuses the native Active Effect already supplied by the source spell or feature. It never creates duplicate weapons, duplicate spells, duplicate Activities, replacement chat commands, or permanent formula edits.
+
+Mage Armor is applied automatically to one eligible target after a successful use. The target cannot be wearing equipped light, medium, or heavy body armor; clothing and shields do not block the effect. A repeated cast refreshes the existing native effect instead of stacking another copy, and equipping body armor ends Mage Armor. Armor of Shadows always resolves to the Warlock using the Invocation.
+
+Rules Automation Assistance works most reliably with characters created, leveled, and maintained through Character Builder and Character Keeper. Manually created characters remain supported whenever the required native data can be identified, but managed bindings and automatic reconciliation may be limited.
 
 Agonizing Blast is handled separately as a native configuration binding. Character Builder already records the selected Warlock cantrip; it now also applies and maintains the official PHB enchantment on that same cantrip. The native enchantment supplies the visible `, Agonizing` suffix and the dynamic `@abilities.cha.mod` damage bonus.
 

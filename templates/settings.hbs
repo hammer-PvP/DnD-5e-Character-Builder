@@ -176,10 +176,11 @@
       <fieldset>
         <legend>Rules Assistance</legend>
         <div class="cb-settings-toggle">
-          <label><input type="checkbox" name="assistWithDiceAutomation" {{checked settings.assistWithDiceAutomation}}> Assist with Dice Automation</label>
-          <p class="hint">Silently applies selected deterministic damage mechanics that the D&amp;D5e system does not complete natively. Intended to help newer players avoid missing passive class features.</p>
+          <label><input type="checkbox" name="assistWithDiceAutomation" {{checked settings.assistWithDiceAutomation}}> Rules Automation Assistance</label>
+          <p class="hint">Automatically assists with selected deterministic rules and mechanics that are not fully automated by the D&amp;D5e system. Intended to help newer players avoid missing passive class features and effects.</p>
+          <p class="hint">This feature works most reliably with characters created, leveled, and maintained through the Character Builder and Character Keeper. Manually created characters remain supported where the required native data can be identified, but managed bindings and automatic reconciliation may be limited.</p>
         </div>
-        <p class="hint">Initial coverage: Great Weapon Fighting, Thrown Weapon Fighting, Cleric and Druid Potent Spellcasting, and Wizard Empowered Evocation. Agonizing Blast target bindings are reconciled through the native D&amp;D5e enchantment independently of this toggle.</p>
+        <p class="hint">Initial coverage: Great Weapon Fighting, Thrown Weapon Fighting, Cleric and Druid Potent Spellcasting, Wizard Empowered Evocation, and automatic native Mage Armor effect application. Agonizing Blast target bindings are reconciled through the native D&amp;D5e enchantment independently of this toggle.</p>
       </fieldset>
 
       <fieldset>

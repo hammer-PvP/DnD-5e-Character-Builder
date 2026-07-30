@@ -2,6 +2,20 @@
 
 All notable changes to Character Builder are documented here.
 
+## 0.9.8o
+
+### Rules Automation Assistance and Mage Armor
+
+- Renamed the visible **Assist with Dice Automation** setting to **Rules Automation Assistance** while preserving the existing internal setting key and saved GM preference.
+- Added the settings note that managed bindings and reconciliation are most reliable for characters created, leveled, and maintained through Character Builder and Character Keeper, while manually created Actors remain supported when their native data can be identified.
+- Added automatic **Mage Armor** effect application after a successful native activity use. The service resolves one real target for the normal spell and Self for Armor of Shadows.
+- Reused the Active Effect embedded in the source spell or feature, preserving the native `system.attributes.ac.calc = mage` calculation and duration instead of inventing a parallel AC formula.
+- Added pre-use validation that blocks Mage Armor before resource consumption when the target is wearing equipped light, medium, or heavy body armor. Clothing, shields, and non-armor equipment remain eligible.
+- Recasting Mage Armor refreshes the existing effect instead of stacking a duplicate. Equipping body armor while Mage Armor is active ends the effect; removing that armor does not restore the spell automatically.
+- Added active-GM socket fallback so an owned caster can apply Mage Armor to another eligible Actor even when the casting player cannot directly update that target.
+- Preserved the approved v0.9.8n Great Weapon Fighting, Versatile two-hand detection, Empowered Evocation, Potent Spellcasting, Thrown Weapon Fighting, and Agonizing Blast reconciliation behavior.
+- Added regression coverage for Mage Armor target validation, native-effect creation, refresh without duplication, and termination when body armor is equipped.
+
 ## 0.9.8n
 
 ### Rules Assistance foundation
