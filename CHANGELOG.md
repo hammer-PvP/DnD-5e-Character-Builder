@@ -2,6 +2,17 @@
 
 All notable changes to Character Builder are documented here.
 
+## 0.9.8k
+
+### Automatic Advancement terminal settlement
+
+- Fixed a client-wide deadlock when D&D5e 5.3.3 completed a fully automatic native Advancement without ever rendering an Advancement Application.
+- `dnd5e.advancementManagerComplete` is now treated as the terminal lifecycle event only when no native manager window became connected.
+- Automatic Species and other deterministic documents, including Orc and Dwarf, now finish post-processing, release the protected Advancement lane, re-enable Character Builder controls, and allow confirmation and progression without an F5 reload.
+- Interactive Advancements continue to wait for the authoritative native window to close before the next operation can begin.
+- Errors during automatic post-processing now release the guard and reservation path deterministically instead of leaving the client permanently busy.
+- Preserved the approved slot-owned Standard, Custom, and rolled Array behavior and **Restore Current Version Defaults**.
+
 ## 0.9.8j
 
 ### Automatic native Advancement restoration

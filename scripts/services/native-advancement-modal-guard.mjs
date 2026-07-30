@@ -27,8 +27,10 @@ export class NativeAdvancementModalGuard {
 
   /**
    * Render a native AdvancementManager and wait for completion or cancellation.
-   * The returned Promise settles only after the native window is closed, so a
-   * sequential remove/add workflow cannot accidentally overlap two managers.
+   * Interactive workflows settle only after the native window closes, so a
+   * sequential remove/add workflow cannot overlap two managers. Fully automatic
+   * workflows settle as soon as D&D5e reports completion because no Application
+   * exists that could emit a close lifecycle event.
    *
    * @param {ApplicationV2} manager
    * @param {object} [options]
@@ -114,6 +116,25 @@ export class NativeAdvancementModalGuard {
           completionError = error;
         } finally {
           completionFinished = true;
+
+          // D&D5e 5.3.3 does not render an Application when every mandatory
+          // Advancement step is resolved by automaticApplication. In that path
+          // advancementManagerComplete is the terminal lifecycle event: there is
+          // no native window and therefore no _onClose/closeApplicationV2 event
+          // to wait for. Treat completion as a deterministic close only when no
+          // manager element ever became connected. Interactive managers retain
+          // the existing completion + native-close settlement contract.
+          const managerElement = manager?.element;
+          const hasNativeWindow = active.modalActivated
+            || (managerElement instanceof HTMLElement && managerElement.isConnected);
+          if (!hasNativeWindow) {
+            closed = true;
+            this.#release(active);
+            if (completionError) settle(null, completionError);
+            else settle({ completed: true });
+            return;
+          }
+
           maybeSettle();
         }
       });
