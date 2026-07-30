@@ -18,6 +18,7 @@ import { firstValue } from "../utils/safe-collections.mjs";
 import { CreationEditService } from "../services/creation-edit-service.mjs";
 import { ProtectedTransactionDialogService } from "../services/protected-transaction-dialog-service.mjs";
 import { NativeAdvancementBusyError, NativeAdvancementModalGuard } from "../services/native-advancement-modal-guard.mjs";
+import { ModalStackService } from "../services/modal-stack-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 const TextEditorImplementation = foundry.applications.ux.TextEditor.implementation;
@@ -509,7 +510,9 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         break;
       case "open-preview": {
         const document = await fromUuid(target.dataset.uuid || this.previewUuid);
-        document?.sheet.render(true);
+        if (document?.sheet) ModalStackService.renderChild(this, document.sheet, true, {
+          label: `${document.name ?? "Document"} Details`
+        });
         break;
       }
       case "configure-preview":
@@ -582,7 +585,9 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         break;
       case "open-document": {
         const document = await fromUuid(target.dataset.uuid);
-        document?.sheet.render(true);
+        if (document?.sheet) ModalStackService.renderChild(this, document.sheet, true, {
+          label: `${document.name ?? "Document"} Details`
+        });
         break;
       }
     }
@@ -1324,7 +1329,11 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   async #openShop() {
     const plan = await this.#captureEquipmentSelection();
     if (!plan) return ui.notifications.error("Starting Equipment selections could not be prepared for the Shop.");
-    new EquipmentShopApp(this.draft, this.registry, this).render({ force: true });
+    const shopApp = new EquipmentShopApp(this.draft, this.registry, this);
+    ModalStackService.renderChild(this, shopApp, { force: true }, {
+      label: "Starting Equipment Shop",
+      message: "Complete or close the Shop to return to Character Creation."
+    });
   }
 
   async #removeCartItem(uuid) {

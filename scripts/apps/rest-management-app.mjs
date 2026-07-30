@@ -4,6 +4,7 @@ import { RestSessionService } from "../services/rest-session-service.mjs";
 import { RuntimeFeatureService } from "../services/runtime-feature-service.mjs";
 import { RuntimeTransactionService } from "../services/runtime-transaction-service.mjs";
 import { ProtectedTransactionDialogService } from "../services/protected-transaction-dialog-service.mjs";
+import { ModalStackService } from "../services/modal-stack-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -552,7 +553,9 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     if (!uuid) return;
     const document = await fromUuid(uuid);
     if (!document) return ui.notifications.warn("The source document could not be opened.");
-    document.sheet?.render(true);
+    if (document.sheet) ModalStackService.renderChild(this, document.sheet, true, {
+      label: `${document.name ?? "Document"} Details`
+    });
   }
 
   #selectedAction() {

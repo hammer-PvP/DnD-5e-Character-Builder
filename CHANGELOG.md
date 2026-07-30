@@ -2,6 +2,20 @@
 
 All notable changes to Character Builder are documented here.
 
+## 0.9.8m
+
+### Global parent-child modal stack security
+
+- Restored a single global modal-stack coordinator for every Character Builder workflow that opens another Application, browser, picker, details sheet, or dialog.
+- Only the top window in the stack can receive pointer input, focus, keyboard input, Enter, form submission, scrolling, or foreground priority; all parent and background Applications are made inert until the top window resolves or is cancelled.
+- Native D&D5e detached Compendium Browsers opened by Advancement are detected without filtering or modifying their contents, covering Feats, Ability Score Improvement browsing, Spells, Items, Invocations, subclasses, and other native selectors.
+- A Compendium Browser can no longer be left open while the underlying Advancement selects a different route or advances the Level Up transaction.
+- Closing or cancelling a parent window closes any still-open protected descendants, preventing orphaned Browser and picker windows.
+- The native Advancement guard now defers foreground priority to its active child Browser or dialog instead of raising the Advancement window above it.
+- Applied the same parent-child protection to Starting Equipment Shop, Content Sources, the tutorial opened from Settings, Epic Boon browsing, document detail sheets, Character Creation, Level Up, Multiclass, and Character Keeper detail flows.
+- Existing protected transaction confirmations remain authoritative and are not double-wrapped by the new stack coordinator.
+- Preserved the v0.9.8l invalid generic Ability Score Improvement Item guard, global non-repeatable-option validation, v0.9.8k automatic Advancement settlement, slot-owned Ability Score arrays, and Restore Current Version Defaults.
+
 ## 0.9.8l
 
 ### Native Ability Score Improvement placeholder guard

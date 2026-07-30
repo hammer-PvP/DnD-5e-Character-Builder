@@ -15,10 +15,12 @@ import { SplashTutorialService } from "./services/splash-tutorial-service.mjs";
 import { ContentSourceService } from "./services/content-source-service.mjs";
 import { RulesCompatibilityService } from "./services/rules-compatibility-service.mjs";
 import { LibWrapperService } from "./services/lib-wrapper-service.mjs";
+import { ModalStackService } from "./services/modal-stack-service.mjs";
 
 let scribeIconPromise = null;
 
 Hooks.once("init", async () => {
+  ModalStackService.initialize();
   LibWrapperService.register();
 
   Handlebars.registerHelper("dnd5eCharacterBuilderEq", (a, b) => a === b);

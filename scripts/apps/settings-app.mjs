@@ -4,6 +4,7 @@ import { ContentSourceService } from "../services/content-source-service.mjs";
 import { RulesCompatibilityService } from "../services/rules-compatibility-service.mjs";
 import { SettingsResetService } from "../services/settings-reset-service.mjs";
 import { ContentSourcesApp } from "./content-sources-app.mjs";
+import { ModalStackService } from "../services/modal-stack-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -78,12 +79,16 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     root.querySelector('[data-action="save"]')?.addEventListener("click", event => this.#save(event));
     root.querySelector('[data-action="open-tutorial"]')?.addEventListener("click", event => {
       event.preventDefault();
-      SplashTutorialService.openNow();
+      SplashTutorialService.openNow({ parentApp: this });
     });
     root.querySelector('[data-action="force-tutorial"]')?.addEventListener("click", event => this.#forceTutorial(event));
     root.querySelector('[data-action="configure-sources"]')?.addEventListener("click", event => {
       event.preventDefault();
-      new ContentSourcesApp(this).render({ force: true });
+      const sourcesApp = new ContentSourcesApp(this);
+      ModalStackService.renderChild(this, sourcesApp, { force: true }, {
+        label: "Content Sources",
+        message: "Complete or close Content Sources to return to Character Builder Settings."
+      });
     });
     root.querySelector('[data-action="restore-defaults"]')?.addEventListener("click", event => this.#restoreDefaults(event));
     root.querySelectorAll('[name^="hpMethod."]').forEach(input => {

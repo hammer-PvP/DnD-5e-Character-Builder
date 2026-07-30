@@ -1,5 +1,6 @@
 import { MODULE_ID } from "../constants.mjs";
 import { ShopService } from "../services/shop-service.mjs";
+import { ModalStackService } from "../services/modal-stack-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -9,6 +10,7 @@ export class EquipmentShopApp extends HandlebarsApplicationMixin(ApplicationV2) 
     this.draft = draft;
     this.registry = registry;
     this.parentApp = parentApp;
+    this.modalStackToken = null;
     this.selectedCategory = "all";
     this.searchQuery = "";
     this.catalogScroll = 0;
@@ -48,6 +50,12 @@ export class EquipmentShopApp extends HandlebarsApplicationMixin(ApplicationV2) 
   }
 
   _onRender() {
+    this.modalStackToken ??= ModalStackService.beginRoot(this, {
+      ownerApp: this.parentApp,
+      ownerElement: this.parentApp?.element,
+      label: "Starting Equipment Shop",
+      message: "Complete or close this window to return to the previous Character Builder screen."
+    });
     const root = this.element;
     root.querySelector('[name="shopSearch"]')?.addEventListener("input", event => {
       this.searchQuery = event.currentTarget.value;
@@ -74,7 +82,9 @@ export class EquipmentShopApp extends HandlebarsApplicationMixin(ApplicationV2) 
       button.addEventListener("click", async event => {
         event.preventDefault();
         const document = await fromUuid(event.currentTarget.dataset.uuid);
-        document?.sheet.render(true);
+        if (document?.sheet) ModalStackService.renderChild(this, document.sheet, true, {
+          label: `${document.name ?? "Equipment"} Details`
+        });
       });
     });
 
@@ -97,6 +107,14 @@ export class EquipmentShopApp extends HandlebarsApplicationMixin(ApplicationV2) 
       if (cart) cart.scrollTop = this.cartScroll;
       this.#applyFilters();
     });
+  }
+
+  async _onClose(options = {}) {
+    if (this.modalStackToken) {
+      ModalStackService.end(this.modalStackToken, { closeDescendants: true });
+      this.modalStackToken = null;
+    }
+    return super._onClose(options);
   }
 
   async #changeQuantity(event) {

@@ -2,6 +2,7 @@ import { MODULE_ID } from "../constants.mjs";
 import { LevelUpService } from "./level-up-service.mjs";
 import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
 import { NativeFeatChoiceGuard } from "./native-feat-choice-guard.mjs";
+import { ModalStackService } from "./modal-stack-service.mjs";
 import { SourceRegistry } from "./source-registry.mjs";
 
 /**
@@ -153,7 +154,7 @@ export class EpicBoonService {
     if (!Browser?.selectOne) throw new Error("D&D5e Compendium Browser is unavailable.");
 
     while (true) {
-      const result = await Browser.selectOne({
+      const result = await ModalStackService.runDetachedSelection(() => Browser.selectOne({
         tab: "feats",
         hint: "Choose one Epic Boon.",
         filters: {
@@ -165,6 +166,10 @@ export class EpicBoonService {
             }
           }
         }
+      }), {
+        ownerElement: ModalStackService.findForegroundOwnerElement(),
+        label: "Epic Boon Selection",
+        message: "Choose or cancel the Epic Boon before returning to the previous window."
       });
       if (!result) return null;
 

@@ -44,8 +44,8 @@ export class SplashTutorialService {
     if (!this.isSuppressed()) this.scheduleOpen();
   }
 
-  static openNow() {
-    return SplashTutorialApp.open();
+  static openNow({ parentApp = null } = {}) {
+    return SplashTutorialApp.open({ parentApp });
   }
 
   static scheduleOpen({ delay = OPEN_DELAY_MS } = {}) {

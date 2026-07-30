@@ -1,4 +1,5 @@
 import { MODULE_ID } from "../constants.mjs";
+import { ModalStackService } from "../services/modal-stack-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -147,9 +148,11 @@ function playerPages() {
 export class SplashTutorialApp extends HandlebarsApplicationMixin(ApplicationV2) {
   static #instance = null;
 
-  constructor({ pageIndex = 0, options = {} } = {}) {
+  constructor({ pageIndex = 0, parentApp = null, options = {} } = {}) {
     super(options);
     this.pageIndex = Math.max(0, Number(pageIndex) || 0);
+    this.parentApp = parentApp;
+    this.modalStackToken = null;
   }
 
   static DEFAULT_OPTIONS = {
@@ -164,17 +167,25 @@ export class SplashTutorialApp extends HandlebarsApplicationMixin(ApplicationV2)
     main: { template: `modules/${MODULE_ID}/templates/splash-tutorial.hbs` }
   };
 
-  static open({ pageIndex = 0 } = {}) {
+  static open({ pageIndex = 0, parentApp = null } = {}) {
     const existing = this.#instance;
     if (existing && !existing._stateIsClosing) {
       existing.pageIndex = Math.max(0, Number(pageIndex) || 0);
+      existing.parentApp ??= parentApp;
       existing.render({ force: true });
       existing.bringToFront?.();
       return existing;
     }
-    const app = new this({ pageIndex });
+    const app = new this({ pageIndex, parentApp });
     this.#instance = app;
-    app.render({ force: true });
+    if (parentApp) {
+      ModalStackService.renderChild(parentApp, app, { force: true }, {
+        label: "Character Builder Tutorial",
+        message: "Finish or close the tutorial to return to Character Builder Settings."
+      });
+    } else {
+      app.render({ force: true });
+    }
     return app;
   }
 
@@ -205,6 +216,14 @@ export class SplashTutorialApp extends HandlebarsApplicationMixin(ApplicationV2)
   }
 
   _onRender() {
+    if (this.parentApp) {
+      this.modalStackToken ??= ModalStackService.beginRoot(this, {
+        ownerApp: this.parentApp,
+        ownerElement: this.parentApp?.element,
+        label: "Character Builder Tutorial",
+        message: "Finish or close the tutorial to return to Character Builder Settings."
+      });
+    }
     const root = this.element;
     root.querySelector('[data-action="back"]')?.addEventListener("click", event => {
       event.preventDefault();
@@ -236,6 +255,10 @@ export class SplashTutorialApp extends HandlebarsApplicationMixin(ApplicationV2)
   }
 
   async _onClose(options = {}) {
+    if (this.modalStackToken) {
+      ModalStackService.end(this.modalStackToken, { closeDescendants: true });
+      this.modalStackToken = null;
+    }
     SplashTutorialApp.#instance = null;
     return super._onClose(options);
   }

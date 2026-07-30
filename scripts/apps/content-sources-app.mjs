@@ -1,5 +1,6 @@
 import { MODULE_ID, defaultSettings } from "../constants.mjs";
 import { ContentSourceService } from "../services/content-source-service.mjs";
+import { ModalStackService } from "../services/modal-stack-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -7,6 +8,7 @@ export class ContentSourcesApp extends HandlebarsApplicationMixin(ApplicationV2)
   constructor(parentApp = null, options = {}) {
     super(options);
     this.parentApp = parentApp;
+    this.modalStackToken = null;
     this.rows = null;
     this.busy = false;
   }
@@ -46,6 +48,12 @@ export class ContentSourcesApp extends HandlebarsApplicationMixin(ApplicationV2)
   }
 
   _onRender() {
+    this.modalStackToken ??= ModalStackService.beginRoot(this, {
+      ownerApp: this.parentApp,
+      ownerElement: this.parentApp?.element,
+      label: "Content Sources",
+      message: "Complete or close this window to return to the previous Character Builder screen."
+    });
     const root = this.element;
     root.querySelector('[data-action="cancel"]')?.addEventListener("click", event => {
       event.preventDefault();
@@ -59,6 +67,14 @@ export class ContentSourcesApp extends HandlebarsApplicationMixin(ApplicationV2)
       button.addEventListener("click", event => this.#moveSource(event));
     });
     root.querySelector('[data-source-filter]')?.addEventListener("input", event => this.#filter(event));
+  }
+
+  async _onClose(options = {}) {
+    if (this.modalStackToken) {
+      ModalStackService.end(this.modalStackToken, { closeDescendants: true });
+      this.modalStackToken = null;
+    }
+    return super._onClose(options);
   }
 
   async #save(event) {

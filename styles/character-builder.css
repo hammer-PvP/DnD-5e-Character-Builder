@@ -4915,3 +4915,51 @@
 @media (max-width: 700px) {
   .character-builder .cb-settings-maintenance-layout { grid-template-columns: 1fr; }
 }
+
+/* 0.9.8m — global parent/child modal stack for every detached selection window. */
+.cb-modal-stack-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  align-items: end;
+  justify-items: center;
+  padding: 0 24px 42px;
+  overflow: hidden;
+  background: rgb(4 6 11 / 66%);
+  backdrop-filter: blur(2px) saturate(.78);
+  -webkit-backdrop-filter: blur(2px) saturate(.78);
+  pointer-events: auto;
+  cursor: default;
+  animation: cb-native-advancement-backdrop-in 120ms ease-out both;
+}
+
+.cb-modal-stack-backdrop__message {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  max-width: min(720px, calc(100vw - 48px));
+  padding: 9px 14px;
+  border: 1px solid rgb(211 177 91 / 54%);
+  border-radius: 6px;
+  background: rgb(15 17 23 / 92%);
+  box-shadow: 0 5px 20px rgb(0 0 0 / 48%);
+  color: #efe7d4;
+  font-size: 13px;
+  line-height: 1.25;
+  text-align: center;
+  pointer-events: none;
+}
+
+.cb-modal-stack-backdrop__message i {
+  flex: 0 0 auto;
+  color: #d3b15b;
+}
+
+.application.cb-modal-stack-blocked {
+  pointer-events: none !important;
+  user-select: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cb-modal-stack-backdrop { animation: none; }
+}

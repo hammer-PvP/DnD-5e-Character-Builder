@@ -9,6 +9,7 @@ import { LevelUpCommitService } from "../services/level-up-commit-service.mjs";
 import { AdvancementChoiceAnnotationService } from "../services/advancement-choice-annotation-service.mjs";
 import { MetadataReconciliationService } from "../services/metadata-reconciliation-service.mjs";
 import { WarlockProjectedCantripService } from "../services/warlock-projected-cantrip-service.mjs";
+import { ModalStackService } from "../services/modal-stack-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -256,7 +257,9 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
           const uuid = target.dataset.uuid;
           if (!uuid) break;
           const document = await fromUuid(uuid);
-          document?.sheet?.render(true);
+          if (document?.sheet) ModalStackService.renderChild(this, document.sheet, true, {
+            label: `${document.name ?? "Document"} Details`
+          });
           break;
         }
         case "toggle-spell-level": {

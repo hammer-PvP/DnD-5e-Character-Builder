@@ -1,5 +1,6 @@
 import { MODULE_ID } from "../constants.mjs";
 import { LibWrapperService } from "./lib-wrapper-service.mjs";
+import { ModalStackService } from "./modal-stack-service.mjs";
 
 export class NativeAdvancementBusyError extends Error {
   constructor(message = "Complete or close the active D&D5e Advancement window before opening another one.") {
@@ -62,13 +63,10 @@ export class NativeAdvancementModalGuard {
       let closeHook = null;
       let removeCloseObserver = null;
       const ownerElement = this.#findOwnerElement();
-      const ownerInert = ownerElement?.inert ?? false;
-      const overlay = this.#createOverlay();
       const active = {
         manager,
-        overlay,
         ownerElement,
-        ownerInert,
+        modalToken: null,
         completionHook: null,
         renderHook: null,
         closeHook: null,
@@ -210,7 +208,8 @@ export class NativeAdvancementModalGuard {
   static focusActive() {
     this.#releaseStaleActive();
     if (!this.#active) return false;
-    this.#scheduleLayerSync(this.#active, { focus: true });
+    if (this.#active.modalToken) ModalStackService.focusTop();
+    else this.#scheduleLayerSync(this.#active, { focus: true });
     return true;
   }
 
@@ -261,14 +260,12 @@ export class NativeAdvancementModalGuard {
     if (!(managerElement instanceof HTMLElement) || !managerElement.isConnected) return false;
 
     active.modalActivated = true;
-    document.body.classList.add("cb-native-advancement-active");
-    document.body.append(active.overlay);
-    if (active.ownerElement) {
-      active.ownerElement.classList.add("cb-native-advancement-blocked");
-      active.ownerElement.inert = true;
-      active.ownerElement.setAttribute("aria-busy", "true");
-    }
-    return true;
+    active.modalToken = ModalStackService.beginRoot(active.manager, {
+      ownerElement: active.ownerElement,
+      label: "D&D5e Advancement",
+      message: "Complete or close the active D&D5e Advancement or selection window to continue."
+    });
+    return Boolean(active.modalToken);
   }
 
   static #releaseStaleActive() {
@@ -306,13 +303,10 @@ export class NativeAdvancementModalGuard {
     active.closeHook = null;
     active.removeCloseObserver = null;
 
-    active.overlay?.remove();
-    if (active.modalActivated && active.ownerElement) {
-      active.ownerElement.classList.remove("cb-native-advancement-blocked");
-      active.ownerElement.inert = active.ownerInert;
-      active.ownerElement.removeAttribute("aria-busy");
+    if (active.modalToken) {
+      ModalStackService.end(active.modalToken, { closeDescendants: true, restoreFocus: false });
+      active.modalToken = null;
     }
-    if (active.modalActivated) document.body.classList.remove("cb-native-advancement-active");
     if (this.#active === active) this.#active = null;
 
     // The closed native window naturally leaves the Builder immediately below
@@ -334,20 +328,6 @@ export class NativeAdvancementModalGuard {
       );
       (focusTarget ?? owner).focus?.({ preventScroll: true });
     });
-  }
-
-  static #createOverlay() {
-    const overlay = document.createElement("div");
-    overlay.className = "cb-native-advancement-backdrop";
-    overlay.dataset.moduleId = MODULE_ID;
-    overlay.setAttribute("role", "presentation");
-    overlay.setAttribute("aria-hidden", "true");
-    overlay.innerHTML = `
-      <div class="cb-native-advancement-backdrop__message">
-        <i class="fa-solid fa-forward" aria-hidden="true"></i>
-        <span>Complete or close the D&amp;D5e Advancement window to continue.</span>
-      </div>`;
-    return overlay;
   }
 
   static #findOwnerElement() {
@@ -377,6 +357,13 @@ export class NativeAdvancementModalGuard {
 
     this.#activateModal(active);
 
+    // A Compendium Browser, picker, or dialog opened by the Advancement is a
+    // child modal. Never raise or focus the manager above that child.
+    if (active.modalToken) {
+      ModalStackService.refresh({ focus });
+      if (ModalStackService.topApp !== active.manager) return;
+    }
+
     active.manager.bringToFront?.();
     active.manager.bringToTop?.();
 
@@ -385,15 +372,6 @@ export class NativeAdvancementModalGuard {
     if (!Number.isFinite(managerZ) || managerZ <= backgroundMaximum) {
       managerZ = backgroundMaximum + 2;
       managerElement.style.zIndex = String(managerZ);
-    }
-    active.overlay.style.zIndex = String(Math.max(1, managerZ - 1));
-
-    if (active.ownerElement) {
-      const ownerZ = this.#zIndex(active.ownerElement);
-      if (ownerZ >= managerZ) {
-        managerElement.style.zIndex = String(ownerZ + 2);
-        active.overlay.style.zIndex = String(ownerZ + 1);
-      }
     }
 
     if (focus && !active.focusApplied) {
@@ -411,7 +389,7 @@ export class NativeAdvancementModalGuard {
   static #maximumApplicationZ(exclude = null) {
     let maximum = 0;
     for (const element of document.querySelectorAll(".application")) {
-      if (element === exclude || element.classList.contains("cb-native-advancement-backdrop")) continue;
+      if (element === exclude || element.classList.contains("cb-native-advancement-backdrop") || element.classList.contains("cb-modal-stack-backdrop")) continue;
       maximum = Math.max(maximum, this.#zIndex(element));
     }
     return maximum;
