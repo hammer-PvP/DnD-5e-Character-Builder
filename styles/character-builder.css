@@ -4832,7 +4832,7 @@
   .cb-content-source-row .cb-order-buttons { justify-self: end; }
 }
 
-/* v0.9.8g — reversible creation-stage review and array reassignment */
+/* v0.9.8h — reversible creation-stage review and array-slot correction */
 .character-builder .cb-array-assignment-hint {
   margin: 0 0 10px;
   padding: 8px 10px;

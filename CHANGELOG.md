@@ -2,6 +2,18 @@
 
 All notable changes to Character Builder are documented here.
 
+## 0.9.8h
+
+### Ability Score array correction
+
+- Standard Array, Custom Array, and rolled-set dropdowns now treat `— Select —` as a real reversible choice.
+- Selecting `— Select —` explicitly clears that Ability and returns its previous slot to the available pool.
+- Moving an occupied slot to another Ability now removes every stale reference to that slot and immediately resets the previous Ability to `— Select —`.
+- Array-slot ownership is normalized before rendering, repairing duplicated or interrupted Draft state without requiring an F5 reload.
+- The requested dropdown value is captured before any protected edit confirmation can rerender the Application, preventing detached controls from restoring the previous selection.
+- Equal numeric values in Custom or rolled arrays remain independent because uniqueness is enforced by slot ID rather than score value.
+- Confirmation remains blocked until all six unique slots are assigned exactly once.
+
 ## 0.9.8g
 
 ### Reversible Character Creation stages

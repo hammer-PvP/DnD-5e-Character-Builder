@@ -166,7 +166,7 @@
               </div>
               {{else if usesSelect}}
               <select name="abilities.{{key}}">
-                <option value="" {{#unless base}}selected{{/unless}}>— Select —</option>
+                <option value="" {{#if unassigned}}selected{{/if}}>— Select —</option>
                 {{#each options}}<option value="{{id}}" {{#if selected}}selected{{/if}}>{{label}}</option>{{/each}}
               </select>
               {{else}}

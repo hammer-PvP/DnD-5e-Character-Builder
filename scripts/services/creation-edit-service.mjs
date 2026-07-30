@@ -38,27 +38,45 @@ export class CreationEditService {
   }
 
   /**
+   * Normalize array-slot ownership so each valid slot belongs to at most one
+   * Ability. Invalid, empty, and duplicate assignments are discarded.
+   */
+  static normalizeAbilitySlotAssignments(assignments, validSlotIds) {
+    const normalized = {};
+    const claimed = new Set();
+    for (const ability of ABILITIES) {
+      const selectedId = String(assignments?.[ability.key] ?? "");
+      if (!selectedId || !validSlotIds?.has?.(selectedId) || claimed.has(selectedId)) continue;
+      normalized[ability.key] = selectedId;
+      claimed.add(selectedId);
+    }
+    return normalized;
+  }
+
+  /**
    * Move one unique array slot to an Ability. If another Ability owns the slot,
-   * it becomes unassigned. The destination's prior slot becomes available.
+   * every previous reference is removed. Selecting an empty value explicitly
+   * clears the destination Ability and returns its former slot to the pool.
    */
   static moveAbilitySlot(assignments, abilityKey, selectedId, validSlotIds) {
-    const next = structuredClone(assignments ?? {});
     const validAbilities = new Set(ABILITIES.map(ability => ability.key));
+    const next = this.normalizeAbilitySlotAssignments(assignments, validSlotIds);
     if (!validAbilities.has(abilityKey)) return next;
 
-    if (!selectedId) {
-      delete next[abilityKey];
-      return next;
-    }
-    if (!validSlotIds?.has?.(selectedId)) return next;
+    // Always release the destination's previous slot first. This also makes the
+    // real "— Select —" option reversible without relying on a disabled placeholder.
+    delete next[abilityKey];
 
+    const requestedId = String(selectedId ?? "");
+    if (!requestedId) return next;
+    if (!validSlotIds?.has?.(requestedId)) return next;
+
+    // The selected slot must have exactly one owner. Remove every stale or
+    // duplicated reference before assigning it to the new destination.
     for (const ability of ABILITIES) {
-      if (ability.key !== abilityKey && next[ability.key] === selectedId) {
-        delete next[ability.key];
-        break;
-      }
+      if (next[ability.key] === requestedId) delete next[ability.key];
     }
-    next[abilityKey] = selectedId;
+    next[abilityKey] = requestedId;
     return next;
   }
 
