@@ -5,6 +5,9 @@ import { RulesCompatibilityService } from "../services/rules-compatibility-servi
 import { SettingsResetService } from "../services/settings-reset-service.mjs";
 import { ContentSourcesApp } from "./content-sources-app.mjs";
 import { ModalStackService } from "../services/modal-stack-service.mjs";
+import { RulesAssistanceService } from "../services/rules-assistance-service.mjs";
+import { RulesAssistanceSettingsService } from "../services/rules-assistance-settings-service.mjs";
+import { RulesAssistanceConfigApp } from "./rules-assistance-config-app.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -45,6 +48,7 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       settings.sources = await ContentSourceService.synchronizedRows(settings.sources, { force: true });
     }
     const enabledSources = settings.sources.filter(row => row.enabled && row.installed !== false);
+    const rulesAssistanceSummary = RulesAssistanceSettingsService.summary(settings);
     return {
       isGM: game.user.isGM,
       tutorialSuppressed: SplashTutorialService.isSuppressed(),
@@ -55,6 +59,8 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       })),
       enabledSourceCount: enabledSources.length,
       availableSourceCount: settings.sources.length,
+      rulesAssistanceEnabledCount: rulesAssistanceSummary.enabledCount,
+      rulesAssistanceRuleCount: rulesAssistanceSummary.totalCount,
       enabledSourceLabels: enabledSources
         .sort((a, b) => Number(a.priority) - Number(b.priority))
         .slice(0, 4)
@@ -91,6 +97,14 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       });
     });
     root.querySelector('[data-action="restore-defaults"]')?.addEventListener("click", event => this.#restoreDefaults(event));
+    root.querySelector('[data-action="configure-assistance-rules"]')?.addEventListener("click", event => {
+      event.preventDefault();
+      const assistanceApp = new RulesAssistanceConfigApp(this);
+      ModalStackService.renderChild(this, assistanceApp, { force: true }, {
+        label: "Configure Assistance Rules",
+        message: "Save or close Configure Assistance Rules to return to Character Builder Settings."
+      });
+    });
     root.querySelectorAll('[name^="hpMethod."]').forEach(input => {
       input.addEventListener("change", () => this.#refreshHpDefaults());
     });
@@ -173,6 +187,7 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       requireArcanaCheckForSpellScrollScribing: form.querySelector('[name="requireArcanaCheckForSpellScrollScribing"]')?.checked ?? true,
       chargeScribingCostOnFailedCheck: form.querySelector('[name="chargeScribingCostOnFailedCheck"]')?.checked ?? true,
       assistWithDiceAutomation: form.querySelector('[name="assistWithDiceAutomation"]')?.checked ?? false,
+      rulesAssistance: foundry.utils.deepClone(storedWorldSettings.rulesAssistance ?? defaultSettings().rulesAssistance),
       hitPointAdvancement: {
         methods: hpMethods,
         defaultMethod,
@@ -210,6 +225,7 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     await SplashTutorialService.setSuppressed(tutorialSuppressed);
     const previousRulesMode = String((game.settings.get(MODULE_ID, "settings") ?? {}).rulesMode ?? "modern2024");
     await game.settings.set(MODULE_ID, "settings", settings);
+    await RulesAssistanceService.refresh();
     if (previousRulesMode !== settings.rulesMode) {
       const result = await RulesCompatibilityService.applyWorldPolicy();
       if (result.failed) ui.notifications.warn(`Rules mode saved, but ${result.failed} Class Items could not be normalized.`);
@@ -217,6 +233,13 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     ui.notifications.info("Character Builder settings saved.");
     await this.close();
     if (!tutorialSuppressed) setTimeout(() => SplashTutorialService.openNow(), 150);
+  }
+
+
+  refreshRulesAssistanceSummary(settings = null) {
+    const summary = RulesAssistanceSettingsService.summary(settings);
+    const element = this.element?.querySelector?.("[data-rules-assistance-summary]");
+    if (element) element.textContent = `${summary.enabledCount} of ${summary.totalCount} assistance rules enabled.`;
   }
 
 

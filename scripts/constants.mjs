@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.8o";
-export const MODULE_BUILD = "community-beta-098o-mage-armor-rules-assistance";
+export const MODULE_VERSION = "0.9.8p";
+export const MODULE_BUILD = "community-beta-098p-granular-rules-assistance";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -57,6 +57,63 @@ export const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8];
 export const CUSTOM_ARRAY_SLOT_COUNT = 6;
 export const POINT_BUY_BUDGET = 27;
 export const POINT_BUY_COSTS = { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 };
+
+
+export const RULES_ASSISTANCE_DEFINITIONS = Object.freeze([
+  Object.freeze({
+    key: "greatWeaponFighting",
+    ruleId: "great-weapon-fighting",
+    label: "Great Weapon Fighting",
+    description: "Treats eligible weapon damage die results of 1 or 2 as 3.",
+    tag: "Damage"
+  }),
+  Object.freeze({
+    key: "thrownWeaponFighting",
+    ruleId: "thrown-weapon-fighting",
+    label: "Thrown Weapon Fighting",
+    description: "Adds the fighting style damage bonus to eligible thrown weapon attacks.",
+    tag: "Damage"
+  }),
+  Object.freeze({
+    key: "clericPotentSpellcasting",
+    ruleId: "cleric-potent-spellcasting",
+    label: "Cleric — Blessed Strikes: Potent Spellcasting",
+    description: "Adds Wisdom to eligible Cleric cantrip damage rolls.",
+    tag: "Damage"
+  }),
+  Object.freeze({
+    key: "druidPotentSpellcasting",
+    ruleId: "druid-potent-spellcasting",
+    label: "Druid — Elemental Fury: Potent Spellcasting",
+    description: "Adds Wisdom to eligible Druid cantrip damage rolls.",
+    tag: "Damage"
+  }),
+  Object.freeze({
+    key: "empoweredEvocation",
+    ruleId: "empowered-evocation",
+    label: "Wizard — Empowered Evocation",
+    description: "Adds Intelligence to one eligible damage roll of a Wizard Evocation spell.",
+    tag: "Damage"
+  }),
+  Object.freeze({
+    key: "mageArmorEffectApplication",
+    ruleId: "mage-armor-effect-application",
+    label: "Mage Armor Effect Application",
+    description: "Applies and maintains the native Mage Armor effect on eligible targets.",
+    tag: "Effect"
+  }),
+  Object.freeze({
+    key: "agonizingBlastNativeBinding",
+    ruleId: "agonizing-blast-native-binding",
+    label: "Agonizing Blast Native Binding",
+    description: "Maintains the native enchantment on the cantrip selected by the Invocation.",
+    tag: "Native Binding"
+  })
+]);
+
+export function defaultRulesAssistanceRules() {
+  return Object.fromEntries(RULES_ASSISTANCE_DEFINITIONS.map(rule => [rule.key, true]));
+}
 
 export const CURRENCY_CP = Object.freeze({
   pp: 1000,
@@ -143,6 +200,9 @@ export function defaultSettings() {
     requireArcanaCheckForSpellScrollScribing: true,
     chargeScribingCostOnFailedCheck: true,
     assistWithDiceAutomation: false,
+    rulesAssistance: {
+      rules: defaultRulesAssistanceRules()
+    },
     hitPointAdvancement: {
       methods: {
         roll: true,

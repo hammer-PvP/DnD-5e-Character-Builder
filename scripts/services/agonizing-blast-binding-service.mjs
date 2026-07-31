@@ -1,4 +1,5 @@
 import { MODULE_ID } from "../constants.mjs";
+import { RulesAssistanceSettingsService } from "./rules-assistance-settings-service.mjs";
 
 const BINDING_FLAG = "nativeEnchantmentBinding";
 const AGONIZING_IDENTIFIER = "agonizing-blast";
@@ -40,8 +41,12 @@ export class AgonizingBlastBindingService {
     Hooks.on("deleteActiveEffect", scheduleEffect);
   }
 
+  static enabled() {
+    return RulesAssistanceSettingsService.ruleEnabled("agonizing-blast-native-binding");
+  }
+
   static async ready() {
-    if (!game.user?.isGM) return;
+    if (!this.enabled() || !game.user?.isGM) return;
     const activeGM = game.users?.activeGM;
     if (activeGM && activeGM.id !== game.user.id) return;
     for (const actor of game.actors?.filter?.(candidate => candidate.type === "character"
@@ -57,7 +62,7 @@ export class AgonizingBlastBindingService {
   }
 
   static schedule(actor, delay = 80) {
-    if (!actor?.id) return;
+    if (!this.enabled() || !actor?.id) return;
     const previous = this.#timers.get(actor.id);
     if (previous) clearTimeout(previous);
     const timer = setTimeout(() => {
@@ -70,6 +75,7 @@ export class AgonizingBlastBindingService {
   }
 
   static async reconcileActor(actor, { reason = "manual" } = {}) {
+    if (!this.enabled()) return { checked: 0, applied: 0, adopted: 0, removed: 0, missing: 0, disabled: true };
     if (!actor || actor.type !== "character") return { checked: 0, applied: 0, adopted: 0, removed: 0, missing: 0 };
     const key = actor.id ?? actor.uuid;
     if (this.#locks.has(key)) return this.#locks.get(key);

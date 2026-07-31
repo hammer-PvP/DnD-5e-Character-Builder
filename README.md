@@ -10,7 +10,7 @@ It uses the official D&D5e documents and native Advancement system as its rules 
 
 ## Compatibility
 
-- Foundry VTT 14.364
+- Foundry VTT 14.365
 - D&D5e 5.3.3
 - Player's Handbook 2024 content package
 - SRD 5.2 Modern
@@ -176,26 +176,27 @@ The player may perform a change or continue the rest without changing anything. 
 
 ## Rules Assistance
 
-Character Builder includes an optional GM-controlled runtime layer named **Rules Automation Assistance**. It is disabled by default and is intended to help newer players avoid missing deterministic passive bonuses that the D&D5e system does not fully apply on its own.
+Character Builder includes an optional GM-controlled runtime layer named **Rules Automation Assistance**. It is disabled by default and is intended to help newer players avoid missing deterministic passive bonuses and effects that the D&D5e system does not fully apply on its own.
 
-The initial supported rules are:
+The Settings screen provides a master switch plus **Configure Assistance Rules**, where the GM can enable or disable each supported rule independently. Turning the master switch off pauses every assistance without erasing the individual choices, so a world can disable only the rules already covered by another automation module.
+
+The current rule list includes:
 
 - Great Weapon Fighting;
 - Thrown Weapon Fighting;
 - Cleric — Blessed Strikes: Potent Spellcasting;
 - Druid — Elemental Fury: Potent Spellcasting;
 - Wizard — Empowered Evocation;
-- Mage Armor native effect application, including Armor of Shadows.
+- Mage Armor Effect Application, including Armor of Shadows;
+- Agonizing Blast Native Binding.
 
 Damage assistance uses native D&D5e roll hooks and changes only the current roll configuration. Effect assistance reuses the native Active Effect already supplied by the source spell or feature. It never creates duplicate weapons, duplicate spells, duplicate Activities, replacement chat commands, or permanent formula edits.
 
 Mage Armor is applied automatically to one eligible target after a successful use. The target cannot be wearing equipped light, medium, or heavy body armor; clothing and shields do not block the effect. A repeated cast refreshes the existing native effect instead of stacking another copy, and equipping body armor ends Mage Armor. Armor of Shadows always resolves to the Warlock using the Invocation.
 
+Agonizing Blast uses Character Builder's managed Invocation target to apply and maintain the official PHB enchantment on the selected cantrip. The native enchantment supplies the visible `, Agonizing` suffix and the dynamic `@abilities.cha.mod` damage bonus. Its reconciliation is event-driven rather than a polling loop and can be disabled independently from the other assistance rules.
+
 Rules Automation Assistance works most reliably with characters created, leveled, and maintained through Character Builder and Character Keeper. Manually created characters remain supported whenever the required native data can be identified, but managed bindings and automatic reconciliation may be limited.
-
-Agonizing Blast is handled separately as a native configuration binding. Character Builder already records the selected Warlock cantrip; it now also applies and maintains the official PHB enchantment on that same cantrip. The native enchantment supplies the visible `, Agonizing` suffix and the dynamic `@abilities.cha.mod` damage bonus.
-
-The Keeper-side reconciliation is event-driven rather than a polling loop. It checks relevant Item and Active Effect changes, adopts an already-correct native enchantment, repairs a missing managed application, and removes only an orphaned enchantment owned by the affected Invocation instance.
 
 ## Wizard Spellbook Management
 

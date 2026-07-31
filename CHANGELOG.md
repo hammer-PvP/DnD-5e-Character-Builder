@@ -2,6 +2,18 @@
 
 All notable changes to Character Builder are documented here.
 
+## 0.9.8p
+
+### Granular Rules Automation Assistance and Foundry 14.365
+
+- Replaced the long Rules Assistance settings block with a compact GM-only master switch, a short purpose statement, an enabled-rule count, and a **Configure Assistance Rules** button.
+- Added a protected configuration window with independent toggles for Great Weapon Fighting, Thrown Weapon Fighting, Cleric Potent Spellcasting, Druid Potent Spellcasting, Wizard Empowered Evocation, Mage Armor Effect Application, and Agonizing Blast Native Binding.
+- Turning the master switch off now pauses every assistance without erasing the per-rule choices. Re-enabling it restores the previously selected rule set.
+- Added per-rule runtime gates so a GM can disable only the automation that overlaps with another module while leaving the remaining Character Builder assistance active.
+- Moved Agonizing Blast Native Binding under the same master and per-rule controls. Existing native enchantments remain intact while the rule is paused, and reconciliation resumes when it is enabled again.
+- Preserved existing world preferences during migration: worlds upgrading from earlier builds inherit every current individual rule as enabled while retaining the previous master-switch state.
+- Updated the module manifest, README, release metadata, and module-page compatibility text for Foundry VTT 14.365 while retaining the existing minimum version and removing the unnecessary Foundry maximum declaration.
+
 ## 0.9.8o
 
 ### Rules Automation Assistance and Mage Armor

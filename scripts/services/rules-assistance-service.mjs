@@ -1,7 +1,8 @@
-import { MODULE_ID, defaultSettings } from "../constants.mjs";
+import { MODULE_ID } from "../constants.mjs";
 import { AgonizingBlastBindingService } from "./agonizing-blast-binding-service.mjs";
 import { RulesAssistanceFormulaService } from "./rules-assistance-formula-service.mjs";
 import { MageArmorAssistanceService } from "./mage-armor-assistance-service.mjs";
+import { RulesAssistanceSettingsService } from "./rules-assistance-settings-service.mjs";
 
 const RULES = Object.freeze({
   GREAT_WEAPON_FIGHTING: "great-weapon-fighting",
@@ -48,15 +49,18 @@ export class RulesAssistanceService {
   }
 
   static enabled() {
-    return this.settings().assistWithDiceAutomation === true;
+    return RulesAssistanceSettingsService.masterEnabled();
   }
 
-  static settings() {
-    const stored = globalThis.game?.settings?.get?.(MODULE_ID, "settings") ?? {};
-    const merge = globalThis.foundry?.utils?.mergeObject;
-    return merge
-      ? merge(defaultSettings(), stored, { inplace: false })
-      : { ...defaultSettings(), ...stored };
+  static ruleEnabled(ruleId) {
+    return RulesAssistanceSettingsService.ruleEnabled(ruleId);
+  }
+
+  static async refresh() {
+    this.#casts.clear();
+    if (this.ruleEnabled("agonizing-blast-native-binding")) {
+      await AgonizingBlastBindingService.ready();
+    }
   }
 
   static async reconcileActor(actor) {
@@ -73,7 +77,7 @@ export class RulesAssistanceService {
   }
 
   static #prepareCast(activity, usageConfig, _dialogConfig, messageConfig) {
-    if (!this.enabled() || !this.#qualifiesEmpoweredEvocation(activity)) return;
+    if (!this.ruleEnabled(RULES.EMPOWERED_EVOCATION) || !this.#qualifiesEmpoweredEvocation(activity)) return;
     if (!this.#isRealSpellCast(activity)) return;
 
     const castId = foundry.utils.randomID?.(24) ?? crypto.randomUUID();
@@ -87,7 +91,7 @@ export class RulesAssistanceService {
   }
 
   static #confirmCast(activity, usageConfig, results) {
-    if (!this.enabled() || !this.#qualifiesEmpoweredEvocation(activity)) return;
+    if (!this.ruleEnabled(RULES.EMPOWERED_EVOCATION) || !this.#qualifiesEmpoweredEvocation(activity)) return;
     const castId = usageConfig?.dnd5eCharacterBuilderRulesAssistance?.empoweredEvocationCastId;
     if (!castId) return;
 
@@ -119,13 +123,15 @@ export class RulesAssistanceService {
     context.itemId = activity.item?.id ?? null;
     context.actorId = activity.actor?.id ?? null;
 
-    if (this.#qualifiesGreatWeaponFighting(activity, process)) context.greatWeaponFighting = true;
-    if (this.#qualifiesThrownWeaponFighting(activity, process)) context.thrownWeaponFighting = true;
+    if (this.ruleEnabled(RULES.GREAT_WEAPON_FIGHTING)
+      && this.#qualifiesGreatWeaponFighting(activity, process)) context.greatWeaponFighting = true;
+    if (this.ruleEnabled(RULES.THROWN_WEAPON_FIGHTING)
+      && this.#qualifiesThrownWeaponFighting(activity, process)) context.thrownWeaponFighting = true;
 
     const potent = this.#potentSpellcastingRule(activity);
-    if (potent) context.potentSpellcasting = potent;
+    if (potent && this.ruleEnabled(potent.ruleId)) context.potentSpellcasting = potent;
 
-    if (this.#qualifiesEmpoweredEvocation(activity)) {
+    if (this.ruleEnabled(RULES.EMPOWERED_EVOCATION) && this.#qualifiesEmpoweredEvocation(activity)) {
       const cast = this.#selectCast(activity, message);
       if (cast) context.empoweredEvocation = { castId: cast.castId };
     }
@@ -135,17 +141,17 @@ export class RulesAssistanceService {
     if (!this.enabled() || !rollConfig) return;
     const context = process?.dnd5eCharacterBuilderRulesAssistance ?? {};
 
-    if (context.greatWeaponFighting) {
+    if (context.greatWeaponFighting && this.ruleEnabled(RULES.GREAT_WEAPON_FIGHTING)) {
       this.#applyGreatWeaponFighting(process, rollConfig, index);
     }
     if (index !== 0) return;
 
-    if (context.thrownWeaponFighting) {
+    if (context.thrownWeaponFighting && this.ruleEnabled(RULES.THROWN_WEAPON_FIGHTING)) {
       this.#applyFlatDamageBonus(rollConfig, 2, RULES.THROWN_WEAPON_FIGHTING, {
         label: "Thrown Weapon Fighting"
       });
     }
-    if (context.potentSpellcasting) {
+    if (context.potentSpellcasting && this.ruleEnabled(context.potentSpellcasting.ruleId)) {
       this.#applyAbilityModifier(
         rollConfig,
         context.potentSpellcasting.ability,
@@ -153,7 +159,7 @@ export class RulesAssistanceService {
         { label: context.potentSpellcasting.label }
       );
     }
-    if (context.empoweredEvocation?.castId) {
+    if (context.empoweredEvocation?.castId && this.ruleEnabled(RULES.EMPOWERED_EVOCATION)) {
       this.#applyAbilityModifier(rollConfig, "int", RULES.EMPOWERED_EVOCATION, {
         label: "Empowered Evocation",
         castId: context.empoweredEvocation.castId

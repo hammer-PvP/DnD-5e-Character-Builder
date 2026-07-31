@@ -1,4 +1,5 @@
-import { MODULE_ID, defaultSettings } from "../constants.mjs";
+import { MODULE_ID } from "../constants.mjs";
+import { RulesAssistanceSettingsService } from "./rules-assistance-settings-service.mjs";
 
 const MAGE_ARMOR_IDENTIFIER = "mage-armor";
 const ARMOR_OF_SHADOWS_IDENTIFIER = "armor-of-shadows";
@@ -54,12 +55,7 @@ export class MageArmorAssistanceService {
   }
 
   static enabled() {
-    const stored = globalThis.game?.settings?.get?.(MODULE_ID, "settings") ?? {};
-    const merge = globalThis.foundry?.utils?.mergeObject;
-    const settings = merge
-      ? merge(defaultSettings(), stored, { inplace: false })
-      : { ...defaultSettings(), ...stored };
-    return settings.assistWithDiceAutomation === true;
+    return RulesAssistanceSettingsService.ruleEnabled("mage-armor-effect-application");
   }
 
   static diagnostics(actor) {
