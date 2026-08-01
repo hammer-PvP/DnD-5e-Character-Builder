@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.8q
+
+- Prevents rules-mode normalization from replacing complete live Class Advancement data.
+- Preserves player choices such as Weapon Mastery, proficiencies, ItemGrant records, and ASI/Feat state across world reloads.
+- Conservatively repairs missing Weapon Mastery `value.chosen` records when exact ownership can be recovered from Character Builder badges or an unambiguous single-class legacy state.
+- Adds regression coverage for Advancement integrity and ambiguous multiclass mastery ownership.
+
 All notable changes to Character Builder are documented here.
 
 ## 0.9.8p
