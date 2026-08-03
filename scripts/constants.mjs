@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.8r";
-export const MODULE_BUILD = "community-beta-098r-authoritative-temporary-actors-third-casters";
+export const MODULE_VERSION = "0.9.8s";
+export const MODULE_BUILD = "community-beta-098s-socket-enabled-authoritative-temporary-actors";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {

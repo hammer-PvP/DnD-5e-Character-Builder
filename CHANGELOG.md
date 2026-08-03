@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.8s
+
+### Protected temporary Actor socket hotfix
+
+- Enabled the module socket namespace in the Foundry manifest with `"socket": true`, allowing player requests for protected Draft and Safety Backup creation or cleanup to reach the active GM client.
+- Fixed the 15-second `The active GM did not complete the protected Character Builder Actor operation in time` failure that blocked player-initiated Level Up, Class Selection restart, commit preparation, and temporary Actor cleanup.
+- Preserved the GM-authoritative validation model from v0.9.8r; players still do not need global Create Actor or Delete Actor permissions.
+- Added package verification requiring `socket: true` in both the installable module manifest and the external release manifest.
+
 ## 0.9.8r
 
 ### GM-authoritative Draft lifecycle and third-caster Level Up fixes
