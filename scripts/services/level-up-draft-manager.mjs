@@ -1,5 +1,6 @@
 import { MODULE_ID, DRAFT_FOLDER_NAME } from "../constants.mjs";
 import { LevelUpService } from "./level-up-service.mjs";
+import { TemporaryActorService } from "./temporary-actor-service.mjs";
 
 export class LevelUpDraftManager {
   static async getOrCreate(actor) {
@@ -7,30 +8,9 @@ export class LevelUpDraftManager {
     const existing = draftId ? game.actors.get(draftId) : null;
     if (existing) return existing;
 
-    const folder = await this.#getOrCreateFolder();
-    const data = actor.toObject();
-    delete data._id;
-    data.name = `[Character Builder Level Up] ${actor.name}`;
-    data.folder = folder.id;
-    data.ownership = foundry.utils.deepClone(actor.ownership);
-    data.flags ??= {};
-    data.flags[MODULE_ID] = foundry.utils.mergeObject(data.flags[MODULE_ID] ?? {}, {
-      isLevelUpDraft: true,
-      sourceActorId: actor.id,
-      createdAt: Date.now(),
+    return TemporaryActorService.createLevelUpDraft(actor, {
       levelUpState: this.#initialState(actor)
-    }, {
-      inplace: false,
-      overwrite: true,
-      insertKeys: true,
-      insertValues: true
     });
-    delete data.flags[MODULE_ID].levelUpDraftId;
-    delete data.flags[MODULE_ID].isDraft;
-
-    const draft = await Actor.create(data, { renderSheet: false });
-    await actor.setFlag(MODULE_ID, "levelUpDraftId", draft.id);
-    return draft;
   }
 
   static getState(draft) {
@@ -60,8 +40,14 @@ export class LevelUpDraftManager {
     const draft = draftId ? game.actors.get(draftId) : null;
     const { HitPointAdvancementService } = await import("./hit-point-advancement-service.mjs");
     const lock = HitPointAdvancementService.lockedRoll(actor);
-    if (draft) await draft.delete();
-    await actor.unsetFlag(MODULE_ID, "levelUpDraftId");
+    if (draft) {
+      await TemporaryActorService.deleteLevelUpDraft(draft, {
+        sourceActorId: actor.id,
+        transactionId: this.getState(draft).transactionId ?? null
+      });
+    } else {
+      await actor.unsetFlag(MODULE_ID, "levelUpDraftId");
+    }
     const fresh = await this.getOrCreate(actor);
     await this.setState(fresh, {
       transactionId: lock?.transactionId ?? this.getState(fresh).transactionId,
@@ -86,8 +72,14 @@ export class LevelUpDraftManager {
       reason: "gm-reset",
       archive: true
     });
-    if (draft) await draft.delete();
-    await actor.unsetFlag(MODULE_ID, "levelUpDraftId");
+    if (draft) {
+      await TemporaryActorService.deleteLevelUpDraft(draft, {
+        sourceActorId: actor.id,
+        transactionId: this.getState(draft).transactionId ?? null
+      });
+    } else {
+      await actor.unsetFlag(MODULE_ID, "levelUpDraftId");
+    }
   }
 
   static #initialState(actor) {

@@ -6,6 +6,7 @@ import { HitPointAdvancementService } from "./hit-point-advancement-service.mjs"
 import { ItemGrantIntegrityService } from "./item-grant-integrity-service.mjs";
 import { AdvancementChoiceAnnotationService } from "./advancement-choice-annotation-service.mjs";
 import { ItemChoiceReplacementIntegrityService } from "./item-choice-replacement-integrity-service.mjs";
+import { TemporaryActorService } from "./temporary-actor-service.mjs";
 
 /**
  * Applies a completed Level Up draft as one recoverable transaction. The live
@@ -60,6 +61,7 @@ export class LevelUpCommitService {
       HitPointAdvancementService.validateLockedResult(actor, state);
 
       await this.#validateClassIntegrity(actor, draft, state);
+      this.#validateSubclassCasterSpellLevels(draft, state);
       await AdvancementChoiceAnnotationService.refresh(draft, { state: LevelUpDraftManager.getState(draft) });
       ItemGrantIntegrityService.validate(draft, { context: "levelUp", state });
 
@@ -191,7 +193,10 @@ export class LevelUpCommitService {
         await actor.unsetFlag(MODULE_ID, "levelUpGrant");
       }
       try {
-        await draft.delete();
+        await TemporaryActorService.deleteLevelUpDraft(draft, {
+          sourceActorId: actor.id,
+          transactionId: state.transactionId ?? null
+        });
       } catch (cleanupError) {
         console.warn(`${MODULE_ID} | Level Up committed, but the temporary draft could not be deleted.`, cleanupError);
       }
@@ -272,6 +277,28 @@ export class LevelUpCommitService {
     }
   }
 
+
+  static #validateSubclassCasterSpellLevels(draft, state) {
+    const classIdentifier = String(state.selectedClassIdentifier ?? "");
+    if (!["fighter", "rogue"].includes(classIdentifier)) return;
+    const subclassIdentifiers = new Set(draft.items.filter(item => item.type === "subclass")
+      .map(item => String(item.system?.identifier ?? "").toLowerCase()));
+    const expectedSubclass = classIdentifier === "fighter" ? "eldritch-knight" : "arcane-trickster";
+    if (!subclassIdentifiers.has(expectedSubclass)) return;
+
+    const level = Number(state.targetClassLevel ?? 0);
+    const maximum = level < 3 ? 0 : level < 7 ? 1 : level < 13 ? 2 : level < 19 ? 3 : 4;
+    const invalid = draft.items.find(item => {
+      if (item.type !== "spell" || Number(item.system?.level ?? 0) <= maximum) return false;
+      const acquisition = item.getFlag(MODULE_ID, "levelUpSpell");
+      return acquisition?.transactionId === state.transactionId
+        && acquisition?.classIdentifier === classIdentifier;
+    });
+    if (invalid) {
+      throw new Error(`${invalid.name} is a level ${invalid.system?.level} spell, but ${expectedSubclass === "eldritch-knight" ? "Eldritch Knight" : "Arcane Trickster"} level ${level} can learn spells only through level ${maximum}. Return to Additional Choices and select an eligible spell.`);
+    }
+  }
+
   static async #validateClassIntegrity(actor, draft, state) {
     const draftClass = draft.items.get(state.selectedClassId)
       ?? draft.items.find(item => item.type === "class" && item.system?.identifier === state.selectedClassIdentifier);
@@ -305,32 +332,20 @@ export class LevelUpCommitService {
     }
   }
 
-  static async #createSafetyBackup(actor, draft, snapshot, token) {
-    const data = this.#plainClone(snapshot);
-    delete data._id;
-    data.name = `[Character Builder Safety Backup] ${actor.name}`;
-    data.folder = draft?.folder?.id ?? draft?.folder ?? actor.folder?.id ?? actor.folder ?? null;
-    data.flags ??= {};
-    data.flags[MODULE_ID] = {
-      ...(data.flags[MODULE_ID] ?? {}),
-      commitSafetyBackup: true,
-      sourceActorId: actor.id,
-      transactionToken: token,
-      createdAt: Date.now(),
-      moduleVersion: MODULE_VERSION
-    };
-    const backup = await Actor.create(data, {
-      renderSheet: false,
-      characterBuilderSafetyBackup: true
+  static async #createSafetyBackup(actor, draft, _snapshot, token) {
+    return TemporaryActorService.createSafetyBackup(actor, {
+      draftId: draft?.id ?? null,
+      transactionToken: token
     });
-    if (!backup) throw new Error("Character Builder could not create the pre-commit safety backup Actor.");
-    return backup;
   }
 
   static async #deleteSafetyBackup(backup) {
     if (!backup) return;
     try {
-      await backup.delete({ characterBuilderSafetyBackupCleanup: true });
+      await TemporaryActorService.deleteSafetyBackup(backup, {
+        sourceActorId: backup.getFlag(MODULE_ID, "sourceActorId") ?? null,
+        transactionToken: backup.getFlag(MODULE_ID, "transactionToken") ?? null
+      });
     } catch (error) {
       console.warn(`${MODULE_ID} | The completed transaction safety backup could not be deleted.`, error);
     }

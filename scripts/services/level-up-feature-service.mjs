@@ -472,17 +472,27 @@ export class LevelUpFeatureService {
   }
 
   static subclassCaster(draft, classIdentifier) {
-    const subclass = draft.items.find(item => {
+    const subclasses = draft.items.filter(item => {
       if (item.type !== "subclass") return false;
       const parent = item.system?.classIdentifier ?? item.system?.class?.identifier ?? item.system?.class;
-      return !parent || parent === classIdentifier;
+      return !parent || String(parent) === String(classIdentifier);
     });
-    const identifier = subclass?.system?.identifier;
-    if (classIdentifier === "fighter" && identifier === "eldritch-knight") {
-      return { subclass, identifier, spellList: "wizard", ability: "int", sourceItem: "subclass:eldritch-knight" };
+    const identify = item => {
+      const explicit = String(item?.system?.identifier ?? "").trim().toLowerCase();
+      if (explicit) return explicit;
+      const source = String(item?.getFlag?.("dnd5e", "sourceId") ?? item?._stats?.compendiumSource ?? "").toLowerCase();
+      if (source.includes("eldritch") && source.includes("knight")) return "eldritch-knight";
+      if (source.includes("arcane") && source.includes("trickster")) return "arcane-trickster";
+      return this.#slug(item?.name ?? "");
+    };
+
+    if (classIdentifier === "fighter") {
+      const subclass = subclasses.find(item => identify(item) === "eldritch-knight") ?? null;
+      if (subclass) return { subclass, identifier: "eldritch-knight", spellList: "wizard", ability: "int", sourceItem: "subclass:eldritch-knight" };
     }
-    if (classIdentifier === "rogue" && identifier === "arcane-trickster") {
-      return { subclass, identifier, spellList: "wizard", ability: "int", sourceItem: "subclass:arcane-trickster" };
+    if (classIdentifier === "rogue") {
+      const subclass = subclasses.find(item => ["arcane-trickster", "trickster"].includes(identify(item))) ?? null;
+      if (subclass) return { subclass, identifier: "arcane-trickster", spellList: "wizard", ability: "int", sourceItem: "subclass:arcane-trickster" };
     }
     return null;
   }

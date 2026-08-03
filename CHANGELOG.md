@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.8r
+
+### GM-authoritative Draft lifecycle and third-caster Level Up fixes
+
+- Added a closed, GM-authoritative temporary Actor service for Character Creation Drafts, Level Up Drafts, commit safety backups, reset/restart flows, and cleanup. Players no longer need the global Foundry permissions to create or delete Actors in order to use these Character Builder workflows.
+- The active GM executes validated create/delete requests automatically through the module socket without confirmation prompts. Requests are restricted to known temporary Actor types, source-Actor ownership, provenance flags, transaction identity, and safety-lock checks; normal Actors cannot be deleted through this service.
+- Fixed player-facing `lacks permission to delete Actor` errors after a successful Level Up and while restarting Class Selection. Completed transactions no longer fail or roll back merely because temporary cleanup needs GM authority.
+- Corrected Eldritch Knight and Arcane Trickster spell-level progression: class levels 3–6 allow level 1 spells, 7–12 level 2, 13–18 level 3, and 19–20 level 4.
+- Added a pre-commit guard that rejects newly selected third-caster spells above the legal spell level for the target class level.
+- Expanded Arcane Trickster and Eldritch Knight spell ownership discovery across native `system.classIdentifier`, embedded `sourceItem` references, full Advancement UUID paths, source IDs, and Character Builder acquisition flags so optional spell replacement works for legacy and Builder-managed Actors.
+- Preserved the v0.9.8q Advancement-integrity fix and the v0.9.8p granular Rules Automation Assistance controls.
+
 ## 0.9.8q
 
 - Prevents rules-mode normalization from replacing complete live Class Advancement data.

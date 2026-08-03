@@ -1,5 +1,6 @@
 import { MODULE_ID, MODULE_VERSION } from "../constants.mjs";
 import { AgonizingBlastBindingService } from "./agonizing-blast-binding-service.mjs";
+import { TemporaryActorService } from "./temporary-actor-service.mjs";
 
 /**
  * Applies a completed Character Creation Draft as one recoverable protected
@@ -158,7 +159,13 @@ export class ActorCommitService {
 
       stage = "Finalizing";
       await progress(97, stage, "Clearing the temporary Draft and persistent safety record.");
-      if (game.actors.get(draft.id)) await draft.delete();
+      if (game.actors.get(draft.id)) {
+        try {
+          await TemporaryActorService.deleteCharacterDraft(draft, { sourceActorId: actor.id });
+        } catch (cleanupError) {
+          console.warn(`${MODULE_ID} | Character Creation completed, but the temporary Draft could not be cleaned up.`, cleanupError);
+        }
+      }
       await actor.unsetFlag(MODULE_ID, "draftActorId");
       await actor.unsetFlag(MODULE_ID, "creationTransaction");
       await progress(100, "Complete", "The character was created successfully.");
@@ -332,7 +339,13 @@ export class ActorCommitService {
 
   static async #finishCompletedRecovery(actor, transaction) {
     const draft = transaction?.draftId ? game.actors.get(transaction.draftId) : null;
-    if (draft?.getFlag(MODULE_ID, "isDraft")) await draft.delete();
+    if (draft?.getFlag(MODULE_ID, "isDraft")) {
+      try {
+        await TemporaryActorService.deleteCharacterDraft(draft, { sourceActorId: actor.id });
+      } catch (cleanupError) {
+        console.warn(`${MODULE_ID} | Completed Character Creation recovery could not clean up its Draft.`, cleanupError);
+      }
+    }
     await actor.unsetFlag(MODULE_ID, "draftActorId");
     await actor.unsetFlag(MODULE_ID, "creationTransaction");
   }

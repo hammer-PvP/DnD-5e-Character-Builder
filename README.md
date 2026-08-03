@@ -44,7 +44,7 @@ Enable **Character Builder (DnD 5e)** in the world after installation.
 2. Use the gold **Character Builder** button on an empty character sheet to begin guided creation.
 3. Grant Level Ups individually from Actor controls or in groups through **Character Builder Tool**.
 4. Configure content sources and campaign rules in **Character Builder Settings**.
-5. Allow players to complete Level Ups and class maintenance from their own character sheets.
+5. Allow players to complete Level Ups and class maintenance from their own character sheets. Character Builder delegates protected Draft and safety-backup creation/cleanup to an active GM, so players do not need Foundry's global Create Actor or Delete Actor permissions for these workflows.
 
 <p align="center">
   <img src="docs/images/grant-level-ups.png" alt="Character Builder Tool and Level Up grant controls" width="780">

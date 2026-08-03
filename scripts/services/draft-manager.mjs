@@ -1,5 +1,6 @@
 import { MODULE_ID, DRAFT_FOLDER_NAME } from "../constants.mjs";
 import { ActorCommitService } from "./actor-commit-service.mjs";
+import { TemporaryActorService } from "./temporary-actor-service.mjs";
 
 export class DraftManager {
   static #pendingByActor = new Map();
@@ -48,55 +49,42 @@ export class DraftManager {
       const recoveredAfterWait = this.#recoverableDrafts(actor);
       if (recoveredAfterWait.length) return this.#relinkRecoveredDraft(actor, recoveredAfterWait);
 
-      const folder = await this.#getOrCreateFolder();
-      const data = actor.toObject();
-      delete data._id;
-      data.name = `[Character Builder Draft] ${actor.name}`;
-      data.folder = folder.id;
-      data.ownership = foundry.utils.deepClone(actor.ownership);
-      data.flags ??= {};
-      data.flags[MODULE_ID] = {
-        isDraft: true,
-        sourceActorId: actor.id,
-        creationSessionId: foundry.utils.randomID?.() ?? `${actor.id}-${Date.now()}`,
-        createdAt: Date.now(),
-        createdByUserId: game.user.id,
-        baseCurrency: foundry.utils.deepClone(actor.system.currency ?? {}),
-        buildState: {
-          step: "abilitiesBackground",
-          characterName: actor.name,
-          abilityMethod: "pointBuy",
-          baseAbilities: { str: 8, dex: 8, con: 8, int: 8, wis: 8, cha: 8 },
-          abilityMethodValues: {
-            pointBuy: { str: 8, dex: 8, con: 8, int: 8, wis: 8, cha: 8 },
-            manual: { str: 8, dex: 8, con: 8, int: 8, wis: 8, cha: 8 }
-          },
-          abilityArraySlots: {},
-          abilitySlotAssignments: {},
-          selectedBackgroundUuid: null,
-          backgroundAbilityAssignments: {},
-          abilityBackgroundFingerprint: null,
-          rollSets: [],
-          selectedRollSet: null,
-          abilitiesSaved: false,
-          spellAccess: {},
-          spellAccessSaved: false,
-          equipment: {},
-          equipmentSaved: false,
-          editingStages: {
-            abilitiesBackground: false,
-            species: false,
-            class: false,
-            spells: false,
-            equipment: false
-          },
-          shop: { cart: [], totalBudgetCp: 0, spentCp: 0, remainingCp: 0 }
-        }
+      const creationSessionId = foundry.utils.randomID?.() ?? `${actor.id}-${Date.now()}`;
+      const buildState = {
+        step: "abilitiesBackground",
+        characterName: actor.name,
+        abilityMethod: "pointBuy",
+        baseAbilities: { str: 8, dex: 8, con: 8, int: 8, wis: 8, cha: 8 },
+        abilityMethodValues: {
+          pointBuy: { str: 8, dex: 8, con: 8, int: 8, wis: 8, cha: 8 },
+          manual: { str: 8, dex: 8, con: 8, int: 8, wis: 8, cha: 8 }
+        },
+        abilityArraySlots: {},
+        abilitySlotAssignments: {},
+        selectedBackgroundUuid: null,
+        backgroundAbilityAssignments: {},
+        abilityBackgroundFingerprint: null,
+        rollSets: [],
+        selectedRollSet: null,
+        abilitiesSaved: false,
+        spellAccess: {},
+        spellAccessSaved: false,
+        equipment: {},
+        equipmentSaved: false,
+        editingStages: {
+          abilitiesBackground: false,
+          species: false,
+          class: false,
+          spells: false,
+          equipment: false
+        },
+        shop: { cart: [], totalBudgetCp: 0, spentCp: 0, remainingCp: 0 }
       };
 
-      const draft = await Actor.create(data, { renderSheet: false });
-      if (!draft) throw new Error("Character Builder could not create the Draft Actor.");
-
+      const draft = await TemporaryActorService.createCharacterDraft(actor, {
+        buildState,
+        creationSessionId
+      });
       // Re-scan before linking. If a concurrent client created a Draft in the
       // same interval, converge on one deterministic candidate rather than
       // blindly creating yet another session on the next reload.
@@ -115,8 +103,11 @@ export class DraftManager {
   static async discard(actor) {
     const draftId = actor.getFlag(MODULE_ID, "draftActorId");
     const draft = draftId ? game.actors.get(draftId) : null;
-    if (draft) await draft.delete();
-    await actor.unsetFlag(MODULE_ID, "draftActorId");
+    if (draft) {
+      await TemporaryActorService.deleteCharacterDraft(draft, { sourceActorId: actor.id });
+    } else {
+      await actor.unsetFlag(MODULE_ID, "draftActorId");
+    }
   }
 
   static async commit(actor, draft, options = {}) {

@@ -699,7 +699,13 @@ export class LevelUpRulesService {
     switch (progression) {
       case "full": return Math.min(9, Math.ceil(level / 2));
       case "half": return Math.min(5, Math.max(1, Math.floor((level + 3) / 4)));
-      case "third": return Math.min(4, Math.max(1, Math.floor((level + 2) / 3)));
+      case "third": {
+        if (level < 3) return 0;
+        if (level < 7) return 1;
+        if (level < 13) return 2;
+        if (level < 19) return 3;
+        return 4;
+      }
       case "pact": return Math.min(5, Math.ceil(level / 2));
       default: return 0;
     }
@@ -1090,8 +1096,9 @@ export class LevelUpRulesService {
   static #spellClassIdentifier(item, draft, seen = new Set()) {
     const explicit = item.getFlag(MODULE_ID, "classSpellAccess")?.classIdentifier
       ?? item.getFlag(MODULE_ID, "classIdentifier")
-      ?? item.getFlag(MODULE_ID, "levelUpSpell")?.classIdentifier;
-    if (explicit) return explicit;
+      ?? item.getFlag(MODULE_ID, "levelUpSpell")?.classIdentifier
+      ?? item.system?.classIdentifier;
+    if (explicit) return String(explicit);
 
     const sourceItem = String(item.system?.sourceItem ?? "");
     if (sourceItem.startsWith("class:")) return sourceItem.slice("class:".length);
@@ -1107,16 +1114,58 @@ export class LevelUpRulesService {
       if (["arcane-trickster", "trickster"].includes(subclassIdentifier)) return "rogue";
     }
 
-    const origin = item.getFlag("dnd5e", "advancementRoot")
-      ?? item.getFlag("dnd5e", "advancementOrigin");
-    const [ownerId] = String(origin ?? "").split(".");
-    if (!ownerId || seen.has(ownerId)) return null;
-    seen.add(ownerId);
-    const owner = draft.items.get(ownerId);
-    if (!owner) return null;
-    if (owner.type === "class") return owner.system?.identifier ?? null;
-    if (owner.type === "subclass") return owner.system?.classIdentifier ?? owner.class?.system?.identifier ?? null;
-    return this.#spellClassIdentifier(owner, draft, seen);
+    const sourceOwner = this.#ownerItemFromReference(sourceItem, draft);
+    if (sourceOwner && sourceOwner.id !== item.id && !seen.has(sourceOwner.id)) {
+      seen.add(sourceOwner.id);
+      if (sourceOwner.type === "class") return sourceOwner.system?.identifier ?? null;
+      if (sourceOwner.type === "subclass") {
+        return sourceOwner.system?.classIdentifier
+          ?? sourceOwner.system?.class?.identifier
+          ?? sourceOwner.system?.class
+          ?? (sourceOwner.system?.identifier === "eldritch-knight" ? "fighter" : null)
+          ?? (["arcane-trickster", "trickster"].includes(sourceOwner.system?.identifier) ? "rogue" : null);
+      }
+      const inherited = this.#spellClassIdentifier(sourceOwner, draft, seen);
+      if (inherited) return inherited;
+    }
+
+    const references = [
+      item.getFlag("dnd5e", "advancementRoot"),
+      item.getFlag("dnd5e", "advancementOrigin")
+    ].filter(Boolean);
+    for (const reference of references) {
+      const owner = this.#ownerItemFromReference(reference, draft);
+      if (!owner || seen.has(owner.id)) continue;
+      seen.add(owner.id);
+      if (owner.type === "class") return owner.system?.identifier ?? null;
+      if (owner.type === "subclass") {
+        const parent = owner.system?.classIdentifier
+          ?? owner.system?.class?.identifier
+          ?? owner.system?.class;
+        if (parent) return String(parent);
+        if (owner.system?.identifier === "eldritch-knight") return "fighter";
+        if (["arcane-trickster", "trickster"].includes(owner.system?.identifier)) return "rogue";
+      }
+      const inherited = this.#spellClassIdentifier(owner, draft, seen);
+      if (inherited) return inherited;
+    }
+    return null;
+  }
+
+  static #ownerItemFromReference(reference, draft) {
+    const raw = String(reference ?? "").trim();
+    if (!raw || !draft?.items) return null;
+    if (draft.items.get(raw)) return draft.items.get(raw);
+    const tokens = raw.split(".").filter(Boolean);
+    const itemMarker = tokens.lastIndexOf("Item");
+    if (itemMarker >= 0 && tokens[itemMarker + 1] && draft.items.get(tokens[itemMarker + 1])) {
+      return draft.items.get(tokens[itemMarker + 1]);
+    }
+    for (let index = tokens.length - 1; index >= 0; index--) {
+      const candidate = draft.items.get(tokens[index]);
+      if (candidate) return candidate;
+    }
+    return null;
   }
 
   static #spellUnavailableReason(draft, spell) {
@@ -1143,7 +1192,7 @@ export class LevelUpRulesService {
     const owners = item.getFlag(MODULE_ID, "featureSpellOwners") ?? [];
     if (owners.length) return false;
     const classAccess = item.getFlag(MODULE_ID, "classSpellAccess");
-    if (classAccess && item.getFlag(MODULE_ID, "classItemId") === cls.id) return true;
+    if (classAccess && (classAccess.classItemId === cls.id || item.getFlag(MODULE_ID, "classItemId") === cls.id)) return true;
     const levelUp = item.getFlag(MODULE_ID, "levelUpSpell");
     if (levelUp?.classItemId === cls.id && !levelUp.featureItemId) return true;
     return String(item.system?.sourceItem ?? "") === `class:${cls.system?.identifier}`
