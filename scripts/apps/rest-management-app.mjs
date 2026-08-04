@@ -5,6 +5,7 @@ import { RuntimeFeatureService } from "../services/runtime-feature-service.mjs";
 import { RuntimeTransactionService } from "../services/runtime-transaction-service.mjs";
 import { ProtectedTransactionDialogService } from "../services/protected-transaction-dialog-service.mjs";
 import { ModalStackService } from "../services/modal-stack-service.mjs";
+import { ShortRestHomebrewService } from "../services/short-rest-homebrew-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -19,6 +20,26 @@ function cloneRestConfig(config = {}) {
     catch (_error) { copy[key] = value; }
   }
   return copy;
+}
+
+function notifyRestCompletion(restLabel, homebrewResult = null) {
+  if (homebrewResult?.status === "applied") {
+    ui.notifications.info(`${restLabel} completed. Homebrew recovery restored ${homebrewResult.recoveries?.length ?? 0} resource reserve${homebrewResult.recoveries?.length === 1 ? "" : "s"}.`);
+    return;
+  }
+  if (homebrewResult?.status === "cooldown") {
+    ui.notifications.info(`${restLabel} completed successfully. Homebrew Short Rest Recovery is still on cooldown and will be available again in ${ShortRestHomebrewService.formatDuration(homebrewResult.remainingMs)}.`);
+    return;
+  }
+  if (homebrewResult?.status === "no-resources") {
+    ui.notifications.info(`${restLabel} completed successfully. No additional Long-Rest-only resource was eligible for homebrew recovery.`);
+    return;
+  }
+  if (homebrewResult?.status === "unavailable") {
+    ui.notifications.warn(`${restLabel} completed successfully, but the optional homebrew recovery could not be applied. ${homebrewResult.error || "A connected active GM is required."}`);
+    return;
+  }
+  ui.notifications.info(`${restLabel} completed and Character Keeper changes were applied.`);
 }
 
 /**
@@ -105,20 +126,39 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
 
     const registry = new SourceRegistry();
     await registry.load();
-    const session = await RestSessionService.getOrCreate(actor, type);
+    let session = await RestSessionService.getOrCreate(actor, type);
     const actions = await RuntimeFeatureService.actions(actor, type, registry, session);
     if (!actions.length) {
       if (session.nativeRestCompleted) {
-        throw new Error("The native rest completed, but the saved Character Keeper action is no longer eligible. The Actor was not modified further; a GM must inspect the pending rest session.");
+        const homebrewResult = type === "short"
+          ? await ShortRestHomebrewService.apply(actor, { session })
+          : null;
+        await RestSessionService.clear(actor);
+        notifyRestCompletion(type === "short" ? "Short Rest" : "Long Rest", homebrewResult);
+        return homebrewResult;
       }
       const hadPendingState = Object.keys(session.operations ?? {}).length || Object.keys(session.rollLocks ?? {}).length;
-      await RestSessionService.clear(actor);
-      if (hadPendingState) ui.notifications.warn("A stale Character Keeper choice was discarded because its source feature is no longer present or eligible.");
-      return actor.initiateRest({
+      if (hadPendingState) {
+        await RestSessionService.clear(actor);
+        session = await RestSessionService.getOrCreate(actor, type);
+        ui.notifications.warn("A stale Character Keeper choice was discarded because its source feature is no longer present or eligible.");
+      }
+      const result = await actor.initiateRest({
         ...cloneRestConfig(restConfig),
         type,
         characterBuilderRestBypass: true
       });
+      if (!result) {
+        await RestSessionService.clear(actor);
+        return result;
+      }
+      session = await RestSessionService.markNativeRestCompleted(actor, result);
+      const homebrewResult = type === "short"
+        ? await ShortRestHomebrewService.apply(actor, { session })
+        : null;
+      await RestSessionService.clear(actor);
+      notifyRestCompletion(type === "short" ? "Short Rest" : "Long Rest", homebrewResult);
+      return result;
     }
 
     const app = new this(actor, { restType: type, restConfig, registry, session });
@@ -396,6 +436,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     if (this.operationToken) return;
     this.operationToken = token;
     this.#setBusy(true, this.session?.nativeRestCompleted ? "Applying Character Keeper changes…" : `Starting ${this.restLabel}…`);
+    let homebrewResult = null;
     try {
       this.session = RestSessionService.get(this.actor) ?? this.session;
       const stagedOperations = Object.values(this.session?.operations ?? {});
@@ -432,7 +473,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
 
       const operations = Object.values(this.session.operations ?? {});
       const lifecycleRequired = RuntimeFeatureService.restLifecycleRequired(this.actor, this.restType);
-      if (operations.length || lifecycleRequired) {
+      if (!this.session.keeperChangesApplied && (operations.length || lifecycleRequired)) {
         const actions = await RuntimeFeatureService.actions(this.actor, this.restType, this.registry, this.session);
         const actionMap = new Map(actions.map(action => [action.id, action]));
         await RuntimeTransactionService.run(this.actor, {
@@ -461,8 +502,20 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
           return results;
         });
       }
+      if (!this.session.keeperChangesApplied) {
+        this.session = await RestSessionService.update(this.actor, {
+          keeperChangesApplied: true,
+          keeperChangesAppliedAt: Date.now(),
+          status: "homebrew"
+        });
+      }
+
+      if (this.restType === "short") {
+        homebrewResult = await ShortRestHomebrewService.apply(this.actor, { session: this.session });
+      }
+
       await RestSessionService.clear(this.actor);
-      ui.notifications.info(`${this.restLabel} completed and Character Keeper changes were applied.`);
+      notifyRestCompletion(this.restLabel, homebrewResult);
       await this.close();
     } catch (error) {
       this.session = RestSessionService.get(this.actor) ?? this.session;

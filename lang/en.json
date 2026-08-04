@@ -2,7 +2,7 @@
   "CB.Title": "Character Builder",
   "CB.Settings.Title": "Character Builder Settings",
   "CB.Settings.Button": "Open Character Builder Settings",
-  "CB.Settings.Hint": "Open the splash tutorial and manage your tutorial preference. GMs can also configure dynamic content sources, progression rules, character creation, Level Up, Epic Boons, Character Keeper, Rules Automation Assistance, multiclassing, starting currency, and Hit Points.",
+  "CB.Settings.Hint": "Open the splash tutorial and manage your tutorial preference. GMs can also configure dynamic content sources, progression rules, character creation, Level Up, Epic Boons, Character Keeper, optional Short Rest homebrew recovery, Rules Automation Assistance, multiclassing, starting currency, and Hit Points.",
   "CB.Start": "Start Character Builder",
   "CB.Resume": "Resume Character Builder",
   "CB.Prompt.Title": "Create Player Character",

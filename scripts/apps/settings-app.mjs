@@ -113,12 +113,14 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     root.querySelector('[name="customArray"]')?.addEventListener("change", () => this.#refreshCustomArraySettings());
     root.querySelector('[name="rollMode"]')?.addEventListener("change", () => this.#refreshRollSettings());
     root.querySelector('[name="enableEpicBoons"]')?.addEventListener("change", () => this.#refreshEpicBoonSettings());
+    root.querySelector('[name="halfLongRestRecoveryOnShortRest"]')?.addEventListener("change", () => this.#refreshShortRestHomebrewSettings());
     this.#refreshHpDefaults();
     this.#refreshMulticlassRequirements();
     this.#refreshScribeSettings();
     this.#refreshCustomArraySettings();
     this.#refreshRollSettings();
     this.#refreshEpicBoonSettings();
+    this.#refreshShortRestHomebrewSettings();
   }
 
   async #save(event) {
@@ -144,6 +146,10 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     const shopBonusGold = Number.isFinite(rawShopBonusGold)
       ? Math.max(0, Math.trunc(rawShopBonusGold))
       : 0;
+    const rawShortRestCooldown = Number(form.querySelector('[name="shortRestHomebrewCooldownMinutes"]')?.value ?? 5);
+    const shortRestHomebrewCooldownMinutes = Number.isFinite(rawShortRestCooldown)
+      ? Math.min(10080, Math.max(0, Math.trunc(rawShortRestCooldown)))
+      : 5;
 
     const hpMethods = {
       roll: form.querySelector('[name="hpMethod.roll"]')?.checked ?? false,
@@ -159,7 +165,7 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       game.settings.get(MODULE_ID, "settings") ?? {},
       { inplace: false }
     );
-    const settings = {
+    const settings = foundry.utils.mergeObject(storedWorldSettings, {
       promptOnCreate: form.querySelector('[name="promptOnCreate"]')?.checked ?? true,
       rulesMode: String(form.querySelector('[name="rulesMode"]')?.value ?? "modern2024"),
       sources: foundry.utils.deepClone(storedWorldSettings.sources ?? []),
@@ -186,6 +192,8 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       chargeWizardScribingCosts: form.querySelector('[name="chargeWizardScribingCosts"]')?.checked ?? true,
       requireArcanaCheckForSpellScrollScribing: form.querySelector('[name="requireArcanaCheckForSpellScrollScribing"]')?.checked ?? true,
       chargeScribingCostOnFailedCheck: form.querySelector('[name="chargeScribingCostOnFailedCheck"]')?.checked ?? true,
+      halfLongRestRecoveryOnShortRest: form.querySelector('[name="halfLongRestRecoveryOnShortRest"]')?.checked ?? false,
+      shortRestHomebrewCooldownMinutes,
       assistWithDiceAutomation: form.querySelector('[name="assistWithDiceAutomation"]')?.checked ?? false,
       rulesAssistance: foundry.utils.deepClone(storedWorldSettings.rulesAssistance ?? defaultSettings().rulesAssistance),
       hitPointAdvancement: {
@@ -194,7 +202,13 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
         minimumAverageOnRoll: form.querySelector('[name="minimumAverageOnRoll"]')?.checked ?? false,
         lockRoll: true
       }
-    };
+    }, {
+      inplace: false,
+      recursive: true,
+      overwrite: true,
+      insertKeys: true,
+      insertValues: true
+    });
 
     if (!Object.values(settings.abilityMethods).some(Boolean)) {
       return ui.notifications.error("Enable at least one Ability Score method.");
@@ -220,6 +234,9 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     }
     if (!['xp', 'milestone'].includes(settings.levelUpMode)) {
       return ui.notifications.error("Choose a valid Level Up mode.");
+    }
+    if (!Number.isInteger(rawShortRestCooldown) || rawShortRestCooldown < 0 || rawShortRestCooldown > 10080) {
+      return ui.notifications.error("Short Rest Homebrew Cooldown must be a whole number from 0 to 10080 minutes.");
     }
 
     await SplashTutorialService.setSuppressed(tutorialSuppressed);
@@ -311,6 +328,14 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     if (!requireCheck || !chargeFailure) return;
     chargeFailure.disabled = !requireCheck.checked;
     chargeFailure.closest("label")?.classList.toggle("disabled", !requireCheck.checked);
+  }
+
+  #refreshShortRestHomebrewSettings() {
+    const enabled = this.element?.querySelector?.('[name="halfLongRestRecoveryOnShortRest"]')?.checked ?? false;
+    const cooldown = this.element?.querySelector?.('[name="shortRestHomebrewCooldownMinutes"]');
+    if (!cooldown) return;
+    cooldown.disabled = !enabled;
+    cooldown.closest(".form-group")?.classList.toggle("disabled", !enabled);
   }
 
   #refreshHpDefaults() {

@@ -170,6 +170,14 @@ Examples include:
 
 The player may perform a change or continue the rest without changing anything. Normal D&D5e recovery, spell preparation, slots, uses, dice, effects, and runtime activities remain the responsibility of the D&D5e system.
 
+### Optional Half Long-Rest Recovery on Short Rest
+
+The GM may enable an optional homebrew rule named **Half Long-Rest Recovery on Short Rest**. It is disabled by default, so installing or updating Character Builder does not change any campaign's rest rules.
+
+After one native Short Rest completes, the optional layer restores `floor(maximum / 2)` of each eligible Long-Rest-only reserve, limited by the amount currently missing or spent. Normal spell slots, Long-Rest-only Actor resources, Item uses, and Activity uses can qualify. HP, Hit Dice, temporary HP, Death Saves, Exhaustion, spell preparation, Long-Rest effect expiry, consumables, dawn/day recovery, Pact Magic, and resources that already recover on a Short Rest are excluded.
+
+The separate **Short Rest Homebrew Cooldown** setting uses Foundry server time and defaults to 5 minutes. It restricts only the additional homebrew recovery; the native Short Rest always continues normally. A value of 0 permits the homebrew layer on every completed Short Rest while transaction locks and rest-session idempotency still prevent duplicate clicks. Every applied recovery, cooldown result, or no-resource result is written to chat for auditing.
+
 <p align="center">
   <img src="docs/images/rest-management.png" alt="Character Keeper optional Long Rest action" width="780">
 </p>
@@ -228,6 +236,8 @@ The dedicated **Select Content Sources** screen scans active module, system, and
 
 Examples include the Player's Handbook, Dungeon Master's Guide, SRD packages, third-party class/subclass modules, and world compendiums.
 
+A complete description of every setting, its default, scope, dependencies, and Actor impact is included in [docs/SETTINGS.md](docs/SETTINGS.md).
+
 The GM can also configure:
 
 - Modern D&D or D&D 5th Edition (2014) progression rules;
@@ -238,6 +248,7 @@ The GM can also configure:
 - Starting Equipment Shop bonus gold;
 - Hit Point advancement methods;
 - Wizard scribing rules;
+- optional half Long-Rest recovery on Short Rest and its server-time cooldown;
 - optional deterministic dice assistance;
 - tutorial display controls.
 

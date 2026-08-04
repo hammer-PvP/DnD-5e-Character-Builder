@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.8s";
-export const MODULE_BUILD = "community-beta-098s-socket-enabled-authoritative-temporary-actors";
+export const MODULE_VERSION = "0.9.8t";
+export const MODULE_BUILD = "community-beta-098t-configurable-homebrew-short-rest-recovery";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -199,6 +199,8 @@ export function defaultSettings() {
     chargeWizardScribingCosts: true,
     requireArcanaCheckForSpellScrollScribing: true,
     chargeScribingCostOnFailedCheck: true,
+    halfLongRestRecoveryOnShortRest: false,
+    shortRestHomebrewCooldownMinutes: 5,
     assistWithDiceAutomation: false,
     rulesAssistance: {
       rules: defaultRulesAssistanceRules()

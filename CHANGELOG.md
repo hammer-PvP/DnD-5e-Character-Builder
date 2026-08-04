@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.8t
+
+### Configurable homebrew Short Rest recovery and settings documentation
+
+- Added the GM-only **Half Long-Rest Recovery on Short Rest** world setting. It is disabled by default, so existing worlds retain native D&D5e rest behavior until the GM explicitly enables the homebrew.
+- After one native Short Rest completes, the optional layer restores half of each eligible Long-Rest-only reserve, rounded down and limited by the amount missing or spent. Supported reserves include normal Long-Rest spell slots, Actor resources, Item uses, and Activity uses.
+- Excluded HP, Hit Dice, temporary HP, Death Saves, Exhaustion, spell preparation, effect expiry, consumable quantities, dawn/day recovery, Pact Magic, and resources already recovered by a native Short Rest.
+- Added **Short Rest Homebrew Cooldown**, configurable from 0 to 10080 server-time minutes and defaulting to 5. The cooldown restricts only the additional homebrew recovery; the native Short Rest always completes normally.
+- Added GM-authoritative socket execution, per-Actor locking, rest-session idempotency, persisted server timestamps, and duplicate-request protection for the homebrew layer.
+- Added chat audit cards listing every recovered reserve, or reporting cooldown/no-resource outcomes.
+- Ensured the optional recovery also runs for Actors that have no other Character Keeper rest action.
+- Changed settings saving to conservatively merge with stored world settings, preventing new settings from erasing existing or future configuration fields.
+- Added a complete settings reference at `docs/SETTINGS.md` and expanded inline descriptions for the new homebrew, its cooldown, and creation prompting.
+- Preserved the validated v0.9.8s Level Up, temporary Actor socket, Weapon Mastery, Eldritch Knight, and Arcane Trickster behavior.
+
 ## 0.9.8s
 
 ### Protected temporary Actor socket hotfix

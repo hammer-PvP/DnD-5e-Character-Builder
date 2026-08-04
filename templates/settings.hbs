@@ -170,6 +170,19 @@
           <label><input type="checkbox" name="chargeScribingCostOnFailedCheck" {{checked settings.chargeScribingCostOnFailedCheck}}> Charge Scribing Cost on Failed Check</label>
           <p class="hint">When the Arcana check fails, consume the Spell Scroll and also charge the GP cost. When disabled, a failed check consumes the scroll but preserves the character's currency.</p>
         </div>
+
+        <hr>
+        <div class="cb-settings-toggle">
+          <label><input type="checkbox" name="halfLongRestRecoveryOnShortRest" {{checked settings.halfLongRestRecoveryOnShortRest}}> Half Long-Rest Recovery on Short Rest</label>
+          <p class="hint"><strong>Optional homebrew; disabled by default.</strong> After the native Short Rest completes, recover half of each eligible Long-Rest-only reserve, rounded down. Native Hit Dice, Short-Rest recovery, Pact Magic, and all other D&amp;D5e rest behavior continue normally.</p>
+        </div>
+        <div class="form-group cb-settings-form-group">
+          <label>Short Rest Homebrew Cooldown</label>
+          <input type="number" name="shortRestHomebrewCooldownMinutes" value="{{settings.shortRestHomebrewCooldownMinutes}}" min="0" max="10080" step="1">
+          <p class="hint">Real server-time minutes before the additional homebrew recovery can occur again for the same Actor. The cooldown never blocks a native Short Rest. Set 0 to allow the homebrew recovery on every completed Short Rest; transaction locks still prevent duplicate clicks.</p>
+        </div>
+        <p class="hint">Eligible reserves include normal Long-Rest spell slots, Long-Rest-only Item or Activity uses, and Actor resources marked Long Rest but not Short Rest. HP, Hit Dice, temporary HP, Death Saves, Exhaustion, spell preparation, effects, consumables, daily/dawn recovery, and resources already recovered on a Short Rest are excluded. Recovery is listed in chat for auditing.</p>
+
         <p class="hint">Optional Short Rest and Long Rest reconfiguration uses native D&amp;D5e recovery, then applies only the Character Keeper choices confirmed for that rest.</p>
       </fieldset>
 
@@ -212,6 +225,7 @@
       <fieldset class="cb-settings-wide cb-settings-creation-prompt">
         <legend>Creation Prompt</legend>
         <label><input type="checkbox" name="promptOnCreate" {{checked settings.promptOnCreate}}> Ask whether to use Character Builder when a new Player Character Actor is created.</label>
+        <p class="hint">World setting, enabled by default. Disabling it suppresses only the automatic creation prompt; the Builder can still be opened manually and existing Actors are not changed.</p>
       </fieldset>
 
       <fieldset class="cb-settings-wide cb-settings-maintenance">
