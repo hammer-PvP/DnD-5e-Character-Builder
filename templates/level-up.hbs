@@ -322,7 +322,7 @@
 
       {{#if rules.spellCount}}
       <section class="cb-choice-section cb-spell-selection-section" data-spell-selection-section data-required="{{rules.spellCount}}">
-        <header class="cb-choice-section-header"><div><h3>Choose {{rules.spellCount}} {{rules.className}} Spell{{#unless (dnd5eCharacterBuilderEq rules.spellCount 1)}}s{{/unless}}</h3><p>Each spell can fill only one choice channel during this Level Up.</p></div><strong data-selection-count>{{rules.selectedSpellCount}} / {{rules.spellCount}}</strong></header>
+        <header class="cb-choice-section-header"><div><h3>Choose {{rules.spellCount}} {{rules.className}} Spell{{#unless (dnd5eCharacterBuilderEq rules.spellCount 1)}}s{{/unless}}</h3><p>Each spell can fill only one choice channel during this Level Up.</p>{{#if rules.releasedPreparedSpellCount}}<p><strong>{{rules.releasedPreparedSpellCount}} additional choice{{#unless (dnd5eCharacterBuilderEq rules.releasedPreparedSpellCount 1)}}s{{/unless}}</strong> {{#unless (dnd5eCharacterBuilderEq rules.releasedPreparedSpellCount 1)}}were{{else}}was{{/unless}} released because a feature now grants an existing spell as Always Prepared.</p>{{/if}}</div><strong data-selection-count>{{rules.selectedSpellCount}} / {{rules.spellCount}}</strong></header>
         {{#each rules.spellLevelGroups}}
         <div class="cb-spell-level-group" data-spell-level-group>
           <button type="button" class="cb-spell-level-toggle" data-action="toggle-spell-level" aria-expanded="true">
@@ -904,6 +904,26 @@
           {{else}}<p class="hint">No embedded Items removed.</p>{{/if}}
         </div>
       </section>
+
+      {{#if review.alwaysPreparedChangeCount}}
+      <section class="cb-review-diff">
+        <div>
+          <h3>Always Prepared Reconciliation <span>{{review.alwaysPreparedChangeCount}}</span></h3>
+          <div class="cb-review-item-list">
+            {{#each review.alwaysPreparedChanges}}
+            <article>
+              <img src="{{img}}" alt="">
+              <span>
+                <strong>{{name}}</strong>
+                <small>Always Prepared — {{source}}</small>
+                {{#if normalSelectionReleased}}<small>Its previous normal spell choice was released.</small>{{/if}}
+              </span>
+            </article>
+            {{/each}}
+          </div>
+        </div>
+      </section>
+      {{/if}}
 
       {{#if review.cantripAugmentChanges.length}}
       <section class="cb-choice-section cb-invocation-section">

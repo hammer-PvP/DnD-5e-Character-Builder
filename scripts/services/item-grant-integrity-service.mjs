@@ -354,13 +354,18 @@ export class ItemGrantIntegrityService {
   }
 
   static #isGrantInstance(item, origin) {
-    return Boolean(item && item.getFlag("dnd5e", "advancementOrigin") === origin);
+    if (!item) return false;
+    if (item.getFlag("dnd5e", "advancementOrigin") === origin) return true;
+    const receipts = item.getFlag(MODULE_ID, "mergedItemGrants") ?? [];
+    return receipts.some(receipt => receipt?.advancementOrigin === origin);
   }
 
   static #sourceMatches(item, configuredUuid) {
     if (!item) return false;
     const grant = item.getFlag(MODULE_ID, "itemGrantInstance");
     if (grant?.configuredUuid === configuredUuid) return true;
+    const receipts = item.getFlag(MODULE_ID, "mergedItemGrants") ?? [];
+    if (receipts.some(receipt => receipt?.configuredUuid === configuredUuid)) return true;
     const sourceUuid = item.getFlag("dnd5e", "sourceId") ?? item._stats?.compendiumSource;
     if (sourceUuid === configuredUuid) return true;
     const configured = fromUuidSync(configuredUuid);

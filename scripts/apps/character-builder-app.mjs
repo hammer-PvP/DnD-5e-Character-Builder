@@ -13,6 +13,8 @@ import { ValidationService } from "../services/validation-service.mjs";
 import { SourceResolver } from "../services/source-resolver.mjs";
 import { CustomBackgroundService, CUSTOM_BACKGROUND_UUID } from "../services/custom-background-service.mjs";
 import { ItemGrantIntegrityService } from "../services/item-grant-integrity-service.mjs";
+import { FeatureSpellOwnershipService } from "../services/feature-spell-ownership-service.mjs";
+import { AlwaysPreparedSpellReconciliationService } from "../services/always-prepared-spell-reconciliation-service.mjs";
 import { AdvancementChoiceAnnotationService } from "../services/advancement-choice-annotation-service.mjs";
 import { firstValue } from "../utils/safe-collections.mjs";
 import { CreationEditService } from "../services/creation-edit-service.mjs";
@@ -1429,10 +1431,23 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
     try {
       await SourceResolver.enforceAllowedSources(this.draft, this.registry);
-      await ItemGrantIntegrityService.reconcile(this.draft, this.registry, { context: "creation" });
+      const creationState = DraftManager.getBuildState(this.draft);
+      const integrityResult = await ItemGrantIntegrityService.reconcile(this.draft, this.registry, { context: "creation" });
+      await FeatureSpellOwnershipService.reconcile(this.draft, integrityResult, {
+        ...creationState,
+        transactionId: integrityResult.transactionId ?? `creation:${this.draft.id}`,
+        targetCharacterLevel: 1,
+        targetClassLevel: 1
+      });
+      await AlwaysPreparedSpellReconciliationService.reconcile(this.draft, {
+        context: "creation",
+        state: creationState,
+        integrityResult
+      });
       await AdvancementChoiceAnnotationService.refreshCreation(this.draft);
       await AdvancementService.dedupe(this.draft);
       ItemGrantIntegrityService.validate(this.draft, { context: "creation" });
+      AlwaysPreparedSpellReconciliationService.validate(this.draft, { context: "creation", state: creationState });
 
       const result = await DraftManager.commit(this.actor, this.draft, {
         transactionToken: this.commitTransactionToken,
@@ -1676,7 +1691,15 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     const background = this.draft.items.find(item => item.type === "background");
     const cls = this.draft.items.find(item => item.type === "class");
     const feats = this.draft.items.filter(item => item.type === "feat");
-    const spells = this.draft.items.filter(item => item.type === "spell" && !item.getFlag(MODULE_ID, "internalCache"));
+    const alwaysPreparedPlans = AlwaysPreparedSpellReconciliationService.preview(this.draft, {
+      context: "creation",
+      state: DraftManager.getBuildState(this.draft)
+    });
+    const projectedDuplicateSpellIds = new Set(alwaysPreparedPlans.map(row => row.grantItemId));
+    const projectedAlwaysPreparedBySpell = new Map(alwaysPreparedPlans.map(row => [row.canonicalItemId, row]));
+    const spells = this.draft.items.filter(item => item.type === "spell"
+      && !item.getFlag(MODULE_ID, "internalCache")
+      && !projectedDuplicateSpellIds.has(item.id));
     const equipment = this.draft.items.filter(item =>
       ["weapon", "equipment", "consumable", "tool", "container", "loot"].includes(item.type)
     );
@@ -1691,13 +1714,24 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         uuid: item.uuid,
         source: this.#itemSource(item, "Feature or Feat"),
       })),
-      spells: spells.map(item => ({
-        name: item.name,
-        img: item.img,
-        uuid: item.uuid,
-        prepared: Number(item.system.prepared ?? 0),
-        source: this.#spellSource(item)
+      spells: spells.map(item => {
+        const projected = projectedAlwaysPreparedBySpell.get(item.id);
+        return {
+          name: item.name,
+          img: item.img,
+          uuid: item.uuid,
+          prepared: projected ? 2 : Number(item.system.prepared ?? 0),
+          source: projected
+            ? `${this.#spellSource(item)} · Always Prepared — ${projected.source}`
+            : this.#spellSource(item)
+        };
+      }),
+      alwaysPreparedChanges: alwaysPreparedPlans.map(row => ({
+        name: row.name,
+        source: row.source,
+        normalSelectionReleased: row.normalSelectionReleased
       })),
+      alwaysPreparedChangeCount: alwaysPreparedPlans.length,
       equipment: equipment.map(item => ({
         name: item.name,
         img: item.img,

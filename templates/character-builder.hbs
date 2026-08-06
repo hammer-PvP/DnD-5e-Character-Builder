@@ -601,6 +601,11 @@
       <section class="cb-summary-list"><h3>Spells ({{review.spells.length}})</h3><div class="cb-item-grid">
         {{#each review.spells}}<button type="button" class="cb-mini-item" data-action="open-document" data-uuid="{{uuid}}" title="{{name}}"><img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{source}}</small></span></button>{{/each}}
       </div></section>
+      {{#if review.alwaysPreparedChangeCount}}
+      <section class="cb-summary-list"><h3>Always Prepared Grants ({{review.alwaysPreparedChangeCount}})</h3><div class="cb-item-grid">
+        {{#each review.alwaysPreparedChanges}}<div class="cb-mini-item"><span><strong>{{name}}</strong><small>{{source}} — one canonical spell will be kept</small></span></div>{{/each}}
+      </div></section>
+      {{/if}}
       <section class="cb-summary-list"><h3>Equipment ({{review.equipment.length}})</h3><div class="cb-item-grid">
         {{#each review.equipment}}<button type="button" class="cb-mini-item" data-action="open-document" data-uuid="{{uuid}}" title="{{name}}"><img src="{{img}}" alt=""><span><strong>{{#if (dnd5eCharacterBuilderGt quantity 1)}}{{quantity}}× {{/if}}{{name}}</strong><small>{{source}}</small></span></button>{{/each}}
       </div></section>

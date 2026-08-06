@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.9
+
+### Character Creation and Level Up stabilization — Always Prepared spell reconciliation
+
+- Began the 0.9.9 stabilization line for Character Creation and Level Up while preserving v0.9.8v as the rollback baseline.
+- Added transaction-scoped reconciliation for a leveled class spell that is already present through normal class access and is newly granted as Always Prepared by a native Class, Subclass, or class-linked Feature.
+- The Actor now keeps one canonical spell Item. Character Builder promotes it to Always Prepared, records both acquisition owners, redirects the native ItemGrant receipt, and removes only the redundant spell created during the active Draft transaction.
+- Limited-list casters recover a normal spell selection when a previously selected spell becomes Always Prepared. The Level Up screen requires the released replacement choice before commit, excludes that same spell from the optional replacement channel, and the Review identifies why the choice was restored.
+- Full-list casters retain one class spell document and receive only the Always Prepared state; no artificial extra prepared-spell choice is created.
+- Paladin's Smite keeps its native Feature Item, free-cast Activity, use counter, and recovery. Only the redundant Divine Smite spell is reconciled, so the single spell remains usable with spell slots after the free cast is spent.
+- Added `mergedItemGrants` receipts so native ItemGrant integrity recognizes the canonical shared spell without recreating the deleted duplicate.
+- Added strict merge guards. Character Builder requires the same canonical source document and equivalent Activities/effects, and does not merge Item-origin spells, different classes or casting abilities, different casting methods, spell documents with their own uses/recovery, forward Activities, or Activity/item-use consumption.
+- Reconciliation occurs inside the Draft before commit and validates both the canonical spell and the redirected native Advancement link. It does not scan or migrate existing Actors.
+- Added a dedicated Review section and architecture documentation at `docs/ALWAYS-PREPARED-SPELL-RECONCILIATION.md`.
+- No Character Keeper, rest-management, runtime resource, or Rules Automation Assistance implementation files were changed.
+
 ## 0.9.8v
 
 ### Structured post-roll finalization contract

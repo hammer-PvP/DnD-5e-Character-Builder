@@ -12,6 +12,7 @@ import { MetamagicService } from "./metamagic-service.mjs";
 import { WarlockProjectedCantripService } from "./warlock-projected-cantrip-service.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
 import { AgonizingBlastBindingService } from "./agonizing-blast-binding-service.mjs";
+import { AlwaysPreparedSpellReconciliationService } from "./always-prepared-spell-reconciliation-service.mjs";
 
 export class LevelUpRulesService {
   static async buildContext(sourceActor, draft, registry) {
@@ -59,6 +60,20 @@ export class LevelUpRulesService {
       unavailableChoiceInfo.set(spellIdentifier, this.#spellUnavailableReason(draft, spell));
     }
     const stateChoices = state.additionalChoices ?? {};
+    const storedPreparedReconciliations = state.alwaysPreparedSpellReconciliation?.items ?? [];
+    const preparedReconciliationPlans = state.additionalComplete
+      ? storedPreparedReconciliations
+      : AlwaysPreparedSpellReconciliationService.preview(draft, {
+        context: "levelUp",
+        state,
+        classItem: cls
+      });
+    const releasedPreparedSpells = preparedReconciliationPlans
+      .filter(row => row.normalSelectionReleased);
+    const releasedPreparedSpellItemIds = new Set(
+      releasedPreparedSpells.map(row => row.spellItemId ?? row.canonicalItemId).filter(Boolean)
+    );
+    const releasedPreparedSpellCount = releasedPreparedSpellItemIds.size;
     const automaticItemGrants = foundry.utils.deepClone(
       state.itemGrantIntegrity?.items ?? state.itemGrantReconciliation?.items ?? []
     ).filter(row => this.#grantBelongsToSelectedProgression(draft, row, cls))
@@ -107,6 +122,7 @@ export class LevelUpRulesService {
     } else if (model === "spellbook") {
       spellCount = oldClassLevel === 0 ? 6 : 2;
     }
+    if (model === "limited") spellCount += releasedPreparedSpellCount;
 
     const spellOptions = leveledPool
       .map(option => this.#decorateSpellOption(
@@ -193,7 +209,15 @@ export class LevelUpRulesService {
     pactOfTheTome.existingInvocationItemId = currentTome?.id ?? null;
 
     const replacement = model === "limited" && oldClassLevel > 0
-      ? this.#spellReplacementContext(draft, identifier, leveledPool, stateChoices, new Set([...selectedSpellSet, ...selectedSavantSet]), unavailableChoiceInfo)
+      ? this.#spellReplacementContext(
+        draft,
+        identifier,
+        leveledPool,
+        stateChoices,
+        new Set([...selectedSpellSet, ...selectedSavantSet]),
+        unavailableChoiceInfo,
+        releasedPreparedSpellItemIds
+      )
       : { available: false, existing: [], options: [], removeId: "", addIdentifier: "" };
     const features = await LevelUpFeatureService.buildContext(draft, cls, registry, {
       oldClassLevel,
@@ -212,7 +236,8 @@ export class LevelUpRulesService {
       || replacement.available || cantripReplacement.available || invocations.replacement.available || features.hasChoices
       || pactOfTheTome.visible || metamagic.active;
     const hasAutomatic = automaticSpells.length > 0 || automaticItemGrants.length > 0
-      || automaticAdvancementSummaries.length > 0 || features.hasAutomatic;
+      || automaticAdvancementSummaries.length > 0 || preparedReconciliationPlans.length > 0
+      || features.hasAutomatic;
     const requiredSpellSelections = cantripCount + spellCount + savant.count;
     const selectedSpellSelections = selectedCantripSet.size + selectedSpellSet.size + selectedSavantSet.size;
     const duplicateSelectionCount = this.#duplicateCount([
@@ -238,6 +263,9 @@ export class LevelUpRulesService {
       maximumSpellLevel,
       cantripCount,
       spellCount,
+      releasedPreparedSpellCount,
+      releasedPreparedSpells,
+      preparedReconciliationCount: preparedReconciliationPlans.length,
       selectedCantripCount: (stateChoices.cantrips ?? []).length,
       selectedSpellCount: (stateChoices.spells ?? []).length,
       requiredSpellSelections,
@@ -434,6 +462,7 @@ export class LevelUpRulesService {
         option: selectedByIdentifier.get(identifier),
         category: magicalSecret ? "magical-secrets" : (context.subclassCaster?.identifier ?? (context.model === "spellbook" ? "spellbook" : "limited")),
         prepared: context.model === "limited" ? 1 : 0,
+        accessModel: context.model,
         featureItemId: magicalSecret ? context.magicalSecrets.featureItemId : null,
         ...spellAccess
       });
@@ -443,7 +472,7 @@ export class LevelUpRulesService {
       featureItemId: context.savant.featureItemId
     });
     for (const group of context.automaticGroups) {
-      for (const option of group.items) entries.push({ option, category: "full-list", prepared: 0 });
+      for (const option of group.items) entries.push({ option, category: "full-list", prepared: 0, accessModel: "fullList" });
     }
     if (addReplacementIdentifier) {
       const magicalSecret = context.magicalSecrets.active && !context.magicalSecrets.bardBaseSpellIdentifiers.includes(addReplacementIdentifier);
@@ -451,6 +480,7 @@ export class LevelUpRulesService {
         option: selectedByIdentifier.get(addReplacementIdentifier),
         category: magicalSecret ? "magical-secrets" : (context.subclassCaster?.identifier ?? "replacement"),
         prepared: 1,
+        accessModel: context.model,
         featureItemId: magicalSecret ? context.magicalSecrets.featureItemId : null,
         ...spellAccess
       });
@@ -561,8 +591,20 @@ export class LevelUpRulesService {
     });
     await this.#refreshCantripAugments(draft);
     await AgonizingBlastBindingService.reconcileActor(draft, { reason: "level-up-draft" });
-    const integrityResult = await ItemGrantIntegrityService.reconcile(draft, registry, { context: "levelUp", state });
+    let integrityResult = await ItemGrantIntegrityService.reconcile(draft, registry, { context: "levelUp", state });
     await FeatureSpellOwnershipService.reconcile(draft, integrityResult, state);
+    const preparedReconciliation = await AlwaysPreparedSpellReconciliationService.reconcile(draft, {
+      context: "levelUp",
+      state,
+      integrityResult,
+      classItem: cls
+    });
+    integrityResult = preparedReconciliation.integrityResult ?? integrityResult;
+    AlwaysPreparedSpellReconciliationService.validate(draft, {
+      context: "levelUp",
+      state,
+      classItem: cls
+    });
     await NativeAdvancementValidationService.validate(draft, {
       state,
       beforeItemIds: new Set(rollbackSnapshot.items.map(item => item._id)),
@@ -570,6 +612,9 @@ export class LevelUpRulesService {
     });
     await AdvancementChoiceAnnotationService.refresh(draft, { state: LevelUpDraftManager.getState(draft) });
 
+    const reconciledRemovedSpellIds = new Set(
+      (preparedReconciliation.items ?? []).map(row => row.removedDuplicateItemId).filter(Boolean)
+    );
     const choices = {
       cantrips: selectedCantrips,
       spells: selectedSpells,
@@ -600,7 +645,7 @@ export class LevelUpRulesService {
         ...createdInvocationIds,
         ...featureResult.createdItemIds,
         ...(metamagicResult.createdItemIds ?? [])
-      ])],
+      ])].filter(id => !reconciledRemovedSpellIds.has(id)),
       step: "review"
     });
 
@@ -1188,22 +1233,34 @@ export class LevelUpRulesService {
 
   static #isNormalClassSpell(item, cls) {
     if (!item || item.type !== "spell" || !cls) return false;
+    const classAccess = item.getFlag(MODULE_ID, "classSpellAccess");
+    if (classAccess && (item.getFlag(MODULE_ID, "classItemId") === cls.id
+      || item.getFlag(MODULE_ID, "classIdentifier") === cls.system?.identifier)) return true;
+    const levelUp = item.getFlag(MODULE_ID, "levelUpSpell");
+    if (levelUp?.classItemId === cls.id && !levelUp.featureItemId) return true;
+    const reconciliation = item.getFlag(MODULE_ID, "alwaysPreparedReconciliation");
+    if (reconciliation?.normalAcquisition?.classIdentifier === cls.system?.identifier) return true;
     if (item.getFlag(MODULE_ID, "featureGrantedSpell")) return false;
     const owners = item.getFlag(MODULE_ID, "featureSpellOwners") ?? [];
     if (owners.length) return false;
-    const classAccess = item.getFlag(MODULE_ID, "classSpellAccess");
-    if (classAccess && (classAccess.classItemId === cls.id || item.getFlag(MODULE_ID, "classItemId") === cls.id)) return true;
-    const levelUp = item.getFlag(MODULE_ID, "levelUpSpell");
-    if (levelUp?.classItemId === cls.id && !levelUp.featureItemId) return true;
     return String(item.system?.sourceItem ?? "") === `class:${cls.system?.identifier}`
       && this.#spellClassIdentifier(item, cls.actor) === cls.system?.identifier;
   }
 
-  static #spellReplacementContext(draft, classIdentifier, leveledPool, stateChoices, blockedIdentifiers = new Set(), unavailableChoiceInfo = new Map()) {
+  static #spellReplacementContext(
+    draft,
+    classIdentifier,
+    leveledPool,
+    stateChoices,
+    blockedIdentifiers = new Set(),
+    unavailableChoiceInfo = new Map(),
+    releasedPreparedSpellItemIds = new Set()
+  ) {
     const existing = draft.items
       .filter(item => item.type === "spell" && Number(item.system?.level ?? 0) > 0)
       .filter(item => this.#spellClassIdentifier(item, draft) === classIdentifier
-        && !item.getFlag(MODULE_ID, "featureGrantedSpell"));
+        && !item.getFlag(MODULE_ID, "featureGrantedSpell")
+        && !releasedPreparedSpellItemIds.has(item.id));
     const known = new Set(existing.map(item => item.system?.identifier).filter(Boolean));
     const selectedReplacement = stateChoices.spellReplacement?.addIdentifier ?? "";
     const options = leveledPool.filter(option => !known.has(option.identifier)).map(option => {

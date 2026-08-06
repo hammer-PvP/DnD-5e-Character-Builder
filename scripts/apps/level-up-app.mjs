@@ -574,6 +574,9 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const selectedClass = this.draft.items.get(state.selectedClassId)
       ?? this.draft.items.find(item => item.type === "class" && item.system?.identifier === state.selectedClassIdentifier);
     const cantripAugmentChanges = this.#cantripAugmentChanges();
+    const alwaysPreparedChanges = foundry.utils.deepClone(
+      state.alwaysPreparedSpellReconciliation?.items ?? []
+    );
     return {
       sourceCharacterLevel: state.sourceCharacterLevel,
       targetCharacterLevel: state.targetCharacterLevel,
@@ -592,7 +595,9 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       removed,
       addedCount: added.length,
       removedCount: removed.length,
-      cantripAugmentChanges
+      cantripAugmentChanges,
+      alwaysPreparedChanges,
+      alwaysPreparedChangeCount: alwaysPreparedChanges.length
     };
   }
 

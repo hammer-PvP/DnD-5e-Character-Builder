@@ -154,6 +154,19 @@ The module distinguishes:
 
 The native Advancement browser is not filtered or modified. Character Builder validates the completed choice on the draft and asks the player to choose again when the GM configuration does not authorize it.
 
+
+### Always Prepared spell ownership
+
+Character Builder treats an Always Prepared grant as an additional ownership state of a spell, not as permission to leave two mechanically identical spell Items on the Actor.
+
+During a new Character Creation or Level Up transaction, when a native Class, Subclass, or class-linked Feature grants a leveled spell that the same class already supplies through normal spell access, Character Builder keeps one canonical spell, promotes it to **Always Prepared**, preserves every acquisition owner, and redirects the native ItemGrant record to that canonical document. The Review still reports the feature that granted the spell.
+
+For limited-list casters, a normally selected spell that becomes Always Prepared releases its former selection and the player must choose a replacement before committing the Level Up. Full-list casters receive the preparation-state change without an artificial extra choice.
+
+**Paladin's Smite** remains a separate native Feature with its own free-cast Activity, counter, and recovery. The Actor keeps one **Divine Smite** spell; after the free cast is spent, that same spell can still consume normal spell slots.
+
+The merge is intentionally conservative. It requires the same canonical spell source and equivalent Activities/effects, and is blocked when the spell comes from an Item, belongs to a different class or casting ability, uses another casting method, or carries its own use pool, recovery, forwarding Activity, or use-consumption mechanics. Reconciliation is limited to the active Draft transaction and does not migrate existing Actors.
+
 ## Character Keeper and Rest Management
 
 Character Keeper opens before a Short or Long Rest only when the Actor has an optional supported action for that rest.
