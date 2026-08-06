@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.8v
+
+### Structured post-roll finalization contract
+
+- Upgraded the shared roll-resolution API to protocol v2 while retaining `Symbol.for("dnd5e.roll-resolution-queue.v1")` and the original `enqueue` interface for backward compatibility.
+- Character Builder now marks every eligible failed D20 Test as pending before resolving Bardic Inspiration and always publishes a finalized structured result afterward.
+- Finalization occurs when Bardic Inspiration is used, kept, unavailable, disabled, or cannot be resolved, preventing downstream Item Creator prompts from reading the stale native total.
+- Added the hooks `dnd5e-character-builder.rollResolutionPending` and `dnd5e-character-builder.rollResolutionFinalized`.
+- Added `markPending`, `finalize`, `getResolution`, and `waitForFinalized` to `game.modules.get("dnd5e-character-builder").api.rollResolutionQueue`.
+- The finalized payload contains `rollKey`, `actorUuid`, `rollType`, `originalTotal`, `currentTotal`, `target`, `succeeded`, `finalized`, and normalized `adjustments`.
+- Bardic Inspiration records `{ source: "Bardic Inspiration", bonus }` only when the player actually uses the die; choosing **Keep Inspiration** publishes the unchanged total with an empty adjustments list.
+- Preserved the phase order D&D5e native → Character Builder → Item runtime. An `items`-phase provider now receives the finalized Character Builder context, allowing it to skip its prompt after a converted success or continue from the updated failed total.
+- Added `docs/ROLL-RESOLUTION-PROTOCOL.md` as the cross-module integration contract.
+- Preserved all v0.9.8u Bardic Inspiration behavior, effect-origin boundaries, and prior Character Builder functionality.
+
 ## 0.9.8u
 
 ### Native Bardic Inspiration post-failure assistance

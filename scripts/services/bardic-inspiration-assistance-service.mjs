@@ -84,7 +84,6 @@ export class BardicInspirationAssistanceService {
   }
 
   static async #enqueueRolls(kind, rolls, data) {
-    if (!this.enabled()) return;
     const actor = data?.subject?.actor ?? data?.subject ?? null;
     if (!actor || !this.#isResponsibleClient(actor)) return;
 
@@ -96,28 +95,78 @@ export class BardicInspirationAssistanceService {
     });
     if (!candidates.length) return;
 
-    return Promise.all(candidates.map(roll => SharedRollResolutionQueueService.enqueue({
-      roll,
-      phase: "character",
-      providerId: `${MODULE_ID}:${RULE_ID}`,
-      execute: async context => {
-        if (!this.enabled()) return { skipped: true };
-        const used = await this.#handleFailedRoll(kind, actor, roll, data);
-        const metadata = roll?.options?.dnd5eCharacterBuilderRulesAssistance?.[RULE_ID] ?? null;
-        if (!metadata) return { offered: false };
-        return {
-          offered: metadata.offered === true,
-          used: metadata.used === true,
-          consumed: metadata.consumed === true,
-          bonus: Number(metadata.bonus ?? 0),
-          currentTotal: Number.isFinite(Number(metadata.finalTotal))
+    return Promise.all(candidates.map(roll => {
+      const actorUuid = actor.uuid ?? `Actor.${actor.id}`;
+      const rollType = this.#structuredRollType(kind);
+      const originalTotal = Number(roll.total ?? 0);
+      const target = Number(roll.options.target);
+      const pending = SharedRollResolutionQueueService.markPending({
+        roll,
+        actorUuid,
+        rollType,
+        originalTotal,
+        currentTotal: originalTotal,
+        target,
+        succeeded: false
+      });
+
+      return SharedRollResolutionQueueService.enqueue({
+        roll,
+        rollKey: pending.rollKey,
+        phase: "character",
+        providerId: `${MODULE_ID}:${RULE_ID}`,
+        actorUuid,
+        rollType,
+        originalTotal,
+        currentTotal: originalTotal,
+        target,
+        succeeded: false,
+        execute: async context => {
+          try {
+            if (this.enabled()) await this.#handleFailedRoll(kind, actor, roll, data);
+          } catch (error) {
+            this.#reportError(error);
+          }
+
+          const metadata = roll?.options?.dnd5eCharacterBuilderRulesAssistance?.[RULE_ID] ?? null;
+          const resolvedOriginal = Number.isFinite(Number(metadata?.originalTotal))
+            ? Number(metadata.originalTotal)
+            : Number(context.originalTotal ?? originalTotal);
+          const currentTotal = Number.isFinite(Number(metadata?.finalTotal))
             ? Number(metadata.finalTotal)
-            : context.currentTotal,
-          success: typeof metadata.success === "boolean" ? metadata.success : context.success,
-          stop: false
-        };
-      }
-    })));
+            : Number(context.currentTotal ?? resolvedOriginal);
+          const succeeded = typeof metadata?.success === "boolean"
+            ? metadata.success
+            : (kind === "attack" && roll.isFumble ? false : currentTotal >= target);
+          const adjustments = metadata?.used === true && Number.isFinite(Number(metadata.bonus))
+            ? [{ source: "Bardic Inspiration", bonus: Number(metadata.bonus) }]
+            : [];
+
+          const finalized = SharedRollResolutionQueueService.finalize({
+            roll,
+            rollKey: pending.rollKey,
+            actorUuid,
+            rollType,
+            originalTotal: resolvedOriginal,
+            currentTotal,
+            target,
+            succeeded,
+            adjustments
+          });
+
+          return {
+            offered: metadata?.offered === true,
+            used: metadata?.used === true,
+            consumed: metadata?.consumed === true,
+            bonus: Number(metadata?.bonus ?? 0),
+            currentTotal: finalized.currentTotal,
+            succeeded: finalized.succeeded,
+            finalized: true,
+            stop: false
+          };
+        }
+      });
+    }));
   }
 
   static async #handleFailedRoll(kind, actor, roll, data) {
@@ -147,11 +196,21 @@ export class BardicInspirationAssistanceService {
 
     const use = await this.#confirmUse({ actor, sourceActor, die, kind, roll });
     if (!use) {
+      const originalTotal = Number(roll.total ?? 0);
+      const target = Number(roll.options.target);
       this.#markRoll(roll, {
         offered: true,
         used: false,
+        consumed: false,
         effectId: effect.id ?? null,
-        die: die.formula
+        sourceActorId: sourceActor?.id ?? null,
+        sourceItemId: sourceItem?.id ?? null,
+        die: die.formula,
+        bonus: 0,
+        originalTotal,
+        finalTotal: originalTotal,
+        target,
+        success: false
       });
       this.#recordAudit(actor, {
         ruleId: RULE_ID,
@@ -521,6 +580,16 @@ export class BardicInspirationAssistanceService {
       at: Date.now(),
       ...metadata
     };
+  }
+
+  static #structuredRollType(kind) {
+    return {
+      attack: "attackRoll",
+      ability: "abilityCheck",
+      skill: "skillCheck",
+      tool: "toolCheck",
+      save: "savingThrow"
+    }[kind] ?? "d20Test";
   }
 
   static #rollLabel(kind) {

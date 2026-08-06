@@ -1,6 +1,6 @@
 # Character Builder Settings Reference
 
-This reference documents every visible Character Builder setting in v0.9.8u. Unless stated otherwise, settings are **world settings**, can be changed only by a Game Master, and do not require a server restart. Saving the settings window affects future Character Creation, Level Up, Character Keeper, or runtime-assistance operations; it does not retroactively delete character content.
+This reference documents every visible Character Builder setting in v0.9.8v. Unless stated otherwise, settings are **world settings**, can be changed only by a Game Master, and do not require a server restart. Saving the settings window affects future Character Creation, Level Up, Character Keeper, or runtime-assistance operations; it does not retroactively delete character content.
 
 ## Splash Tutorial
 
@@ -228,7 +228,8 @@ Each rule is enabled by default inside the saved rule set, but does nothing whil
 - **Druid — Elemental Fury: Potent Spellcasting:** Adds Wisdom to eligible Druid cantrip damage.
 - **Wizard — Empowered Evocation:** Adds Intelligence to one eligible damage roll of a Wizard Evocation spell.
 - **Bard — Bardic Inspiration:** After a failed attack roll, ability check, skill check, tool check, or saving throw with a native target number, offers the recipient the source Bard's current inspiration die. Choosing Use rolls the die and removes the native effect; choosing Keep leaves it untouched. Item-origin effects are excluded.
-  - Uses the shared per-roll `character` phase before any `items`-phase provider, so later item automation receives the updated result rather than competing for the same failure.
+  - Marks the native failed roll as pending before opening the decision and always publishes a finalized structured result afterward, including when the player keeps the inspiration or no valid inspiration is present.
+  - Uses the shared per-roll `character` phase before any `items`-phase provider, so later item automation receives the finalized updated result rather than competing for the same failure.
 - **Mage Armor Effect Application:** Applies and maintains the native Mage Armor effect on eligible targets.
 - **Agonizing Blast Native Binding:** Maintains the native enchantment on the cantrip selected by the Invocation.
 

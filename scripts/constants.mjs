@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.8u";
-export const MODULE_BUILD = "community-beta-098u-bardic-inspiration-post-failure";
+export const MODULE_VERSION = "0.9.8v";
+export const MODULE_BUILD = "community-beta-098v-structured-roll-finalization";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
