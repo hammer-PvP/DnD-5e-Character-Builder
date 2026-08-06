@@ -19,6 +19,7 @@ import { ModalStackService } from "./services/modal-stack-service.mjs";
 import { RulesAssistanceService } from "./services/rules-assistance-service.mjs";
 import { TemporaryActorService } from "./services/temporary-actor-service.mjs";
 import { ShortRestHomebrewService } from "./services/short-rest-homebrew-service.mjs";
+import { SharedRollResolutionQueueService } from "./services/shared-roll-resolution-queue-service.mjs";
 
 let scribeIconPromise = null;
 
@@ -102,6 +103,7 @@ Hooks.once("init", async () => {
     scribeSpell: actor => RestManagementApp.launchScribe(actor),
     reconcileRulesAssistance: actor => RulesAssistanceService.reconcileActor(actor),
     rulesAssistanceDiagnostics: actor => RulesAssistanceService.diagnostics(actor),
+    rollResolutionQueue: SharedRollResolutionQueueService.api(),
     openTool: () => game.user.isGM ? new CharacterBuilderToolApp().render({ force: true }) : null,
     openTutorial: () => SplashTutorialService.openNow()
   };

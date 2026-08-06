@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.8t";
-export const MODULE_BUILD = "community-beta-098t-configurable-homebrew-short-rest-recovery";
+export const MODULE_VERSION = "0.9.8u";
+export const MODULE_BUILD = "community-beta-098u-bardic-inspiration-post-failure";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -94,6 +94,13 @@ export const RULES_ASSISTANCE_DEFINITIONS = Object.freeze([
     label: "Wizard — Empowered Evocation",
     description: "Adds Intelligence to one eligible damage roll of a Wizard Evocation spell.",
     tag: "Damage"
+  }),
+  Object.freeze({
+    key: "bardicInspirationPostFailure",
+    ruleId: "bardic-inspiration-post-failure",
+    label: "Bard — Bardic Inspiration",
+    description: "After a failed native D20 Test, offers the recipient the source Bard's current inspiration die and consumes the effect only when used.",
+    tag: "Post-Failure"
   }),
   Object.freeze({
     key: "mageArmorEffectApplication",

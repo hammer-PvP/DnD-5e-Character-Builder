@@ -195,10 +195,15 @@ The current rule list includes:
 - Cleric — Blessed Strikes: Potent Spellcasting;
 - Druid — Elemental Fury: Potent Spellcasting;
 - Wizard — Empowered Evocation;
+- Bard — Bardic Inspiration post-failure choice and consumption;
 - Mage Armor Effect Application, including Armor of Shadows;
 - Agonizing Blast Native Binding.
 
 Damage assistance uses native D&D5e roll hooks and changes only the current roll configuration. Effect assistance reuses the native Active Effect already supplied by the source spell or feature. It never creates duplicate weapons, duplicate spells, duplicate Activities, replacement chat commands, or permanent formula edits.
+
+Bardic Inspiration assistance runs only when an official native Bardic Inspiration effect is already present and a D20 Test has a real failed result. It reads the die from the Bard who granted the inspiration, offers the recipient a protected **Use** or **Keep** choice, and removes the effect only after the recipient chooses to roll it. The original Bardic Inspiration use is not spent again. Effects originating from Items are outside this rule and remain under the Item Creator runtime.
+
+Post-roll providers can coordinate through `game.modules.get("dnd5e-character-builder").api.rollResolutionQueue`. The shared protocol is stored under `Symbol.for("dnd5e.roll-resolution-queue.v1")`; native resolution finishes first, Character Builder uses phase `character` (priority 200), and item runtimes use phase `items` (priority 300). Providers receive the updated per-roll context sequentially instead of opening simultaneous prompts.
 
 Mage Armor is applied automatically to one eligible target after a successful use. The target cannot be wearing equipped light, medium, or heavy body armor; clothing and shields do not block the effect. A repeated cast refreshes the existing native effect instead of stacking another copy, and equipping body armor ends Mage Armor. Armor of Shadows always resolves to the Warlock using the Invocation.
 

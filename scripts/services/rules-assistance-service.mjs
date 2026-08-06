@@ -2,6 +2,7 @@ import { MODULE_ID } from "../constants.mjs";
 import { AgonizingBlastBindingService } from "./agonizing-blast-binding-service.mjs";
 import { RulesAssistanceFormulaService } from "./rules-assistance-formula-service.mjs";
 import { MageArmorAssistanceService } from "./mage-armor-assistance-service.mjs";
+import { BardicInspirationAssistanceService } from "./bardic-inspiration-assistance-service.mjs";
 import { RulesAssistanceSettingsService } from "./rules-assistance-settings-service.mjs";
 
 const RULES = Object.freeze({
@@ -27,6 +28,7 @@ export class RulesAssistanceService {
     this.#initialized = true;
     AgonizingBlastBindingService.initialize();
     MageArmorAssistanceService.initialize();
+    BardicInspirationAssistanceService.initialize();
 
     Hooks.on("dnd5e.preUseActivity", (activity, usageConfig, dialogConfig, messageConfig) =>
       this.#prepareCast(activity, usageConfig, dialogConfig, messageConfig)
@@ -46,6 +48,7 @@ export class RulesAssistanceService {
   static async ready() {
     await AgonizingBlastBindingService.ready();
     await MageArmorAssistanceService.ready();
+    await BardicInspirationAssistanceService.ready();
   }
 
   static enabled() {
@@ -72,7 +75,8 @@ export class RulesAssistanceService {
     const rows = this.#audit.get(String(actorId ?? "")) ?? [];
     return [
       ...rows.map(row => ({ ...row })),
-      ...MageArmorAssistanceService.diagnostics(actor)
+      ...MageArmorAssistanceService.diagnostics(actor),
+      ...BardicInspirationAssistanceService.diagnostics(actor)
     ].sort((a, b) => Number(a.at ?? 0) - Number(b.at ?? 0));
   }
 

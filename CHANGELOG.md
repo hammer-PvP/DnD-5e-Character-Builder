@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.8u
+
+### Native Bardic Inspiration post-failure assistance
+
+- Added **Bard — Bardic Inspiration** to the granular Rules Automation Assistance list.
+- Detects an active official 2024 Bardic Inspiration effect on the rolling Actor after a failed attack roll, ability check, skill check, tool check, or saving throw when the native roll contains a real target number.
+- Resolves the inspiration die from the source Bard's native class scale, with the official Bard-level progression as a safe fallback: d6 at levels 1–4, d8 at 5–9, d10 at 10–14, and d12 at 15–20.
+- Presents a protected foreground choice to use the die or preserve the effect for a later failed D20 Test. Declining does not alter the Actor.
+- When accepted, rolls the source Bard's current die, reports the original total, inspiration result, final total, and success state in chat, then removes the recipient's native Bardic Inspiration effect.
+- Does not spend the source Bard's resource a second time; the Bard's native feature use remains authoritative when the inspiration is granted.
+- Restricts the runtime to native Bardic Inspiration feature effects and does not claim effects originating from Items, which remain the responsibility of the Item Creator runtime.
+- Added player-owner arbitration, duplicate-roll protection, per-effect locks, and active-GM socket fallback for effect removal.
+- Added the shared per-roll resolution protocol `dnd5e.roll-resolution-queue.v1`: Character Builder registers in the `character` phase before the reserved `items` phase, preventing competing post-roll prompts and passing the updated total to later providers.
+- Preserved the v0.9.8t optional Short Rest homebrew and all previously validated creation, Level Up, Keeper, and assistance behavior.
+
 ## 0.9.8t
 
 ### Configurable homebrew Short Rest recovery and settings documentation
