@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.9c
+
+### Circle of the Land ownership and Long Rest state reconciliation
+
+- Fixed Circle of the Land Level Up processing reapplying every already-unlocked Land spell on later Druid levels. Existing semantic Land owners are now left untouched; only newly unlocked or genuinely missing expected Land spells are processed.
+- The durable Circle Land choice is no longer rewritten on every Level Up, preventing the same Land state from being presented as a new choice transaction repeatedly.
+- Preserved the v0.9.9b ownership/reconciliation contract. `FeatureSpellOwnershipService` and `AlwaysPreparedSpellReconciliationService` are unchanged.
+- Reworked the Character Keeper `Change Land` spell mutation into desired-state reconciliation. A compatible normal Druid acquisition is reused and promoted to Always Prepared; only spells without a normal Druid acquisition receive a dedicated Land spell Item.
+- Leaving a Land removes only that Land owner. Normal Druid spells are preserved and return to their recorded prior preparation state; dedicated Land-only spells are removed when no other owner remains.
+- Added a focused fallback for legacy Circle records whose repeated owner updates lost `previousPrepared`: during an explicit Change Land transaction, a normal Druid spell is never left invalidly Always Prepared after its Land owner is removed. A recorded reconciliation snapshot is preferred; otherwise the neutral full-list state is used.
+- Character Keeper now reconciles Circle spell badges as current visual state. All previous Circle-of-the-Land spell badges are removed during a Land change and exactly one badge is projected onto each currently owned Land spell.
+- History rebuilds now emit the durable Land-choice badge only for the transaction that actually established that Land, avoiding repeated `Land` badges across later Level Ups.
+- Species/lineage spell acquisitions remain independent. Wood Elf Longstrider and Pass without Trace keep their own Always Prepared state, chosen lineage ability, 1/Long Rest free cast, and separate spell Item even when the class also has the same spell.
+- Regression-tested the reported level-20 Druid Actor through Arid → Polar → Arid. Normal Druid copies were reused without duplication, Blight/Wall of Stone correctly lost and regained Always Prepared, dedicated Land cantrips were removed/recreated correctly, Circle badges stayed singular, and Wood Elf/Druid Longstrider remained two independent acquisitions.
+- No migration scan is performed. Existing Actors are only reconciled when the player explicitly uses Change Land or proceeds through future Level Ups.
+
 ## 0.9.9b
 
 ### Generic native free-cast reconciliation hotfix

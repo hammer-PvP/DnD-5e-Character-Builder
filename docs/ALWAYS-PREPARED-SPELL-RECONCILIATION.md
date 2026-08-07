@@ -75,3 +75,14 @@ Any failure aborts the Draft transaction before the live Actor is modified.
 ## Protected systems
 
 This implementation does not modify Character Keeper, rest management, Rules Automation Assistance, Bardic Inspiration resolution, the shared roll-resolution protocol, or Item Creator runtime responsibilities.
+
+## Runtime feature-state reconciliation
+
+The same ownership contract is reused by mutable class/subclass features such as Circle of the Land without turning the global Always Prepared reconciler into a runtime migration service. Runtime handlers reconcile only the feature state being explicitly changed.
+
+- A normal spell acquisition from the same class may receive or lose a feature owner while preserving one spell Item.
+- A feature-only spell is created as a dedicated Item and removed when that owner no longer applies.
+- Current visual badges are projections of active ownership, not a per-transaction history log.
+- Independent casting origins remain separate. Species/lineage, feat, background, item, or other-class grants are not collapsed into a class spell merely because the spell identifier matches, especially when they carry their own casting ability, free use, recovery, or casting method.
+
+Wood Elf Longstrider is therefore intentionally independent from Druid Longstrider: the lineage grant has its own spellcasting ability choice and one free cast per Long Rest, while the Druid acquisition belongs to Druid Spellcasting.
