@@ -3,10 +3,11 @@ import { DraftManager } from "./draft-manager.mjs";
 import { LevelUpDraftManager } from "./level-up-draft-manager.mjs";
 
 /**
- * Reconciles a preparation-only feature grant with a normal acquisition of the
- * same class spell. This service is deliberately transaction-scoped: it never
- * scans or migrates legacy Actors, and it never claims spells originating from
- * Items or grants that carry their own free-use mechanics.
+ * Reconciles a native Always Prepared feature grant with a normal acquisition
+ * of the same class spell. The grant may be preparation-only or may carry the
+ * explicit free-cast augmentation declared by its native ItemGrant. This
+ * service is deliberately transaction-scoped: it never scans or migrates
+ * legacy Actors and it never claims spells originating from Items.
  */
 export class AlwaysPreparedSpellReconciliationService {
   static preview(draft, {
@@ -132,26 +133,29 @@ export class AlwaysPreparedSpellReconciliationService {
     const sourceItemIds = new Set(sourceActor?.items.map(item => item.id) ?? []);
     const spells = draft.items.filter(item => item.type === "spell" && Number(item.system?.level ?? 0) > 0);
     const grants = spells
-      .map(spell => ({ spell, grant: this.#currentGrant(spell, draft, transactionId, state) }))
-      .filter(row => row.grant && Number(row.spell.system?.prepared ?? 0) === 2)
-      .filter(row => this.#isPreparationOnlyGrant(row.spell, row.grant));
+      .map(spell => {
+        const grant = this.#currentGrant(spell, draft, transactionId, state);
+        return { spell, grant, profile: this.#grantProfile(spell, grant) };
+      })
+      .filter(row => row.grant && row.profile && Number(row.spell.system?.prepared ?? 0) === 2);
     const plans = [];
     const claimedGrantIds = new Set();
 
-    for (const { spell: grantSpell, grant } of grants) {
+    for (const { spell: grantSpell, grant, profile } of grants) {
       if (claimedGrantIds.has(grantSpell.id)) continue;
       if (classItem && grant.classIdentifier && grant.classIdentifier !== classItem.system?.identifier) continue;
       const candidates = spells.filter(candidate =>
         candidate.id !== grantSpell.id
         && this.#sameSpellIdentity(candidate, grantSpell)
         && this.#isNormalClassAcquisition(candidate, draft, grant.classIdentifier)
-        && this.#compatibleCasting(candidate, grantSpell, grant.classIdentifier, draft)
+        && this.#compatibleCasting(candidate, grantSpell, grant.classIdentifier, draft, profile)
       );
       if (!candidates.length) continue;
       const canonical = this.#chooseCanonical(candidates, sourceItemIds);
       const normal = this.#normalAcquisition(canonical, draft, grant.classIdentifier);
       if (!normal) continue;
-      const previousPrepared = Number(canonical.system?.prepared ?? 0);
+      const previousSnapshot = this.#previousSpellSnapshot(canonical, draft);
+      const previousPrepared = Number(previousSnapshot.prepared ?? canonical.system?.prepared ?? 0);
       plans.push({
         name: canonical.name,
         identifier: canonical.system?.identifier ?? null,
@@ -162,7 +166,9 @@ export class AlwaysPreparedSpellReconciliationService {
         normalSelectionReleased: this.#usesLimitedSelection(normal, grant.classIdentifier)
           && previousPrepared === 1,
         normal,
-        grant
+        grant,
+        profile,
+        previousSnapshot
       });
       claimedGrantIds.add(grantSpell.id);
     }
@@ -181,8 +187,7 @@ export class AlwaysPreparedSpellReconciliationService {
     const managedFeatureGrant = levelUpSpell?.transactionId === transactionId
       && Boolean(levelUpSpell.featureItemId)
       && Number(spell.system?.prepared ?? 0) === 2;
-    const nativeGrant = grant?.transactionId === transactionId;
-    if (!nativeGrant && !owners.length && !managedFeatureGrant) return null;
+    if (!(grant?.transactionId === transactionId) && !owners.length && !managedFeatureGrant) return null;
 
     const ownerItemId = grant?.ownerItemId
       ?? owners[0]?.ownerItemId
@@ -199,8 +204,22 @@ export class AlwaysPreparedSpellReconciliationService {
       ?? null;
     if (!classIdentifier) return null;
 
+    const advancementId = grant?.advancementId
+      ?? owners[0]?.advancementId
+      ?? integrityRow?.advancementId
+      ?? null;
+    const rawAdvancement = advancementId
+      ? owner?.toObject().system?.advancement?.[advancementId]
+      : null;
+    const configuredUuid = grant?.configuredUuid
+      ?? this.#configuredUuidForSpell(rawAdvancement, spell)
+      ?? owners[0]?.sourceUuid
+      ?? null;
+    const nativeGrant = grant?.transactionId === transactionId
+      || owners.some(row => Boolean(row?.nativeGrant))
+      || Boolean(rawAdvancement?.type === "ItemGrant" && configuredUuid);
     const advancementOrigin = spell.getFlag("dnd5e", "advancementOrigin")
-      ?? (grant?.ownerItemId && grant?.advancementId ? `${grant.ownerItemId}.${grant.advancementId}` : null);
+      ?? (ownerItemId && advancementId ? `${ownerItemId}.${advancementId}` : null);
     return {
       nativeGrant,
       managedFeatureGrant,
@@ -209,15 +228,16 @@ export class AlwaysPreparedSpellReconciliationService {
       ownerName: integrityRow?.ownerName ?? owner?.name ?? owners[0]?.label ?? "Feature",
       ownerType: integrityRow?.ownerType ?? owner?.type ?? null,
       classIdentifier,
-      advancementId: grant?.advancementId ?? null,
+      advancementId,
       advancementOrigin,
-      configuredUuid: grant?.configuredUuid ?? null,
+      configuredUuid,
       sourceUuid: grant?.sourceUuid
         ?? spell.getFlag("dnd5e", "sourceId")
         ?? spell._stats?.compendiumSource
         ?? null,
       owners: foundry.utils.deepClone(owners),
       featureItemId: owners[0]?.featureItemId ?? levelUpSpell?.featureItemId ?? null,
+      spellConfiguration: foundry.utils.deepClone(rawAdvancement?.configuration?.spell ?? null),
       label: owners[0]?.label
         ?? integrityRow?.advancementTitle
         ?? owner?.name
@@ -225,18 +245,96 @@ export class AlwaysPreparedSpellReconciliationService {
     };
   }
 
-  static #isPreparationOnlyGrant(spell, grant) {
-    if (!grant || !["class", "subclass", "feat"].includes(grant.ownerType)) return false;
-    if (this.#hasItemCreatorOrigin(spell)) return false;
-    const uses = spell.system?.uses ?? {};
-    if (this.#meaningfulUsePool(uses)) return false;
-    for (const activity of Object.values(spell.system?.activities ?? {})) {
-      if (String(activity?.type ?? "") === "forward") return false;
-      if (this.#meaningfulUsePool(activity?.uses ?? {})) return false;
-      const targets = activity?.consumption?.targets ?? [];
-      if (targets.some(target => ["itemUses", "activityUses"].includes(String(target?.type ?? "")))) return false;
+  static #configuredUuidForSpell(rawAdvancement, spell) {
+    if (rawAdvancement?.type !== "ItemGrant") return null;
+    const sourceUuid = this.#sourceUuid(spell);
+    const identifier = String(spell.system?.identifier ?? "").trim();
+    for (const entry of rawAdvancement.configuration?.items ?? []) {
+      const uuid = typeof entry === "string" ? entry : entry?.uuid;
+      if (!uuid) continue;
+      if (uuid === sourceUuid) return uuid;
+      try {
+        const source = typeof fromUuidSync === "function" ? fromUuidSync(uuid) : null;
+        if (identifier && source?.type === "spell" && source.system?.identifier === identifier) return uuid;
+      } catch (_error) {
+        // A missing configured source is not enough to make a merge unsafe; the
+        // caller will fall back to the spell owner's recorded source UUID.
+      }
     }
-    return true;
+    return null;
+  }
+
+  static #grantProfile(spell, grant) {
+    if (!grant || !["class", "subclass", "feat"].includes(grant.ownerType)) return null;
+    if (this.#hasItemCreatorOrigin(spell)) return null;
+
+    const itemUses = spell.system?.uses ?? {};
+    const hasItemUses = this.#meaningfulUsePool(itemUses);
+    const activities = Object.values(spell.system?.activities ?? {});
+    const hasForward = activities.some(activity => String(activity?.type ?? "") === "forward");
+    const hasUseConsumption = activities.some(activity =>
+      (activity?.consumption?.targets ?? []).some(target =>
+        ["itemUses", "activityUses"].includes(String(target?.type ?? ""))
+      )
+    );
+
+    if (!hasItemUses && !hasForward && !hasUseConsumption) {
+      return { kind: "preparation-only", spellConfiguration: grant.spellConfiguration ?? null };
+    }
+
+    // Mechanical augmentation is accepted only when the native ItemGrant
+    // explicitly declares the use pool that produced it. This keeps the merge
+    // generic for Paladin's Smite / Faithful Steed style grants without
+    // treating arbitrary spell modifications as safe.
+    if (!grant.nativeGrant || !grant.spellConfiguration) return null;
+    const configuredUses = grant.spellConfiguration.uses ?? {};
+    const maximum = String(configuredUses.max ?? "").trim();
+    const period = String(configuredUses.per ?? "").trim();
+    if (!maximum || maximum === "0" || !period) return null;
+    if (!this.#grantUsePoolMatches(spell, configuredUses)) return null;
+
+    const requireSlot = Boolean(configuredUses.requireSlot);
+    if (!this.#authorizedAugmentationShape(spell, { requireSlot })) return null;
+    return {
+      kind: "augmenting",
+      spellConfiguration: foundry.utils.deepClone(grant.spellConfiguration),
+      uses: { max: maximum, per: period, requireSlot }
+    };
+  }
+
+  static #grantUsePoolMatches(spell, configuredUses) {
+    const actual = spell.system?.uses ?? {};
+    if (String(actual.max ?? "").trim() !== String(configuredUses.max ?? "").trim()) return false;
+    const period = String(configuredUses.per ?? "").trim();
+    const recovery = Array.isArray(actual.recovery) ? actual.recovery : [];
+    return recovery.some(row => String(row?.period ?? "") === period);
+  }
+
+  static #authorizedAugmentationShape(spell, { requireSlot }) {
+    const activities = Object.values(spell.system?.activities ?? {});
+    const base = activities.filter(activity => String(activity?.type ?? "") !== "forward");
+    const forwards = activities.filter(activity => String(activity?.type ?? "") === "forward");
+
+    if (!requireSlot) {
+      const slotActivities = base.filter(activity => Boolean(activity?.consumption?.spellSlot));
+      if (!slotActivities.length || forwards.length !== slotActivities.length) return false;
+      const baseIds = new Set(slotActivities.map(activity => String(activity?._id ?? activity?.id ?? "")).filter(Boolean));
+      for (const activity of forwards) {
+        const forwarded = String(activity?.activity?.id ?? "");
+        const targets = activity?.consumption?.targets ?? [];
+        if (!baseIds.has(forwarded)) return false;
+        if (!targets.some(target => String(target?.type ?? "") === "itemUses")) return false;
+        if (targets.some(target => String(target?.type ?? "") === "activityUses")) return false;
+      }
+      return true;
+    }
+
+    if (forwards.length) return false;
+    const slotActivities = base.filter(activity => Boolean(activity?.consumption?.spellSlot));
+    if (!slotActivities.length) return false;
+    return slotActivities.every(activity =>
+      (activity?.consumption?.targets ?? []).some(target => String(target?.type ?? "") === "itemUses")
+    );
   }
 
   static #meaningfulUsePool(uses) {
@@ -264,7 +362,7 @@ export class AlwaysPreparedSpellReconciliationService {
     return Boolean(leftSource && rightSource && leftSource === rightSource);
   }
 
-  static #compatibleCasting(normal, grant, classIdentifier, draft) {
+  static #compatibleCasting(normal, grant, classIdentifier, draft, profile) {
     if (this.#classIdentifierForSpell(normal, draft) !== classIdentifier) return false;
     const normalMethod = String(normal.system?.method ?? "spell");
     const grantMethod = String(grant.system?.method ?? "spell");
@@ -272,7 +370,8 @@ export class AlwaysPreparedSpellReconciliationService {
     const normalAbility = String(normal.system?.ability ?? "");
     const grantAbility = String(grant.system?.ability ?? "");
     if (normalAbility && grantAbility && normalAbility !== grantAbility) return false;
-    if (this.#activityFingerprint(normal) !== this.#activityFingerprint(grant)) return false;
+    if (this.#activityFingerprint(normal, { stripRecordedAugmentations: true })
+      !== this.#activityFingerprint(grant, { profile })) return false;
     return this.#effectFingerprint(normal) === this.#effectFingerprint(grant);
   }
 
@@ -280,8 +379,16 @@ export class AlwaysPreparedSpellReconciliationService {
     return String(item.getFlag("dnd5e", "sourceId") ?? item._stats?.compendiumSource ?? "").trim();
   }
 
-  static #activityFingerprint(item) {
-    const activities = Object.values(item.toObject().system?.activities ?? {}).map(activity => {
+  static #activityFingerprint(item, { profile = null, stripRecordedAugmentations = false } = {}) {
+    const stripAugmentation = profile?.kind === "augmenting";
+    const requireSlot = Boolean(profile?.uses?.requireSlot);
+    const recordedReceipts = stripRecordedAugmentations
+      ? (item.getFlag(MODULE_ID, "mergedItemGrants") ?? []).map(receipt => receipt?.augmentation).filter(Boolean)
+      : [];
+    const recordedAddedIds = new Set(recordedReceipts.flatMap(receipt => receipt?.addedActivityIds ?? []));
+    const activities = Object.entries(item.toObject().system?.activities ?? {}).map(([activityId, activity]) => {
+      if (recordedAddedIds.has(activityId)) return null;
+      if (stripAugmentation && !requireSlot && String(activity?.type ?? "") === "forward") return null;
       const row = foundry.utils.deepClone(activity ?? {});
       delete row._id;
       delete row.id;
@@ -289,13 +396,25 @@ export class AlwaysPreparedSpellReconciliationService {
       delete row.img;
       delete row.sort;
       delete row.description;
+      delete row._stats;
       const uses = row.uses ?? {};
       if (!this.#meaningfulUsePool(uses)) delete row.uses;
-      if (row.consumption && Array.isArray(row.consumption.targets) && !row.consumption.targets.length) {
-        delete row.consumption.targets;
+      if (row.consumption && Array.isArray(row.consumption.targets)) {
+        if (stripRecordedAugmentations) {
+          for (const receipt of recordedReceipts) {
+            const previous = receipt?.activityConsumptionPrevious?.[activityId];
+            if (Array.isArray(previous)) row.consumption.targets = foundry.utils.deepClone(previous);
+          }
+        }
+        if (stripAugmentation && requireSlot) {
+          row.consumption.targets = row.consumption.targets.filter(target =>
+            String(target?.type ?? "") !== "itemUses"
+          );
+        }
+        if (!row.consumption.targets.length) delete row.consumption.targets;
       }
       return row;
-    });
+    }).filter(Boolean);
     return this.#stableStringify(activities.sort((a, b) =>
       this.#stableStringify(a).localeCompare(this.#stableStringify(b))
     ));
@@ -310,6 +429,12 @@ export class AlwaysPreparedSpellReconciliationService {
       delete row.img;
       delete row.origin;
       delete row.sort;
+      delete row._stats;
+      delete row.start;
+      delete row.folder;
+      if (row.duration && Object.prototype.hasOwnProperty.call(row.duration, "expired")) {
+        delete row.duration.expired;
+      }
       return row;
     });
     return this.#stableStringify(effects.sort((a, b) =>
@@ -406,6 +531,20 @@ export class AlwaysPreparedSpellReconciliationService {
     })[0];
   }
 
+  static #previousSpellSnapshot(canonical, draft) {
+    const sourceActor = game.actors.get(draft.getFlag(MODULE_ID, "sourceActorId"));
+    const live = sourceActor?.items.get(canonical.id);
+    const source = live && this.#sameSpellIdentity(live, canonical) ? live : canonical;
+    return {
+      source: live ? "source-actor" : "draft",
+      prepared: Number(source.system?.prepared ?? 0),
+      ability: source.system?.ability ?? null,
+      method: source.system?.method ?? null,
+      uses: foundry.utils.deepClone(source.system?.uses ?? {}),
+      activities: foundry.utils.deepClone(source.toObject().system?.activities ?? {})
+    };
+  }
+
   static async #mergePlan(draft, canonical, duplicate, plan, transactionId) {
     const existingReconciliation = foundry.utils.deepClone(
       canonical.getFlag(MODULE_ID, "alwaysPreparedReconciliation") ?? {}
@@ -415,6 +554,8 @@ export class AlwaysPreparedSpellReconciliationService {
     const restorablePrepared = Number.isFinite(Number(existingReconciliation.normalAcquisition?.previousPrepared))
       ? Number(existingReconciliation.normalAcquisition.previousPrepared)
       : plan.previousPrepared;
+    const augmentation = this.#augmentationDelta(canonical, duplicate, plan);
+    if (plan.profile?.kind === "augmenting" && !augmentation) return null;
     const owners = [...existingOwners];
     for (const sourceOwner of duplicateOwners) {
       const owner = foundry.utils.deepClone(sourceOwner);
@@ -453,7 +594,8 @@ export class AlwaysPreparedSpellReconciliationService {
       configuredUuid: plan.grant.configuredUuid,
       sourceUuid: plan.grant.sourceUuid,
       transactionId,
-      mergedFromItemId: duplicate.id
+      mergedFromItemId: duplicate.id,
+      augmentation: augmentation ? foundry.utils.deepClone(augmentation.receipt) : null
     } : null;
     const receipts = receipt ? this.#mergeReceipt(existingReceipts, receipt) : existingReceipts;
 
@@ -470,7 +612,9 @@ export class AlwaysPreparedSpellReconciliationService {
       sourceUuid: plan.grant.sourceUuid,
       transactionId,
       mergedFromItemId: duplicate.id,
-      label: plan.grant.label
+      label: plan.grant.label,
+      grantKind: plan.profile?.kind ?? "preparation-only",
+      augmentation: augmentation ? foundry.utils.deepClone(augmentation.receipt) : null
     };
     const grantKey = this.#grantKey(grantRecord);
     const mergedGrants = grants.filter(row => this.#grantKey(row) !== grantKey);
@@ -478,6 +622,7 @@ export class AlwaysPreparedSpellReconciliationService {
 
     const update = {
       "system.prepared": 2,
+      ...(augmentation?.updates ?? {}),
       ...(!String(canonical.system?.ability ?? "").trim() && String(duplicate.system?.ability ?? "").trim()
         ? { "system.ability": duplicate.system.ability }
         : {}),
@@ -488,10 +633,11 @@ export class AlwaysPreparedSpellReconciliationService {
       [`flags.${MODULE_ID}.featureSpellOwners`]: owners,
       [`flags.${MODULE_ID}.mergedItemGrants`]: receipts,
       [`flags.${MODULE_ID}.alwaysPreparedReconciliation`]: {
-        schema: 1,
+        schema: 2,
         normalAcquisition: {
           ...foundry.utils.deepClone(plan.normal),
-          previousPrepared: restorablePrepared
+          previousPrepared: restorablePrepared,
+          previousSnapshot: foundry.utils.deepClone(plan.previousSnapshot)
         },
         grants: mergedGrants,
         lastTransactionId: transactionId,
@@ -520,8 +666,71 @@ export class AlwaysPreparedSpellReconciliationService {
         ownerName: plan.grant.ownerName,
         previousPrepared: restorablePrepared,
         alwaysPrepared: true,
+        grantKind: plan.profile?.kind ?? "preparation-only",
+        augmented: Boolean(augmentation),
+        addedActivityIds: augmentation?.receipt?.addedActivityIds ?? [],
         normalSelectionReleased: plan.normalSelectionReleased,
         removedDuplicateItemId: duplicate.id
+      }
+    };
+  }
+
+  static #augmentationDelta(canonical, duplicate, plan) {
+    if (plan.profile?.kind !== "augmenting") return null;
+    // A pre-existing Item use pool may belong to another acquisition and cannot
+    // safely be repurposed for a second native free-cast grant.
+    if (this.#meaningfulUsePool(canonical.system?.uses ?? {})) return null;
+    const requireSlot = Boolean(plan.profile?.uses?.requireSlot);
+    const canonicalActivities = foundry.utils.deepClone(canonical.toObject().system?.activities ?? {});
+    const duplicateActivities = foundry.utils.deepClone(duplicate.toObject().system?.activities ?? {});
+    const updates = {
+      "system.uses": foundry.utils.deepClone(duplicate.system?.uses ?? {})
+    };
+    const addedActivityIds = [];
+    const activityConsumptionPrevious = {};
+
+    if (!requireSlot) {
+      for (const [id, activity] of Object.entries(duplicateActivities)) {
+        if (String(activity?.type ?? "") !== "forward") continue;
+        const forwardedId = String(activity?.activity?.id ?? "");
+        if (!canonicalActivities[forwardedId]) return null;
+        if (canonicalActivities[id]) {
+          if (this.#stableStringify(canonicalActivities[id]) !== this.#stableStringify(activity)) return null;
+          continue;
+        }
+        updates[`system.activities.${id}`] = foundry.utils.deepClone(activity);
+        addedActivityIds.push(id);
+      }
+      if (!addedActivityIds.length) return null;
+    } else {
+      for (const [id, duplicateActivity] of Object.entries(duplicateActivities)) {
+        if (String(duplicateActivity?.type ?? "") === "forward") continue;
+        const canonicalActivity = canonicalActivities[id];
+        if (!canonicalActivity || !duplicateActivity?.consumption?.spellSlot) continue;
+        const grantedTargets = (duplicateActivity.consumption?.targets ?? [])
+          .filter(target => String(target?.type ?? "") === "itemUses");
+        if (!grantedTargets.length) continue;
+        activityConsumptionPrevious[id] = foundry.utils.deepClone(canonicalActivity.consumption?.targets ?? []);
+        const targets = foundry.utils.deepClone(canonicalActivity.consumption?.targets ?? []);
+        for (const target of grantedTargets) {
+          const key = this.#stableStringify(target);
+          if (!targets.some(row => this.#stableStringify(row) === key)) targets.push(foundry.utils.deepClone(target));
+        }
+        updates[`system.activities.${id}.consumption.targets`] = targets;
+      }
+      if (!Object.keys(activityConsumptionPrevious).length) return null;
+    }
+
+    return {
+      updates,
+      receipt: {
+        kind: "native-item-grant",
+        requireSlot,
+        previousUses: foundry.utils.deepClone(plan.previousSnapshot?.uses ?? canonical.system?.uses ?? {}),
+        appliedUses: foundry.utils.deepClone(duplicate.system?.uses ?? {}),
+        addedActivityIds,
+        activityConsumptionPrevious,
+        configuredUses: foundry.utils.deepClone(plan.profile?.uses ?? {})
       }
     };
   }
@@ -671,6 +880,7 @@ export class AlwaysPreparedSpellReconciliationService {
       canonicalItemId: plan.canonicalItemId,
       grantItemId: plan.grantItemId,
       previousPrepared: plan.previousPrepared,
+      grantKind: plan.profile?.kind ?? "preparation-only",
       normalSelectionReleased: plan.normalSelectionReleased,
       source: plan.grant.label,
       ownerItemId: plan.grant.ownerItemId,

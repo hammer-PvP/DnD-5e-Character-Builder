@@ -4,7 +4,7 @@
 
 This contract applies only inside a Character Builder **Character Creation** or **Level Up** Draft. It does not scan, migrate, or repair existing live Actors.
 
-The first 0.9.9 implementation covers leveled spells granted as Always Prepared by a native Class, Subclass, or class-linked Feature when the same class already owns the same spell through normal class spell access.
+The 0.9.9 stabilization line covers leveled spells granted as Always Prepared by a native Class, Subclass, or class-linked Feature when the same class already owns the same spell through normal class spell access. v0.9.9a distinguishes preparation-only grants from native ItemGrants that explicitly augment the spell with a free-cast use pool.
 
 ## Canonical result
 
@@ -29,9 +29,9 @@ Full-list spellcasters do not receive an additional prepared choice. Their exist
 
 ## Paladin's Smite
 
-Paladin's Smite remains its own Feature Item. Its free-cast Activity, use counter, and recovery are not moved or deleted. Reconciliation removes only the redundant Divine Smite spell granted during the current transaction.
+Paladin's Smite remains its own Feature Item. The native Paladin ItemGrant is authoritative for the spell augmentation: it makes Divine Smite Always Prepared, gives the spell a 1/Long Rest use pool, and causes D&D5e to create forwarding Activities for the free casting.
 
-The canonical Divine Smite spell retains its normal spell-slot Activities. After the free Feature use is spent, the same spell can continue to be cast with spell slots.
+When Divine Smite already exists through normal Paladin spell access, Character Builder keeps that canonical spell, applies only the ItemGrant-declared augmentation to it, redirects the native grant receipt, and removes the redundant grant copy. The original spell-slot Activities remain untouched. After the free use is spent, the same Divine Smite can continue to be cast with spell slots. Find Steed and other grants with the same native ItemGrant pattern use the same generic reconciliation path; there is no spell-name exception.
 
 ## Merge requirements
 
@@ -39,7 +39,7 @@ A merge requires all of the following:
 
 - the same non-empty spell identifier and spell level;
 - the same canonical source UUID;
-- equivalent spell Activities and embedded effects;
+- mechanically equivalent base spell Activities and embedded effects after removing non-mechanical document metadata;
 - the same class acquisition;
 - compatible casting method and ability;
 - a normal class-access acquisition on the canonical spell;
@@ -53,13 +53,12 @@ Character Builder does not merge:
 - spells originating from Items or Item Creator runtime data;
 - same-named spells from different classes;
 - different casting abilities or methods;
-- spells with their own Item use pool or recovery;
-- spells containing a forwarding Activity;
-- spells whose Activities consume Item uses or Activity uses;
+- arbitrary spell use pools, forwarding Activities, or Item/Activity-use consumption that are not explicitly declared by the same native ItemGrant;
+- native augmentations whose resulting Activity/use structure cannot be proven to match the ItemGrant configuration;
 - legacy duplicates that predate the active Draft transaction;
 - cantrip acquisition channels in this first stabilization stage.
 
-These exclusions favor correctness and reversible ownership over cosmetic deduplication.
+For native augmenting ItemGrants, the receipt also records the previous use pool and Activities plus the exact augmentation applied, preserving enough provenance for a future safe reversal. These exclusions favor correctness and reversible ownership over cosmetic deduplication.
 
 ## Commit validation
 

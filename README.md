@@ -163,9 +163,9 @@ During a new Character Creation or Level Up transaction, when a native Class, Su
 
 For limited-list casters, a normally selected spell that becomes Always Prepared releases its former selection and the player must choose a replacement before committing the Level Up. Full-list casters receive the preparation-state change without an artificial extra choice.
 
-**Paladin's Smite** remains a separate native Feature with its own free-cast Activity, counter, and recovery. The Actor keeps one **Divine Smite** spell; after the free cast is spent, that same spell can still consume normal spell slots.
+**Paladin's Smite** remains a separate native Feature, while its native ItemGrant enriches the single canonical **Divine Smite** spell with Always Prepared status, the 1/Long Rest free-cast pool, and the forwarding Activities created by D&D5e. The original spell-slot Activities remain intact, so after the free cast is spent the same Divine Smite can still consume normal spell slots.
 
-The merge is intentionally conservative. It requires the same canonical spell source and equivalent Activities/effects, and is blocked when the spell comes from an Item, belongs to a different class or casting ability, uses another casting method, or carries its own use pool, recovery, forwarding Activity, or use-consumption mechanics. Reconciliation is limited to the active Draft transaction and does not migrate existing Actors.
+The merge is intentionally conservative. It requires the same canonical spell source and mechanically equivalent base Activities/effects. Non-mechanical metadata such as embedded-document timestamps is ignored. A native ItemGrant may contribute a use pool and free-cast forwarding Activities only when those additions are explicitly declared by that same ItemGrant; arbitrary spell modifications are still rejected. Spells from Items, different classes, casting abilities, or casting methods remain separate. Reconciliation is limited to the active Draft transaction and does not migrate existing Actors.
 
 ## Character Keeper and Rest Management
 

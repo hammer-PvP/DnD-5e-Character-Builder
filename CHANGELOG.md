@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.9a
+
+### Always Prepared reconciliation hotfix and native spell augmentation
+
+- Fixed the v0.9.9 merge comparison incorrectly treating embedded Active Effect `_stats` timestamps and other runtime metadata as mechanical differences. Preparation-only duplicates such as Protection from Evil and Good, Shield of Faith, Aid, and Zone of Truth can now reconcile when their actual spell mechanics match.
+- Added a generic native ItemGrant augmentation path for Always Prepared grants that explicitly declare a free-use pool. This covers Paladin's Smite / Divine Smite and Faithful Steed / Find Steed without hard-coded spell names.
+- The canonical spell keeps its original spell-slot Activities while receiving only the ItemGrant-declared Always Prepared state, use pool/recovery, and free-cast forwarding Activities. Spending the free use therefore does not remove normal spell-slot casting.
+- Native ItemGrant ownership is now recovered from `featureSpellOwners` and the owning Advancement even when the native-created spell did not receive a Character Builder `itemGrantInstance` flag. The Advancement `value.added` entry is redirected to the canonical spell and remains valid for later integrity audits.
+- Previous preparation state is read from the untouched source Actor when available, rather than from a Draft that native Advancement processing may already have changed. This preserves the true pre-grant state for ownership receipts and future reversibility.
+- Reconciliation receipts were expanded to schema 2 for augmenting grants, recording the previous use pool, applied use pool, added forwarding Activity IDs, and any consumption targets added by the ItemGrant.
+- Preserved the transaction-only/no-migration rule. Existing Actors are not scanned or repaired automatically.
+- No Character Keeper, rest-management, Rules Automation Assistance, Bardic Inspiration, shared roll-resolution, or Item Creator runtime implementation files were changed.
+
 ## 0.9.9
 
 ### Character Creation and Level Up stabilization — Always Prepared spell reconciliation
