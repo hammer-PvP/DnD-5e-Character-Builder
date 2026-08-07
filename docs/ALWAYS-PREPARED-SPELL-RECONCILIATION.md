@@ -4,7 +4,7 @@
 
 This contract applies only inside a Character Builder **Character Creation** or **Level Up** Draft. It does not scan, migrate, or repair existing live Actors.
 
-The 0.9.9 stabilization line covers leveled spells granted as Always Prepared by a native Class, Subclass, or class-linked Feature when the same class already owns the same spell through normal class spell access. v0.9.9a distinguishes preparation-only grants from native ItemGrants that explicitly augment the spell with a free-cast use pool.
+The 0.9.9 stabilization line covers leveled spells granted as Always Prepared by a native Class, Subclass, or class-linked Feature when the same class already owns the same spell through normal class spell access. v0.9.9b distinguishes preparation-only grants from native ItemGrants that explicitly augment the spell with a free-cast use pool, including runtime D&D5e ActivityCollection documents.
 
 ## Canonical result
 

@@ -110,6 +110,16 @@ export class AlwaysPreparedSpellReconciliationService {
       throw new Error(`Always Prepared spell reconciliation is incomplete: ${names}.`);
     }
 
+    const unresolvedAugmenting = this.#unresolvedNativeAugmentingPairs(draft, {
+      transactionId,
+      state: resolvedState,
+      classItem
+    });
+    if (unresolvedAugmenting.length) {
+      const names = [...new Set(unresolvedAugmenting.map(row => row.name))].join(", ");
+      throw new Error(`Native Always Prepared spell augmentation is incomplete: ${names}.`);
+    }
+
     for (const spell of draft.items.filter(item => item.type === "spell")) {
       const receipts = spell.getFlag(MODULE_ID, "mergedItemGrants") ?? [];
       if (!receipts.length) continue;
@@ -173,6 +183,43 @@ export class AlwaysPreparedSpellReconciliationService {
       claimedGrantIds.add(grantSpell.id);
     }
     return plans;
+  }
+
+  static #unresolvedNativeAugmentingPairs(draft, { transactionId, state = null, classItem = null } = {}) {
+    const spells = draft.items.filter(item => item.type === "spell" && Number(item.system?.level ?? 0) > 0);
+    const unresolved = [];
+
+    for (const grantSpell of spells) {
+      if (Number(grantSpell.system?.prepared ?? 0) !== 2) continue;
+      if (this.#hasItemCreatorOrigin(grantSpell)) continue;
+      const grant = this.#currentGrant(grantSpell, draft, transactionId, state);
+      if (!grant?.nativeGrant || !grant.spellConfiguration) continue;
+      if (classItem && grant.classIdentifier && grant.classIdentifier !== classItem.system?.identifier) continue;
+
+      const configuredUses = grant.spellConfiguration.uses ?? {};
+      const maximum = String(configuredUses.max ?? "").trim();
+      const period = String(configuredUses.per ?? "").trim();
+      if (!maximum || maximum === "0" || !period) continue;
+
+      const candidate = spells.find(normal =>
+        normal.id !== grantSpell.id
+        && this.#sameSpellIdentity(normal, grantSpell)
+        && this.#isNormalClassAcquisition(normal, draft, grant.classIdentifier)
+        && this.#classIdentifierForSpell(normal, draft) === grant.classIdentifier
+      );
+      if (!candidate) continue;
+
+      unresolved.push({
+        name: grantSpell.name,
+        identifier: grantSpell.system?.identifier ?? null,
+        classIdentifier: grant.classIdentifier,
+        canonicalItemId: candidate.id,
+        grantItemId: grantSpell.id,
+        ownerItemId: grant.ownerItemId,
+        advancementId: grant.advancementId
+      });
+    }
+    return unresolved;
   }
 
   static #currentGrant(spell, draft, transactionId, state = null) {
@@ -270,7 +317,7 @@ export class AlwaysPreparedSpellReconciliationService {
 
     const itemUses = spell.system?.uses ?? {};
     const hasItemUses = this.#meaningfulUsePool(itemUses);
-    const activities = Object.values(spell.system?.activities ?? {});
+    const activities = this.#activityValues(spell);
     const hasForward = activities.some(activity => String(activity?.type ?? "") === "forward");
     const hasUseConsumption = activities.some(activity =>
       (activity?.consumption?.targets ?? []).some(target =>
@@ -311,7 +358,7 @@ export class AlwaysPreparedSpellReconciliationService {
   }
 
   static #authorizedAugmentationShape(spell, { requireSlot }) {
-    const activities = Object.values(spell.system?.activities ?? {});
+    const activities = this.#activityValues(spell);
     const base = activities.filter(activity => String(activity?.type ?? "") !== "forward");
     const forwards = activities.filter(activity => String(activity?.type ?? "") === "forward");
 
@@ -335,6 +382,14 @@ export class AlwaysPreparedSpellReconciliationService {
     return slotActivities.every(activity =>
       (activity?.consumption?.targets ?? []).some(target => String(target?.type ?? "") === "itemUses")
     );
+  }
+
+  static #activityValues(item) {
+    const activities = item?.system?.activities;
+    if (!activities) return [];
+    if (typeof activities.values === "function") return [...activities.values()];
+    if (Array.isArray(activities)) return activities;
+    return Object.values(activities);
   }
 
   static #meaningfulUsePool(uses) {

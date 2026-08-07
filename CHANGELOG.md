@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.9b
+
+### Generic native free-cast reconciliation hotfix
+
+- Fixed Always Prepared augmentation detection against live D&D5e 5.3.3 Items. `system.activities` is an `ActivityCollection` at runtime, so the reconciliation service now enumerates it through its collection iterator instead of treating it as a plain object.
+- The fix is generic for every native ItemGrant spell augmentation and contains no spell-name or feature-name exceptions. Divine Smite and Find Steed are regression cases, not production special cases.
+- Preparation-only reconciliation remains unchanged; the correction affects only grants that carry an explicit native use pool / free-cast augmentation.
+- Added an independent pre-commit audit for native augmenting grants. If the transaction still contains both the normal class spell and its Always Prepared use-pool grant, commit is rejected instead of silently delivering duplicate spells.
+- Verified the complete merge path against the reported Paladin Actor structure: the canonical spell receives Always Prepared, the native use pool and forwarding Activities, the duplicate is removed, and the owning Advancement `value.added` is redirected to the canonical spell.
+- Corrected the internal `MODULE_VERSION` constant to `0.9.9b`, restoring accurate transaction/history version reporting.
+- Preserved the transaction-only/no-migration rule and made no changes to Character Keeper, rest management, Rules Automation Assistance, Bardic Inspiration, shared roll resolution, or Item Creator runtime files.
+
 ## 0.9.9a
 
 ### Always Prepared reconciliation hotfix and native spell augmentation

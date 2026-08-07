@@ -1,5 +1,5 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.9";
+export const MODULE_VERSION = "0.9.9b";
 export const MODULE_BUILD = "community-beta-099-always-prepared-reconciliation";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
