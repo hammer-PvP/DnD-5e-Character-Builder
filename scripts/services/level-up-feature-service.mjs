@@ -429,15 +429,23 @@ export class LevelUpFeatureService {
     }
     if (context.land.featureItemId && selectedLand) {
       const feature = draft.items.get(context.land.featureItemId);
-      await feature?.setFlag(MODULE_ID, "circleLand", {
-        land: selectedLand,
-        label: this.#humanize(selectedLand),
-        classIdentifier: "druid",
-        classItemId: cls.id,
-        featureItemId: feature.id,
-        transactionId: state.transactionId,
-        configuredAtDruidLevel: state.targetClassLevel
-      });
+      const shouldConfigureLand = Boolean(context.land.required)
+        || !context.land.current
+        || context.land.current !== selectedLand;
+      // The selected Land is durable character state, not a per-level choice.
+      // Rewriting it on every Druid level would make presentation/history code
+      // treat the same semantic choice as a fresh acquisition each time.
+      if (shouldConfigureLand) {
+        await feature?.setFlag(MODULE_ID, "circleLand", {
+          land: selectedLand,
+          label: this.#humanize(selectedLand),
+          classIdentifier: "druid",
+          classItemId: cls.id,
+          featureItemId: feature.id,
+          transactionId: state.transactionId,
+          configuredAtDruidLevel: state.targetClassLevel
+        });
+      }
       const landCreated = await this.#applyLandSpells(draft, cls, registry, feature, selectedLand, state);
       createdItemIds.push(...landCreated);
       await this.#activateNaturesWard(draft, selectedLand);
@@ -699,29 +707,51 @@ export class LevelUpFeatureService {
   }
 
   static async #applyLandSpells(draft, cls, registry, feature, land, state) {
-    const uuids = Object.entries(LAND_SPELLS[land] ?? {})
-      .filter(([level]) => Number(level) <= Number(state.targetClassLevel))
-      .flatMap(([, rows]) => rows);
+    const sourceClassLevel = Number(state.sourceClassLevel ?? Math.max(0, Number(state.targetClassLevel ?? 0) - 1));
+    const targetClassLevel = Number(state.targetClassLevel ?? 0);
     const created = [];
-    for (const configuredUuid of uuids) {
-      let uuid = configuredUuid;
-      if (!registry.isUuidAllowed(uuid)) {
-        const source = await fromUuid(configuredUuid);
-        const preferred = source?.system?.identifier ? registry.preferredOption("spell", source.system.identifier) : null;
-        if (!preferred) throw new Error(`A required ${this.#humanize(land)} Circle Spell is unavailable from enabled sources.`);
-        uuid = preferred.uuid;
+
+    for (const [unlockLevelRaw, configuredUuids] of Object.entries(LAND_SPELLS[land] ?? {})) {
+      const unlockLevel = Number(unlockLevelRaw);
+      if (unlockLevel > targetClassLevel) continue;
+      const newlyUnlocked = sourceClassLevel < unlockLevel && targetClassLevel >= unlockLevel;
+
+      for (const configuredUuid of configuredUuids) {
+        let uuid = configuredUuid;
+        if (!registry.isUuidAllowed(uuid)) {
+          const source = await fromUuid(configuredUuid);
+          const preferred = source?.system?.identifier ? registry.preferredOption("spell", source.system.identifier) : null;
+          if (!preferred) throw new Error(`A required ${this.#humanize(land)} Circle Spell is unavailable from enabled sources.`);
+          uuid = preferred.uuid;
+        }
+        const option = registry.findOption(uuid) ?? await this.#optionFromUuid(uuid, registry);
+        if (!option) throw new Error(`A required ${this.#humanize(land)} Circle Spell is unavailable from enabled sources.`);
+
+        // Circle Spells are durable grants. Once an exact Land owner exists,
+        // later Druid levels must not re-add that owner merely because the spell
+        // remains unlocked. This keeps ownership lifecycle metadata and visual
+        // badges idempotent. Missing expected grants are still repaired.
+        const alreadyOwned = draft.items.some(item => item.type === "spell"
+          && item.system?.identifier === option.identifier
+          && (item.getFlag(MODULE_ID, "featureSpellOwners") ?? []).some(existing =>
+            existing.category === "circle-of-the-land-spells"
+            && existing.classItemId === cls.id
+            && existing.featureItemId === feature.id
+          ));
+        if (alreadyOwned) continue;
+        if (!newlyUnlocked && unlockLevel > sourceClassLevel) continue;
+
+        const section = {
+          id: `circle-land-${land}`,
+          title: `${this.#humanize(land)} Land Spells`,
+          category: "circle-of-the-land-spells",
+          featureItemId: feature.id,
+          alwaysPrepared: true,
+          sourceItem: "subclass:land"
+        };
+        const result = await this.#ensureFeatureSpell(draft, cls, section, option, state);
+        if (result.created) created.push(result.spell.id);
       }
-      const option = registry.findOption(uuid) ?? await this.#optionFromUuid(uuid, registry);
-      const section = {
-        id: `circle-land-${land}`,
-        title: `${this.#humanize(land)} Land Spells`,
-        category: "circle-of-the-land-spells",
-        featureItemId: feature.id,
-        alwaysPrepared: true,
-        sourceItem: "subclass:land"
-      };
-      const result = await this.#ensureFeatureSpell(draft, cls, section, option, state);
-      if (result.created) created.push(result.spell.id);
     }
     return created;
   }

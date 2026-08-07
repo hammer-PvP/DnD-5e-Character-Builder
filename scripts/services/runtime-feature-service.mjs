@@ -882,47 +882,174 @@ export class RuntimeFeatureService {
     if (!cls || !feature) throw new Error("Circle of the Land ownership could not be resolved.");
     const currentLand = feature.getFlag(MODULE_ID, "circleLand")?.id ?? feature.getFlag(MODULE_ID, "circleLand")?.land ?? "";
     if (currentLand === land) return { changed: false, land, reason: "unchanged" };
+
     const level = Number(cls.system?.levels ?? 0);
-    const identifiers = Object.entries(LAND_SPELLS[land]).filter(([minimum]) => level >= Number(minimum)).flatMap(([, rows]) => rows);
-    const sources = identifiers.map(identifier => registry.preferredOption("spell", identifier));
-    if (sources.some(source => !source)) throw new Error("One or more Circle Spells could not be resolved from the enabled sources.");
-    const old = actor.items.filter(item => item.type === "spell" && (item.getFlag(MODULE_ID, "featureSpellOwners") ?? []).some(owner => owner.category === "circle-of-the-land-spells" && owner.featureItemId === feature.id));
-    const deleteIds = [];
+    const identifiers = Object.entries(LAND_SPELLS[land])
+      .filter(([minimum]) => level >= Number(minimum))
+      .flatMap(([, rows]) => rows);
+    const desired = identifiers.map(identifier => ({ identifier, option: registry.preferredOption("spell", identifier) }));
+    if (desired.some(row => !row.option)) throw new Error("One or more Circle Spells could not be resolved from the enabled sources.");
+
+    const old = actor.items.filter(item => item.type === "spell"
+      && (item.getFlag(MODULE_ID, "featureSpellOwners") ?? []).some(owner =>
+        owner.category === "circle-of-the-land-spells" && owner.featureItemId === feature.id
+      ));
+    const oldRecords = [];
     for (const spell of old) {
+      const removedOwners = foundry.utils.deepClone((spell.getFlag(MODULE_ID, "featureSpellOwners") ?? []).filter(owner =>
+        owner.category === "circle-of-the-land-spells" && owner.featureItemId === feature.id
+      ));
+      const runtime = spell.getFlag(MODULE_ID, "runtimeManagementSpell");
+      const dedicated = runtime?.category === "circle-of-the-land-spells"
+        || String(spell.system?.sourceItem ?? "") === "subclass:land";
+      oldRecords.push({ spellId: spell.id, identifier: spell.system?.identifier, dedicated, removedOwners });
+
       const remaining = await FeatureSpellOwnershipService.removeOwner(
         spell,
         owner => owner.category === "circle-of-the-land-spells" && owner.featureItemId === feature.id
       );
-      const runtime = spell.getFlag(MODULE_ID, "runtimeManagementSpell");
-      const dedicatedLandSpell = runtime?.category === "circle-of-the-land-spells"
-        || String(spell.system?.sourceItem ?? "") === "subclass:land";
-      if (!remaining.length && dedicatedLandSpell) deleteIds.push(spell.id);
+
+      // v0.9.9b and earlier could overwrite the original previousPrepared value
+      // while reapplying the same Land owner on later Druid levels. During an
+      // explicit Change Land transaction, never leave a normal Druid spell in
+      // an invalid Always Prepared state after its Land owner is gone. Prefer a
+      // recorded reconciliation snapshot; otherwise use the neutral full-list
+      // state (Not Prepared) because the historical prior state is unknowable.
+      if (!remaining.some(owner => owner.alwaysPrepared)
+        && Number(spell.system?.prepared ?? 0) === 2
+        && this.#isNormalDruidSpellAcquisition(spell, cls)) {
+        const recordedPrevious = spell.getFlag(MODULE_ID, "alwaysPreparedReconciliation")
+          ?.normalAcquisition?.previousPrepared;
+        const removedPrevious = [...removedOwners].reverse()
+          .find(owner => Number.isFinite(Number(owner.previousPrepared)))?.previousPrepared;
+        const restore = Number.isFinite(Number(removedPrevious))
+          ? Number(removedPrevious)
+          : Number.isFinite(Number(recordedPrevious))
+            ? Number(recordedPrevious)
+            : 0;
+        await spell.update({ "system.prepared": restore }, {
+          characterBuilderRuntimeManagement: true,
+          characterBuilderLandPreparationRestore: true
+        });
+      }
     }
-    if (deleteIds.length) await actor.deleteEmbeddedDocuments("Item", deleteIds, { characterBuilderRuntimeManagement: true, deleteContents: false });
-    const createData = [];
-    for (const option of sources) {
+
+    const activeLandSpellIds = new Set();
+    const createdItemIds = [];
+    const reusedItemIds = [];
+
+    for (const { identifier, option } of desired) {
       const source = await fromUuid(option.uuid);
-      const data = source.toObject(); delete data._id;
-      data.system ??= {}; data.system.ability = "wis"; data.system.method = "spell"; data.system.prepared = 2; data.system.sourceItem = "subclass:land";
-      data.flags ??= {}; data.flags.dnd5e ??= {}; data.flags.dnd5e.sourceId = source.uuid;
+      if (!source) throw new Error(`Unable to load Circle Spell: ${option.name ?? identifier}.`);
+
+      let spell = actor.items.find(item => item.type === "spell"
+        && item.system?.identifier === identifier
+        && this.#isNormalDruidSpellAcquisition(item, cls));
+
+      // If there is no normal Druid acquisition, reuse a dedicated Land spell
+      // from the previous state when the same spell remains desired. This keeps
+      // document identity stable without treating independent species/feat casts
+      // as normal Druid acquisitions.
+      if (!spell) {
+        const reusable = oldRecords.find(row => row.identifier === identifier && row.dedicated && actor.items.get(row.spellId));
+        if (reusable) spell = actor.items.get(reusable.spellId);
+      }
+
       const owner = {
-        category: "circle-of-the-land-spells", label: `${LAND_LABELS[land]} Land Spells`, classIdentifier: "druid",
-        classItemId: cls.id, subclassItemId: subclass?.id ?? null, featureItemId: feature.id, ownerItemId: feature.id,
-        transactionId, acquiredAtCharacterLevel: this.#actorLevel(actor), acquiredAtClassLevel: level,
-        sourceUuid: source.uuid, spellLevel: Number(data.system.level ?? 0), alwaysPrepared: true
+        category: "circle-of-the-land-spells",
+        label: `${LAND_LABELS[land]} Land Spells`,
+        classIdentifier: "druid",
+        classItemId: cls.id,
+        subclassItemId: subclass?.id ?? null,
+        featureItemId: feature.id,
+        ownerItemId: feature.id,
+        transactionId,
+        acquiredAtCharacterLevel: this.#actorLevel(actor),
+        acquiredAtClassLevel: level,
+        sourceUuid: source.uuid,
+        spellLevel: Number(source.system?.level ?? 0),
+        alwaysPrepared: true
       };
+
+      if (spell) {
+        await FeatureSpellOwnershipService.addOwner(spell, owner, { prepared: 2 });
+        if (String(spell.system?.sourceItem ?? "") === "subclass:land"
+          || spell.getFlag(MODULE_ID, "runtimeManagementSpell")?.category === "circle-of-the-land-spells") {
+          await spell.update({
+            "system.ability": "wis",
+            "system.method": "spell",
+            "system.prepared": 2,
+            "system.sourceItem": "subclass:land",
+            [`flags.${MODULE_ID}.runtimeManagementSpell`]: {
+              transactionId,
+              category: "circle-of-the-land-spells",
+              land,
+              classItemId: cls.id,
+              featureItemId: feature.id,
+              sourceUuid: source.uuid
+            }
+          }, { characterBuilderRuntimeManagement: true });
+        }
+        activeLandSpellIds.add(spell.id);
+        reusedItemIds.push(spell.id);
+        continue;
+      }
+
+      const data = source.toObject();
+      delete data._id;
+      data.system ??= {};
+      data.system.ability = "wis";
+      data.system.method = "spell";
+      data.system.prepared = 2;
+      data.system.sourceItem = "subclass:land";
+      data.flags ??= {};
+      data.flags.dnd5e ??= {};
+      data.flags.dnd5e.sourceId = source.uuid;
       data.flags[MODULE_ID] = {
-        ...(data.flags[MODULE_ID] ?? {}), featureGrantedSpell: true, featureSpellOwners: [owner],
-        runtimeManagementSpell: { transactionId, category: "circle-of-the-land-spells", land, classItemId: cls.id, featureItemId: feature.id, sourceUuid: source.uuid }
+        ...(data.flags[MODULE_ID] ?? {}),
+        featureGrantedSpell: true,
+        featureSpellOwners: [owner],
+        runtimeManagementSpell: {
+          transactionId,
+          category: "circle-of-the-land-spells",
+          land,
+          classItemId: cls.id,
+          featureItemId: feature.id,
+          sourceUuid: source.uuid
+        }
       };
-      createData.push(data);
+      const [created] = await actor.createEmbeddedDocuments("Item", [data], { characterBuilderRuntimeManagement: true });
+      activeLandSpellIds.add(created.id);
+      createdItemIds.push(created.id);
     }
-    const created = await actor.createEmbeddedDocuments("Item", createData, { characterBuilderRuntimeManagement: true });
+
+    const deleteIds = oldRecords
+      .filter(row => row.dedicated && !activeLandSpellIds.has(row.spellId))
+      .map(row => actor.items.get(row.spellId))
+      .filter(Boolean)
+      .filter(spell => !(spell.getFlag(MODULE_ID, "featureSpellOwners") ?? []).length)
+      .map(spell => spell.id);
+    if (deleteIds.length) {
+      await actor.deleteEmbeddedDocuments("Item", [...new Set(deleteIds)], {
+        characterBuilderRuntimeManagement: true,
+        deleteContents: false
+      });
+    }
+
     await feature.setFlag(MODULE_ID, "circleLand", {
-      id: land, land, label: LAND_LABELS[land], resistance: LAND_RESISTANCES[land], transactionId,
-      classItemId: cls.id, subclassItemId: subclass?.id ?? null, configuredAtDruidLevel: level,
-      changedAt: Date.now(), changedBy: game.user.id, context: "restManagement"
+      id: land,
+      land,
+      label: LAND_LABELS[land],
+      resistance: LAND_RESISTANCES[land],
+      transactionId,
+      classItemId: cls.id,
+      subclassItemId: subclass?.id ?? null,
+      configuredAtDruidLevel: level,
+      changedAt: Date.now(),
+      changedBy: game.user.id,
+      context: "restManagement"
     });
+
     const ward = this.#feature(actor, "natures-ward");
     if (ward) {
       const resistance = LAND_RESISTANCES[land];
@@ -955,8 +1082,71 @@ export class RuntimeFeatureService {
         throw new Error("Nature's Ward could not activate exactly one official land-resistance effect.");
       }
     }
+
+    await this.#reconcileLandSpellBadges(actor, feature, cls, land, transactionId);
     await this.#setRuntimeBadge(feature, "circle-land", "Land", [LAND_LABELS[land]], "fa-solid fa-leaf", transactionId);
-    return { changed: true, land, createdItemIds: created.map(item => item.id), deletedItemIds: deleteIds };
+    return {
+      changed: true,
+      land,
+      createdItemIds,
+      reusedItemIds: [...new Set(reusedItemIds)],
+      deletedItemIds: [...new Set(deleteIds)]
+    };
+  }
+
+  static #isNormalDruidSpellAcquisition(spell, cls) {
+    if (!spell || spell.type !== "spell" || !cls) return false;
+    const moduleFlags = spell.flags?.[MODULE_ID] ?? {};
+    const itemCreator = spell.flags?.["dnd5e-item-creator"] ?? spell.flags?.itemCreator ?? null;
+    if (itemCreator) return false;
+
+    if (moduleFlags.classSpellAccess === true
+      && (moduleFlags.classIdentifier === "druid" || moduleFlags.classItemId === cls.id)) return true;
+
+    const levelUp = moduleFlags.levelUpSpell;
+    if (levelUp?.classIdentifier === "druid" && levelUp?.classItemId === cls.id && !levelUp.featureItemId) return true;
+
+    const reconciliation = moduleFlags.alwaysPreparedReconciliation?.normalAcquisition;
+    if (reconciliation?.classIdentifier === "druid"
+      && (!reconciliation.classItemId || reconciliation.classItemId === cls.id)) return true;
+
+    return false;
+  }
+
+  static async #reconcileLandSpellBadges(actor, feature, cls, land, transactionId) {
+    const owned = actor.items.filter(item => item.type === "spell"
+      && (item.getFlag(MODULE_ID, "featureSpellOwners") ?? []).some(owner =>
+        owner.category === "circle-of-the-land-spells" && owner.featureItemId === feature.id
+      ));
+    const additions = owned.map(spell => ({
+      itemId: spell.id,
+      badge: RuntimeBadgeReconciliationService.runtimeBadge({
+        targetItem: spell,
+        category: "Circle of the Land Spell",
+        values: [spell.name],
+        kind: "feature-spell",
+        icon: "fa-solid fa-leaf",
+        transactionId,
+        classIdentifier: "druid",
+        classLevel: Number(cls.system?.levels ?? 0),
+        sourceItemId: feature.id,
+        advancementId: feature.id,
+        advancementType: "ManagedFeatureSpell",
+        advancementTitle: `${LAND_LABELS[land]} Land Spells`,
+        label: "Circle of the Land Spell",
+        tooltip: `${LAND_LABELS[land]} Land Spells · ${spell.name}`
+      })
+    }));
+
+    await RuntimeBadgeReconciliationService.reconcile(actor, {
+      matches: (_item, existing) => {
+        const category = this.#normalizeName(existing?.category ?? existing?.advancementTitle);
+        return existing?.kind === "feature-spell"
+          && (category === "circle of the land spell"
+            || (existing?.sourceItemId === feature.id && /land spell/i.test(String(existing?.advancementTitle ?? ""))));
+      },
+      additions
+    });
   }
 
   static async #applyWildShapeForm(actor, payload, transactionId) {

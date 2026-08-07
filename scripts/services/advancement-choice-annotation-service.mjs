@@ -251,7 +251,9 @@ export class AdvancementChoiceAnnotationService {
       }
 
       const land = feature.getFlag(MODULE_ID, "circleLand");
-      if (land && selectedClassIdentifier === "druid") {
+      const landBelongsToScope = !scope?.transactionId || !land?.transactionId
+        || land.transactionId === scope.transactionId;
+      if (land && selectedClassIdentifier === "druid" && landBelongsToScope) {
         rows.push({
           targetItemId: feature.id,
           badge: {
