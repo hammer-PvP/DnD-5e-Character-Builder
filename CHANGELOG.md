@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.9e
+
+### GM-managed rests, subclass review, and hidden-outcome post-roll privacy
+
+- Added optional **GM-Managed Rest Availability**. When enabled, native Short Rest and Long Rest buttons remain visible on Player Character sheets but stay locked until the GM grants the corresponding rest from Character Builder Tool. Short and Long Rest grants are independent, per Actor, and one-use.
+- Added compact **Short Rest** and **Long Rest** grant controls to Character Builder Tool. They act only on the GM-selected completed Player Characters and grant availability; they never execute a rest on behalf of a player. Available native sheet buttons glow until used.
+- Rest gating is enforced both in the sheet UI and in D&D5e's pre-rest hooks. The actual rest remains the native D&D5e flow, followed by Character Keeper and any enabled post-rest assistance. A grant is consumed only after that complete flow succeeds; an interrupted post-native Keeper transaction keeps the grant available for recovery.
+- Disabling GM-Managed Rest Availability returns the world to unrestricted native D&D5e rest behavior and clears Character Builder rest grants. The optional Half Long-Rest Recovery on Short Rest remains an independent setting and its recovery logic is unchanged.
+- Added an explicit **subclass review** stage inside Level Up Class Progression. When native Advancement creates a new Subclass Item, Level Up remains on Class Progression instead of immediately advancing.
+- The subclass review reorganizes the progression summary into a compact column and uses the remaining workspace for the selected subclass's native description, features granted at the current class level, and source-authored Advancement progression at later class levels. Players explicitly continue after reviewing the package.
+- Reworked **Bardic Inspiration** assistance to avoid leaking hidden AC/DC outcomes. While a native Bardic Inspiration effect is available, the compact decision appears after every eligible attack roll, ability check, skill check, tool check, or saving throw rather than only after a detected failure.
+- The player-facing Bardic Inspiration decision shows only the roll total, source Bard, die, and **Use / Keep** actions. It never displays AC, DC, Success, Failure, or any equivalent hidden-outcome cue. The decision is draggable and has no visual blur/backdrop, while remaining functionally modal so another action cannot be started before it is resolved.
+- When Bardic Inspiration is used, the public result reports only the original total, bonus, and new total. A separate GM-only whisper carries the target/success result when D&D5e supplied enough information to determine it.
+- The shared roll-resolution protocol still preserves internal `target` / `succeeded` data for provider coordination, but those fields are now explicitly private implementation data: a post-roll provider must not condition player-facing prompt visibility on a hidden success/failure result. Item Creator must adopt the same neutral-prompt policy in its own runtime; this release changes only the Character Builder side.
+- No changes were made to Always Prepared ownership/reconciliation, Circle of the Land, Pact of the Tome, the Short Rest homebrew recovery algorithm, or the four PHB compatibility fixes validated in v0.9.9d.
+
 ## 0.9.9d
 
 ### PHB feature compatibility and focused runtime assistance

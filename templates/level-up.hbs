@@ -198,12 +198,99 @@
           <h2>Class Progression</h2>
           <p>Confirm the source Class progression on the transaction Draft, including features, subclass choices, proficiencies, feats, and multiclass-specific grants.</p>
         </div>
+        {{#if subclassReview}}
+        <button type="button" class="cb-primary-confirm cb-confirm-progression" data-action="continue-subclass-review" {{#if busy}}disabled{{/if}}>
+          <i class="fa-solid fa-arrow-right"></i>
+          <span><strong>Continue Level Up</strong><small>Finish subclass review first</small></span>
+        </button>
+        {{else}}
         <button type="button" class="cb-primary-confirm cb-confirm-progression" data-action="run-native" {{#if busy}}disabled{{/if}}>
           <i class="fa-solid fa-circle-check"></i>
           <span><strong>Confirm Progression</strong><small>Run source-native Class options</small></span>
         </button>
+        {{/if}}
       </header>
 
+      {{#if subclassReview}}
+      <div class="cb-progression-review-layout">
+        <div class="cb-progression-summary-column">
+          <div class="cb-summary-card cb-progression-summary-stack">
+            <div><span>Class</span><strong>{{state.selectedClassName}} {{state.sourceClassLevel}} → {{state.targetClassLevel}}</strong></div>
+            <div><span>Hit Points</span><strong>{{hpSummary}}</strong></div>
+            <div><span>Character</span><strong>Level {{state.sourceCharacterLevel}} → {{state.targetCharacterLevel}}</strong></div>
+            <div><span>Entry Type</span><strong>{{#if state.multiclass}}New Multiclass{{else}}Existing Class{{/if}}</strong></div>
+          </div>
+          <p class="cb-notice"><i class="fa-solid fa-circle-info"></i> The live Actor remains unchanged. Review the subclass package before continuing.</p>
+        </div>
+
+        <section class="cb-subclass-review-panel">
+          <header class="cb-subclass-review-header">
+            <img src="{{subclassReview.img}}" alt="">
+            <div>
+              <span class="cb-kicker">Subclass Selected</span>
+              <h3>{{subclassReview.name}}</h3>
+              <p>{{state.selectedClassName}} subclass{{#if subclassReview.source}} · {{subclassReview.source}}{{/if}}</p>
+            </div>
+            <button type="button" data-action="open-document" data-uuid="{{subclassReview.uuid}}" title="Open the full subclass document">
+              <i class="fa-solid fa-up-right-from-square"></i> Full Details
+            </button>
+          </header>
+
+          {{#if subclassReview.description}}
+          <div class="cb-subclass-description dnd5e2 chat-card">{{{subclassReview.description}}}</div>
+          {{/if}}
+
+          {{#if subclassReview.grantedNowCount}}
+          <section class="cb-subclass-now">
+            <div class="cb-subclass-section-title">
+              <div><span class="cb-kicker">Gained Now</span><h4>Class Level {{subclassReview.targetClassLevel}}</h4></div>
+              <strong>{{subclassReview.grantedNowCount}}</strong>
+            </div>
+            <div class="cb-subclass-now-grid">
+              {{#each subclassReview.grantedNow}}
+              <article class="cb-subclass-feature-card">
+                <img src="{{img}}" alt="">
+                <div><strong>{{name}}</strong><small>{{type}}</small></div>
+                <span class="cb-subclass-feature-badge"><i class="fa-solid fa-check"></i> Added</span>
+              </article>
+              {{/each}}
+            </div>
+          </section>
+          {{/if}}
+
+          {{#if subclassReview.progression.length}}
+          <section class="cb-subclass-progression">
+            <div class="cb-subclass-section-title">
+              <div><span class="cb-kicker">Subclass Progression</span><h4>What this subclass brings at later Class levels</h4></div>
+            </div>
+            <div class="cb-subclass-level-list">
+              {{#each subclassReview.progression}}
+              <article class="cb-subclass-level-row {{#if current}}current{{/if}} {{#if past}}past{{/if}}">
+                <div class="cb-subclass-level-number"><span>Level</span><strong>{{level}}</strong></div>
+                <div class="cb-subclass-level-content">
+                  {{#each entries}}
+                  <div class="cb-subclass-advancement-entry">
+                    <strong>{{title}}</strong>
+                    {{#if items.length}}
+                    <div class="cb-subclass-advancement-items">
+                      {{#each items}}
+                      <button type="button" data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}}">
+                        <img src="{{img}}" alt=""><span>{{name}}</span>
+                      </button>
+                      {{/each}}
+                    </div>
+                    {{/if}}
+                  </div>
+                  {{/each}}
+                </div>
+              </article>
+              {{/each}}
+            </div>
+          </section>
+          {{/if}}
+        </section>
+      </div>
+      {{else}}
       <div class="cb-summary-card">
         <div><span>Class</span><strong>{{state.selectedClassName}} {{state.sourceClassLevel}} → {{state.targetClassLevel}}</strong></div>
         <div><span>Character</span><strong>Level {{state.sourceCharacterLevel}} → {{state.targetCharacterLevel}}</strong></div>
@@ -212,6 +299,7 @@
       </div>
 
       <p class="cb-notice"><i class="fa-solid fa-circle-info"></i> The live Actor remains unchanged. Closing a native Advancement window cancels only that attempt; the locked HP result remains.</p>
+      {{/if}}
     </section>
     {{/if}}
 

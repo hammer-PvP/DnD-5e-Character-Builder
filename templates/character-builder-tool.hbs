@@ -34,10 +34,10 @@
 
   <section class="cb-tool-actor-list">
     {{#each actors}}
-    <label class="cb-tool-actor-row {{#if disabled}}disabled{{/if}}" data-actor-row data-actor-id="{{id}}" data-current-xp="{{xp}}" data-search="{{search}}" data-level-up-eligible="{{levelUpEligible}}" data-epic-boon-eligible="{{epicBoonEligible}}" title="{{disabledReason}}">
+    <label class="cb-tool-actor-row {{#if disabled}}disabled{{/if}}" data-actor-row data-actor-id="{{id}}" data-current-xp="{{xp}}" data-search="{{search}}" data-level-up-eligible="{{levelUpEligible}}" data-epic-boon-eligible="{{epicBoonEligible}}" data-rest-eligible="{{restEligible}}" title="{{disabledReason}}">
       <input type="checkbox" name="actorIds" value="{{id}}" {{#if disabled}}disabled{{/if}}>
       <img src="{{img}}" alt="">
-      <span class="cb-tool-actor-copy"><strong>{{name}}</strong><small>Level {{level}}{{#if granted}} · Level Up Granted{{/if}}{{#if hasDraft}} · Pending Level Up{{/if}}{{#if pendingEpicBoon}} · Epic Boon Pending{{/if}}</small></span>
+      <span class="cb-tool-actor-copy"><strong>{{name}}</strong><small>Level {{level}}{{#if granted}} · Level Up Granted{{/if}}{{#if hasDraft}} · Pending Level Up{{/if}}{{#if pendingEpicBoon}} · Epic Boon Pending{{/if}}{{#if shortRestAvailable}} · Short Rest Ready{{/if}}{{#if longRestAvailable}} · Long Rest Ready{{/if}}</small></span>
       {{#if ../xpMode}}
       <span class="cb-tool-xp-values"><small>Current {{xp}}</small><strong data-actor-award>+0</strong><small>Result <span data-actor-result>{{xp}}</span></small></span>
       {{else}}
@@ -52,6 +52,18 @@
   <footer class="cb-tool-footer">
     <button type="button" data-action="close"><i class="fa-solid fa-xmark"></i> Cancel</button>
     <div class="cb-tool-footer-actions">
+      {{#if managedRestAccess}}
+      <div class="cb-tool-rest-actions" aria-label="Rest availability">
+        <button type="button" class="cb-tool-rest-grant" data-action="grant-short-rest" disabled>
+          <i class="fa-solid fa-mug-hot"></i>
+          <span><strong>Short Rest</strong><small>Grant to selected</small></span>
+        </button>
+        <button type="button" class="cb-tool-rest-grant" data-action="grant-long-rest" disabled>
+          <i class="fa-solid fa-bed"></i>
+          <span><strong>Long Rest</strong><small>Grant to selected</small></span>
+        </button>
+      </div>
+      {{/if}}
       <button type="button" class="cb-primary-confirm" data-action="apply" disabled>
         <i class="fa-solid {{#if milestone}}fa-arrow-up{{else}}fa-star{{/if}}"></i>
         <span><strong>{{#if milestone}}Grant Level Ups{{else}}Distribute XP{{/if}}</strong><small>{{#if milestone}}Selected characters only{{else}}Equal integer award{{/if}}</small></span>

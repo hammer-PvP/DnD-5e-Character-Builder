@@ -1,6 +1,6 @@
 # Character Builder Settings Reference
 
-This reference documents every visible Character Builder setting in v0.9.9d. Unless stated otherwise, settings are **world settings**, can be changed only by a Game Master, and do not require a server restart. Saving the settings window affects future Character Creation, Level Up, Character Keeper, or runtime-assistance operations; it does not retroactively delete character content.
+This reference documents every visible Character Builder setting in v0.9.9e. Unless stated otherwise, settings are **world settings**, can be changed only by a Game Master, and do not require a server restart. Saving the settings window affects future Character Creation, Level Up, Character Keeper, or runtime-assistance operations; it does not retroactively delete character content.
 
 ## Splash Tutorial
 
@@ -167,6 +167,22 @@ At least one method must remain enabled.
 - **Enabled:** A failed check consumes the Spell Scroll and charges the GP cost.
 - **Disabled:** A failed check consumes the Spell Scroll but preserves currency.
 
+## Character Keeper — GM-Managed Rest Availability
+
+### GM-Managed Rest Availability
+
+- **Scope:** World, GM-only.
+- **Default:** **Off**.
+- **Disabled:** Character Builder does not restrict Short Rest or Long Rest. Native D&D5e behavior remains authoritative.
+- **Enabled:** Native Short Rest and Long Rest buttons remain visible on completed Player Character sheets but are disabled until the GM grants the matching rest from **Character Builder Tool**.
+- **Grant scope:** The Tool acts only on the characters currently selected by the GM. Short Rest and Long Rest availability are stored independently per Actor.
+- **Player action:** A grant never performs the rest. It enables the normal native sheet button; the player chooses when to use it.
+- **Visual state:** An available rest button is highlighted/glowing. A locked rest button remains visible but disabled.
+- **Consumption:** One successful completed native rest consumes the matching grant after Character Keeper and enabled post-rest processing complete. If a post-native Keeper transaction fails and can be recovered, the grant is retained rather than forcing the player to request another rest.
+- **Safety:** The restriction is checked both on sheet controls and in D&D5e's pre-rest hooks. Character Builder does not duplicate HP, Hit Dice, spell-slot, Item-use, or other native recovery logic.
+- **Disabling later:** Existing Character Builder rest grants are cleared and normal unrestricted D&D5e rest behavior resumes.
+- **Interaction with D&D5e settings:** This setting does not override a stricter native D&D5e rest policy or another module's independent restriction.
+
 ## Character Keeper — Optional Homebrew Rest Recovery
 
 ### Half Long-Rest Recovery on Short Rest
@@ -227,9 +243,11 @@ Each rule is enabled by default inside the saved rule set, but does nothing whil
 - **Cleric — Blessed Strikes: Potent Spellcasting:** Adds Wisdom to eligible Cleric cantrip damage.
 - **Druid — Elemental Fury: Potent Spellcasting:** Adds Wisdom to eligible Druid cantrip damage.
 - **Wizard — Empowered Evocation:** Adds Intelligence to one eligible damage roll of a Wizard Evocation spell.
-- **Bard — Bardic Inspiration:** After a failed attack roll, ability check, skill check, tool check, or saving throw with a native target number, offers the recipient the source Bard's current inspiration die. Choosing Use rolls the die and removes the native effect; choosing Keep leaves it untouched. Item-origin effects are excluded.
-  - Marks the native failed roll as pending before opening the decision and always publishes a finalized structured result afterward, including when the player keeps the inspiration or no valid inspiration is present.
-  - Uses the shared per-roll `character` phase before any `items`-phase provider, so later item automation receives the finalized updated result rather than competing for the same failure.
+- **Bard — Bardic Inspiration:** While the official native Bardic Inspiration effect is available, every eligible attack roll, ability check, skill check, tool check, or saving throw receives the same compact post-roll decision. Choosing Use rolls the source Bard's current die and removes the native effect; choosing Keep leaves it untouched. Item-origin effects are excluded.
+  - Prompt visibility never depends on hidden AC/DC success or failure. The player sees the current total, source Bard, die, and **Use / Keep** only.
+  - The decision has no visual blur/backdrop, remains draggable and on top, but is functionally modal: other clicks/actions are blocked until the decision is resolved.
+  - When used, the public result reports totals only. A separate GM-only resolution may include the hidden target and Success/Failure result.
+  - Uses the shared per-roll `character` phase before any `items`-phase provider. Structured `target` / `succeeded` data are internal coordination data and must not be used by providers as a player-facing prompt visibility condition.
 - **Mage Armor Effect Application:** Applies and maintains the native Mage Armor effect on eligible targets.
 - **Agonizing Blast Native Binding:** Maintains the native enchantment on the cantrip selected by the Invocation.
 - **Paladin — Lay on Hands: Remove Poison:** After the native activity successfully spends its Lay on Hands cost, removes the native `Poisoned` status from the single recorded target using the D&D5e status API.

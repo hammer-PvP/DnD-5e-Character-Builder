@@ -43,8 +43,9 @@ Enable **Character Builder (DnD 5e)** in the world after installation.
 1. Create or open a Player Character Actor.
 2. Use the gold **Character Builder** button on an empty character sheet to begin guided creation.
 3. Grant Level Ups individually from Actor controls or in groups through **Character Builder Tool**.
-4. Configure content sources and campaign rules in **Character Builder Settings**.
-5. Allow players to complete Level Ups and class maintenance from their own character sheets. Character Builder delegates protected Draft and safety-backup creation/cleanup to an active GM, so players do not need Foundry's global Create Actor or Delete Actor permissions for these workflows.
+4. Optionally enable **GM-Managed Rest Availability** and grant Short or Long Rest access to selected characters from the same tool.
+5. Configure content sources and campaign rules in **Character Builder Settings**.
+6. Allow players to complete Level Ups and class maintenance from their own character sheets. Character Builder delegates protected Draft and safety-backup creation/cleanup to an active GM, so players do not need Foundry's global Create Actor or Delete Actor permissions for these workflows.
 
 <p align="center">
   <img src="docs/images/grant-level-ups.png" alt="Character Builder Tool and Level Up grant controls" width="780">
@@ -55,7 +56,7 @@ Enable **Character Builder (DnD 5e)** in the world after installation.
 1. Open the Player Character Actor assigned to you.
 2. Click the gold button to create an empty character.
 3. When the GM grants a Level Up, use the Level Up arrow on the character sheet.
-4. During Short or Long Rests, complete any optional class actions shown by Character Keeper, or continue the rest without changing anything.
+4. During Short or Long Rests, complete any optional class actions shown by Character Keeper, or continue the rest without changing anything. If the world uses GM-Managed Rest Availability, the corresponding native rest button glows only after the GM grants that rest.
 5. Wizards receive a spellbook-management launcher for eligible scribing operations.
 
 <p align="center">
@@ -139,10 +140,14 @@ It supports:
 - class-level and total-character-level rules;
 - native D&D5e Advancements;
 - Hit Point advancement with locked roll protection;
-- subclass choices;
+- subclass choices with an explicit native-document review step before continuing;
 - feature and spell replacements;
 - class-owned and feature-owned spells;
 - final review and protected commit.
+
+### Subclass review before continuing
+
+When native D&D5e Advancement creates a new Subclass Item during Level Up, Character Builder deliberately remains on **Class Progression**. The selected subclass's own document supplies a richer review panel with its description, the features granted at the current Class level, and the source-authored Advancement progression at later Class levels. The player explicitly chooses **Continue Level Up** after reviewing the package; normal levels with no new subclass continue through the existing flow unchanged.
 
 ### Feat and ASI +2 policy
 
@@ -183,6 +188,12 @@ Examples include:
 
 The player may perform a change or continue the rest without changing anything. Normal D&D5e recovery, spell preparation, slots, uses, dice, effects, and runtime activities remain the responsibility of the D&D5e system.
 
+### Optional GM-Managed Rest Availability
+
+The GM may enable **GM-Managed Rest Availability** when the campaign needs explicit control over who can rest—for example, when different groups are adventuring in different locations. With the setting enabled, native Short Rest and Long Rest buttons stay visible but locked until the GM grants the corresponding rest to selected characters from **Character Builder Tool**. Short and Long Rest are independent permissions, and an available button is highlighted on the character sheet.
+
+The player still starts the rest from their own native D&D5e button. Character Builder only gates availability; it does not implement a second rest engine. The grant is consumed after the native rest and Character Keeper finish successfully. Disabling the setting returns rests to normal unrestricted D&D5e behavior.
+
 ### Optional Half Long-Rest Recovery on Short Rest
 
 The GM may enable an optional homebrew rule named **Half Long-Rest Recovery on Short Rest**. It is disabled by default, so installing or updating Character Builder does not change any campaign's rest rules.
@@ -208,16 +219,18 @@ The current rule list includes:
 - Cleric — Blessed Strikes: Potent Spellcasting;
 - Druid — Elemental Fury: Potent Spellcasting;
 - Wizard — Empowered Evocation;
-- Bard — Bardic Inspiration post-failure choice and consumption;
+- Bard — Bardic Inspiration hidden-outcome-safe post-roll choice and consumption;
 - Mage Armor Effect Application, including Armor of Shadows;
 - Agonizing Blast Native Binding;
 - Paladin — Lay on Hands: Remove Poison.
 
 Damage assistance uses native D&D5e roll hooks and changes only the current roll configuration. Effect assistance reuses the native Active Effect already supplied by the source spell or feature. It never creates duplicate weapons, duplicate spells, duplicate Activities, replacement chat commands, or permanent formula edits.
 
-Bardic Inspiration assistance runs only when an official native Bardic Inspiration effect is already present and a D20 Test has a real failed result. It reads the die from the Bard who granted the inspiration, offers the recipient a protected **Use** or **Keep** choice, and removes the effect only after the recipient chooses to roll it. The original Bardic Inspiration use is not spent again. Effects originating from Items are outside this rule and remain under the Item Creator runtime.
+Bardic Inspiration assistance runs only when an official native Bardic Inspiration effect is already present, but its player-facing decision is intentionally **not conditioned on hidden success or failure**. Every eligible attack roll, ability check, skill check, tool check, or saving throw receives the same compact **Use / Keep** decision while the effect remains available. The player sees the roll total and Inspiration die only; AC, DC, Success, and Failure remain private to D&D5e's normal GM adjudication. The transparent decision has no visual blur, remains draggable and on top, and functionally blocks other actions until resolved. The original Bardic Inspiration use is not spent again. Effects originating from Items remain under the Item Creator runtime.
 
-Post-roll providers can coordinate through `game.modules.get("dnd5e-character-builder").api.rollResolutionQueue`. Protocol v2 preserves `Symbol.for("dnd5e.roll-resolution-queue.v1")` for compatibility while adding explicit `markPending`, `finalize`, `getResolution`, and `waitForFinalized` methods. Character Builder publishes `dnd5e-character-builder.rollResolutionPending` before its decision and `dnd5e-character-builder.rollResolutionFinalized` afterward. The finalized payload always includes the original total, current total, target, success state, and applied adjustments—even when the player keeps Bardic Inspiration or no inspiration is available. Native resolution finishes first, Character Builder uses phase `character` (priority 200), and item runtimes use phase `items` (priority 300). See `docs/ROLL-RESOLUTION-PROTOCOL.md` for the integration contract.
+When the die is used, the public assistance message reports only the original total, bonus, and resulting total. Character Builder sends the GM a separate private resolution containing the hidden target/success information when it is available.
+
+Post-roll providers can coordinate through `game.modules.get("dnd5e-character-builder").api.rollResolutionQueue`. Protocol v2 preserves `Symbol.for("dnd5e.roll-resolution-queue.v1")` for compatibility while adding explicit `markPending`, `finalize`, `getResolution`, and `waitForFinalized` methods. Native resolution finishes first, Character Builder uses phase `character` (priority 200), and item runtimes use phase `items` (priority 300). The structured queue may retain `target` and `succeeded` internally for coordination and GM-side resolution, but providers must never use a hidden outcome to decide whether a player-facing prompt appears. See `docs/ROLL-RESOLUTION-PROTOCOL.md` for the integration contract.
 
 Mage Armor is applied automatically to one eligible target after a successful use. The target cannot be wearing equipped light, medium, or heavy body armor; clothing and shields do not block the effect. A repeated cast refreshes the existing native effect instead of stacking another copy, and equipping body armor ends Mage Armor. Armor of Shadows always resolves to the Warlock using the Invocation.
 
@@ -269,6 +282,7 @@ The GM can also configure:
 - Starting Equipment Shop bonus gold;
 - Hit Point advancement methods;
 - Wizard scribing rules;
+- optional GM-managed Short/Long Rest availability;
 - optional half Long-Rest recovery on Short Rest and its server-time cooldown;
 - optional deterministic dice assistance;
 - tutorial display controls.

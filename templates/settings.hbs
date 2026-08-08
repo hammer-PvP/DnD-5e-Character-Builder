@@ -173,6 +173,12 @@
 
         <hr>
         <div class="cb-settings-toggle">
+          <label><input type="checkbox" name="gmManagedRestAccess" {{checked settings.gmManagedRestAccess}}> GM-Managed Rest Availability</label>
+          <p class="hint"><strong>Optional; disabled by default.</strong> When enabled, Short Rest and Long Rest remain visible on character sheets but are locked until the GM grants that rest from Character Builder Tool. Each completed native rest consumes its grant. Disable this option to leave rests fully available under normal D&amp;D5e behavior.</p>
+        </div>
+
+        <hr>
+        <div class="cb-settings-toggle">
           <label><input type="checkbox" name="halfLongRestRecoveryOnShortRest" {{checked settings.halfLongRestRecoveryOnShortRest}}> Half Long-Rest Recovery on Short Rest</label>
           <p class="hint"><strong>Optional homebrew; disabled by default.</strong> After the native Short Rest completes, recover half of each eligible Long-Rest-only reserve, rounded down. Native Hit Dice, Short-Rest recovery, Pact Magic, and all other D&amp;D5e rest behavior continue normally.</p>
         </div>

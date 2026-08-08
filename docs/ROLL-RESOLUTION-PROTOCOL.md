@@ -1,15 +1,37 @@
 # Shared Roll Resolution Protocol
 
-Character Builder exposes a shared post-roll contract for modules that may offer sequential bonuses after a failed D20 Test. The protocol prevents multiple modules from evaluating the same stale native total or opening competing prompts.
+Character Builder exposes a shared post-roll contract for modules that may offer sequential bonuses on the same D20 Test. Protocol v2 coordinates provider order **without allowing hidden AC/DC outcomes to leak through player-facing prompts**.
 
 ## Resolution order
 
-1. D&D5e completes the native roll.
-2. Character Builder marks the eligible failed roll as pending.
-3. Character Builder resolves native character-origin assistance such as Bardic Inspiration.
-4. Character Builder publishes a finalized structured result.
-5. Item runtimes evaluate the finalized result.
-6. If the result already succeeded, the Item runtime does not offer another bonus. If it still failed, the Item runtime starts from `currentTotal`.
+1. D&D5e completes the native roll and remains authoritative for its normal GM/player visibility.
+2. Character Builder may mark the roll pending when native character-origin assistance is available.
+3. Character Builder resolves its `character`-phase decision, such as Bardic Inspiration.
+4. Character Builder publishes the updated structured result.
+5. Item runtimes run afterward in the `items` phase.
+6. Every provider uses the latest `currentTotal`, but player-facing prompt visibility is based on public eligibility and resource availability—not on hidden success/failure.
+
+The canonical order remains:
+
+`D&D5e native → Character Builder → Item runtimes`
+
+## Hidden-outcome privacy rule
+
+`target` and `succeeded` can exist in the structured resolution because D&D5e or the responsible client may know them internally. They are **private coordination/adjudication data**, not permission to expose the outcome to the player.
+
+A provider MUST NOT make a player-facing prompt appear only when `succeeded === false`, `success === false`, `currentTotal < target`, or any equivalent hidden-failure test. Doing so leaks the hidden result through the presence or absence of the prompt.
+
+For a resource that can be relevant after a D20 Test, use this model instead:
+
+```text
+eligible roll + resource available
+→ show the same neutral Use / Keep decision
+→ never show AC, DC, Success, or Failure to the player
+```
+
+This rule applies to later providers too. The absence of a second prompt must not reveal that an earlier bonus already succeeded. If an Item-origin bonus is otherwise eligible and available, its player-facing decision must remain outcome-neutral. The player can wait for the GM's ruling and choose whether to spend the resource.
+
+The GM may still receive the full result through D&D5e's native chat visibility or a GM-only assistance message.
 
 ## Public API
 
@@ -35,13 +57,7 @@ Hooks.on("dnd5e-character-builder.rollResolutionPending", (payload, roll) => {})
 Hooks.on("dnd5e-character-builder.rollResolutionFinalized", (payload, roll) => {});
 ```
 
-The pending hook is published before Character Builder opens a post-failure decision. The finalized hook is published exactly once for that Character Builder resolution, including when:
-
-- Bardic Inspiration is used;
-- the player keeps Bardic Inspiration;
-- no valid native Bardic Inspiration effect is present;
-- the assistance rule is disabled;
-- Character Builder cannot apply an adjustment.
+The pending hook is published before Character Builder opens its post-roll decision. The finalized hook is published after that Character Builder resolution. A provider may wait on the queue to avoid competing prompts and stale totals.
 
 ## Payload
 
@@ -52,8 +68,8 @@ The pending hook is published before Character Builder opens a post-failure deci
   rollType: "attackRoll",
   originalTotal: 17,
   currentTotal: 24,
-  target: 21,
-  succeeded: true,
+  target: 21,       // internal/private when D&D5e treats the target as hidden
+  succeeded: true,  // internal/private when the outcome is hidden
   finalized: true,
   adjustments: [
     {
@@ -72,7 +88,7 @@ Supported Character Builder roll-type labels are:
 - `toolCheck`
 - `savingThrow`
 
-When the player keeps Bardic Inspiration, `currentTotal` remains equal to `originalTotal`, `succeeded` remains false, and `adjustments` is empty.
+When the player keeps Bardic Inspiration, `currentTotal` remains equal to `originalTotal`, `adjustments` is empty, and `succeeded` may still carry the native hidden outcome internally. That value must not be echoed into player-facing UI.
 
 ## Recommended Item runtime integration
 
@@ -82,20 +98,33 @@ An Item runtime can join the shared queue directly:
 queue.enqueue({
   roll,
   phase: "items",
-  providerId: "item-creator:post-failure-effects",
+  providerId: "item-creator:post-roll-effects",
   execute: async context => {
-    if (context.succeeded === true || context.success === true) {
-      return { skipped: true, reason: "already-succeeded" };
-    }
-
     const startingTotal = context.currentTotal;
-    // Offer the next eligible Item-origin bonus from startingTotal.
+
+    // Determine eligibility from the roll type/context and the Item resource.
+    // DO NOT use context.succeeded/context.target to decide whether the player
+    // sees the prompt when that outcome is hidden.
+    // Show the same neutral Use / Keep UI for every otherwise eligible roll.
+
+    // If used, apply the Item-origin bonus starting from startingTotal.
   }
 });
 ```
 
-A runtime that does not enqueue can instead listen for the finalized hook or call `waitForFinalized`. It must not evaluate the original native failure while the resolution stored on `roll.options.dnd5eCharacterBuilderRollResolution` has `finalized: false`.
+A runtime that does not enqueue can instead listen for the finalized hook or call `waitForFinalized`. It must not evaluate or expose a stale native outcome while the resolution stored on `roll.options.dnd5eCharacterBuilderRollResolution` has `finalized: false`.
+
+## Player-facing UI contract
+
+Post-roll decisions that can imply a hidden outcome should follow the same UX contract across providers:
+
+- compact and always on top;
+- draggable;
+- no blur or visually intrusive backdrop;
+- functionally modal, blocking other actions until **Use** or **Keep** is chosen;
+- show only player-safe information such as roll total, resource name/die, and resulting total after use;
+- never show AC, DC, Success, Failure, “still failed”, “already succeeded”, or equivalent cues.
 
 ## Responsibility boundary
 
-The protocol coordinates ordering only. Character Builder controls native character-origin assistance that D&D5e does not automate adequately. The Item Creator runtime remains authoritative for effects originating from personalized Items, including their duration, turn tracking, use limits, consumption, expiration, and removal.
+The protocol coordinates ordering and privacy semantics only. Character Builder controls native character-origin assistance that D&D5e does not automate adequately. The Item Creator runtime remains authoritative for effects originating from personalized Items, including their duration, turn tracking, use limits, consumption, expiration, and removal. Item Creator-specific implementation belongs to that module; Character Builder does not implement or mutate Item Creator effects.
