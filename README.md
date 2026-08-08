@@ -222,7 +222,9 @@ The current rule list includes:
 - Bard — Bardic Inspiration hidden-outcome-safe post-roll choice and consumption;
 - Mage Armor Effect Application, including Armor of Shadows;
 - Agonizing Blast Native Binding;
-- Paladin — Lay on Hands: Remove Poison.
+- Paladin — Lay on Hands: Remove Poison;
+- Contextual Roll Modifiers;
+- Concentration & Dependent Effects.
 
 Damage assistance uses native D&D5e roll hooks and changes only the current roll configuration. Effect assistance reuses the native Active Effect already supplied by the source spell or feature. It never creates duplicate weapons, duplicate spells, duplicate Activities, replacement chat commands, or permanent formula edits.
 
@@ -237,6 +239,12 @@ Mage Armor is applied automatically to one eligible target after a successful us
 Agonizing Blast uses Character Builder's managed Invocation target to apply and maintain the official PHB enchantment on the selected cantrip. The native enchantment supplies the visible `, Agonizing` suffix and the dynamic `@abilities.cha.mod` damage bonus. Its reconciliation is event-driven rather than a polling loop and can be disabled independently from the other assistance rules.
 
 Lay on Hands `Remove Poison` waits for the native Activity to complete and spend its normal 5-point cost, then removes only the native `Poisoned` status from the single recorded target. It never searches for or deletes unrelated Active Effects.
+
+**Contextual Roll Modifiers** are source-agnostic and ephemeral. Active Effects may declare a formula, advantage, or disadvantage that applies to rolls made by their owner or to incoming rolls against their owner. The runtime evaluates the declaration against the current roll and target and never writes the modifier permanently onto the attacker, weapon, or Actor. Blade Ward 2024 is the first official adapter: while its concentration-bound effect is active on the caster, an attack made against that caster receives `-1d4` on that attack roll. No target selected means no incoming modifier is guessed.
+
+**Concentration & Dependent Effects** keeps D&D5e authoritative for concentration documents and target-effect cleanup. A failed Concentration save is finalized only after the shared post-roll queue has allowed Character Builder and Item-origin providers to resolve eligible bonuses. If the final total still fails, Character Builder calls the native `Actor.endConcentration()` API. D&D5e then removes effects carrying its native `flags.dnd5e.dependentOn` link. Native target effects such as Bane already use this dependency when applied through the D&D5e effect tray; Character Builder also normalizes concentration-origin runtime effects onto the same dependency contract. Non-concentration effects remain unaffected.
+
+For cross-module effects, Character Builder exposes `api.contextualRollModifiers` and `api.contextualEffects`. External runtimes can register a contextual-effect provider or create/bind an effect to a lifecycle without depending on spell names. The shared protocol symbol is `Symbol.for("dnd5e.contextual-roll-modifiers.v1")`.
 
 Rules Automation Assistance works most reliably with characters created, leveled, and maintained through Character Builder and Character Keeper. Manually created characters remain supported whenever the required native data can be identified, but managed bindings and automatic reconciliation may be limited.
 

@@ -7,9 +7,10 @@ Character Builder exposes a shared post-roll contract for modules that may offer
 1. D&D5e completes the native roll and remains authoritative for its normal GM/player visibility.
 2. Character Builder may mark the roll pending when native character-origin assistance is available.
 3. Character Builder resolves its `character`-phase decision, such as Bardic Inspiration.
-4. Character Builder publishes the updated structured result.
-5. Item runtimes run afterward in the `items` phase.
-6. Every provider uses the latest `currentTotal`, but player-facing prompt visibility is based on public eligibility and resource availability—not on hidden success/failure.
+4. Item runtimes run afterward in the `items` phase.
+5. Lifecycle/final adjudication providers may run after item providers when a mechanic must wait for every possible bonus (for example, breaking concentration after a failed Concentration save).
+6. The queue publishes one finalized structured result after all ordered providers complete.
+7. Every provider uses the latest `currentTotal`, but player-facing prompt visibility is based on public eligibility and resource availability—not on hidden success/failure.
 
 The canonical order remains:
 
@@ -48,7 +49,9 @@ The queue remains available under `Symbol.for("dnd5e.roll-resolution-queue.v1")`
 - `waitForFinalized({ roll, rollKey, timeout })`
 - `phasePriority(phase)`
 
-Character Builder uses phase `character` with priority `200`. Item runtimes use phase `items` with priority `300`.
+Normal Character- and Item-phase providers should **not call `finalize()` from inside their provider**. Return the updated `currentTotal`, `succeeded`, and `adjustments`; the queue auto-finalizes after every ordered provider has completed. `finalize()` remains available for explicit external workflows that truly own the end of a batch.
+
+Character Builder uses phase `character` with priority `200`. Item runtimes use phase `items` with priority `300`. Character Builder lifecycle finalizers use an explicit later priority (`900`) when a rule must wait for every bonus before acting.
 
 ## Hooks
 
@@ -57,7 +60,7 @@ Hooks.on("dnd5e-character-builder.rollResolutionPending", (payload, roll) => {})
 Hooks.on("dnd5e-character-builder.rollResolutionFinalized", (payload, roll) => {});
 ```
 
-The pending hook is published before Character Builder opens its post-roll decision. The finalized hook is published after that Character Builder resolution. A provider may wait on the queue to avoid competing prompts and stale totals.
+The pending hook is published before the first queued post-roll decision. The finalized hook is published only after all ordered Character, Item, and lifecycle providers for that roll have completed. A provider may wait on the queue to avoid competing prompts and stale totals.
 
 ## Payload
 
@@ -87,6 +90,7 @@ Supported Character Builder roll-type labels are:
 - `skillCheck`
 - `toolCheck`
 - `savingThrow`
+- `concentration` (internal lifecycle finalization)
 
 When the player keeps Bardic Inspiration, `currentTotal` remains equal to `originalTotal`, `adjustments` is empty, and `succeeded` may still carry the native hidden outcome internally. That value must not be echoed into player-facing UI.
 

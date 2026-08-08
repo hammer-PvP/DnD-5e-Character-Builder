@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.9f
+
+### Contextual roll effects and concentration lifecycle
+
+- Added a generic **Contextual Roll Modifiers** runtime. Active Effects can declaratively modify rolls based on whether the effect belongs to the roller or the current target; supported operations begin with formula modifiers plus advantage/disadvantage. Modifiers are ephemeral to the current native roll and are never persisted onto the attacker, weapon, or Actor statistics.
+- Added the first official adapter for **Blade Ward 2024**. Casting the native spell materializes a lightweight contextual Active Effect on the caster with `Incoming Attack Roll: -1d4`. Attack rolls against that single selected target receive the penalty; rolls against other targets do not.
+- Blade Ward's runtime effect is bound to the native D&D5e concentration Active Effect through `flags.dnd5e.dependentOn`. Recasts/replacements therefore follow the system's own concentration dependency lifecycle rather than a spell-name cleanup routine.
+- Added generic **Concentration & Dependent Effects** assistance. Character Builder now resolves a failed native Concentration save at the end of the shared post-roll provider queue and calls `Actor.endConcentration()` only if the final total still fails. A Bardic Inspiration or later Item-origin bonus can therefore rescue the save before concentration is ended.
+- Removed premature Character-phase finalization from Bardic Inspiration. The shared queue now remains pending through Item providers and lifecycle finalizers, then publishes its finalized result after all ordered providers complete. The canonical order remains D&D5e native → Character Builder → Item runtimes → lifecycle finalizer.
+- Concentration-origin effects are normalized onto D&D5e's native dependency link when needed. This allows target effects such as **Bane** to disappear when their concentration anchor ends without generic Active Effect deletion. Effects without concentration are not touched.
+- Exposed a reusable contextual-effects protocol/API for future Item Creator integration: `Symbol.for("dnd5e.contextual-roll-modifiers.v1")`, `api.contextualRollModifiers`, and `api.contextualEffects`. The runtime engine is generic; official spell knowledge lives only in declarative adapter data.
+- The global hidden-outcome privacy rule remains in force: contextual math may use roll context internally but never authorizes player-facing AC/DC/Success/Failure leakage.
+- Polished the Character Builder Tool footer so **Short Rest** and **Long Rest** grant buttons keep their narrower width while using the same 58px height as the Level Up/Epic Boon grant controls.
+- No changes were made to Always Prepared ownership/reconciliation, Circle of the Land, Pact of the Tome, Short Rest homebrew recovery, or the v0.9.9d PHB compatibility fixes.
+
 ## 0.9.9e
 
 ### GM-managed rests, subclass review, and hidden-outcome post-roll privacy

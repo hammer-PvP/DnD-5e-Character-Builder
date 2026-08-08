@@ -1,6 +1,6 @@
 # Character Builder Settings Reference
 
-This reference documents every visible Character Builder setting in v0.9.9e. Unless stated otherwise, settings are **world settings**, can be changed only by a Game Master, and do not require a server restart. Saving the settings window affects future Character Creation, Level Up, Character Keeper, or runtime-assistance operations; it does not retroactively delete character content.
+This reference documents every visible Character Builder setting in v0.9.9f. Unless stated otherwise, settings are **world settings**, can be changed only by a Game Master, and do not require a server restart. Saving the settings window affects future Character Creation, Level Up, Character Keeper, or runtime-assistance operations; it does not retroactively delete character content.
 
 ## Splash Tutorial
 
@@ -247,10 +247,12 @@ Each rule is enabled by default inside the saved rule set, but does nothing whil
   - Prompt visibility never depends on hidden AC/DC success or failure. The player sees the current total, source Bard, die, and **Use / Keep** only.
   - The decision has no visual blur/backdrop, remains draggable and on top, but is functionally modal: other clicks/actions are blocked until the decision is resolved.
   - When used, the public result reports totals only. A separate GM-only resolution may include the hidden target and Success/Failure result.
-  - Uses the shared per-roll `character` phase before any `items`-phase provider. Structured `target` / `succeeded` data are internal coordination data and must not be used by providers as a player-facing prompt visibility condition.
+  - Uses the shared per-roll `character` phase before any `items`-phase provider. It returns its updated total without finalizing the queue early; finalization occurs only after all ordered providers/lifecycle finalizers complete. Structured `target` / `succeeded` data are internal coordination data and must not be used by providers as a player-facing prompt visibility condition.
 - **Mage Armor Effect Application:** Applies and maintains the native Mage Armor effect on eligible targets.
 - **Agonizing Blast Native Binding:** Maintains the native enchantment on the cantrip selected by the Invocation.
 - **Paladin — Lay on Hands: Remove Poison:** After the native activity successfully spends its Lay on Hands cost, removes the native `Poisoned` status from the single recorded target using the D&D5e status API.
+- **Contextual Roll Modifiers:** Reads declarative modifiers from active effects on the roller or the single current target and applies them only to the current native roll. Blade Ward 2024 is the first official adapter (`Incoming Attack Roll -1d4`). The runtime never writes the penalty onto the attacker or weapon.
+- **Concentration & Dependent Effects:** After all Character/Item post-roll providers resolve, a failed Concentration save ends concentration through native `Actor.endConcentration()`. Effects bound through D&D5e `dependentOn` are then removed by the system. A post-roll bonus that turns the save into a success preserves concentration.
 
 ## Hit Point Advancement
 
