@@ -5091,3 +5091,315 @@
   .cb-rules-assistance-setting > button { width: 100%; }
   .cb-rules-assistance-row .cb-badge { justify-self: start; margin-left: 30px; }
 }
+
+/* 0.9.9e — GM-managed rests, subclass review, and hidden-result post-roll UX. */
+
+/* Keep the post-roll decision functionally modal without visually obscuring
+   the roll card or the rest of the player's sheet. */
+.cb-protected-transaction-backdrop.cb-protected-transaction-backdrop-clear {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.cb-bardic-inspiration-dialog {
+  width: min(390px, calc(100vw - 28px)) !important;
+  min-width: 320px;
+  max-width: 390px;
+}
+.cb-bardic-inspiration-dialog .window-content {
+  padding: 12px 14px 10px;
+}
+.cb-bardic-inspiration-dialog .dialog-content,
+.cb-bardic-inspiration-dialog .cb-bardic-inspiration-confirmation {
+  display: grid;
+  gap: 9px;
+}
+.cb-bardic-inspiration-dialog .cb-bardic-inspiration-confirmation p {
+  margin: 0;
+  line-height: 1.35;
+}
+.cb-bardic-roll-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 10px;
+  border: 1px solid rgba(209,176,107,.38);
+  border-radius: 6px;
+  background: rgba(209,176,107,.07);
+}
+.cb-bardic-roll-total span {
+  font-size: 11px;
+  text-transform: uppercase;
+  opacity: .7;
+}
+.cb-bardic-roll-total strong {
+  font-size: 25px;
+  line-height: 1;
+  color: var(--cb-gold);
+}
+.cb-bardic-inspiration-dialog footer,
+.cb-bardic-inspiration-dialog .form-footer {
+  gap: 8px;
+}
+.cb-bardic-inspiration-dialog footer button,
+.cb-bardic-inspiration-dialog .form-footer button {
+  min-height: 34px;
+}
+
+/* Optional GM gate for native sheet rests. */
+.dnd5e2.sheet.actor.character .cb-managed-rest.cb-rest-locked {
+  opacity: .46;
+  filter: grayscale(.7);
+  cursor: not-allowed;
+}
+.dnd5e2.sheet.actor.character .cb-managed-rest.cb-rest-available {
+  position: relative;
+  opacity: 1;
+  box-shadow: 0 0 0 1px rgba(126,211,135,.58), 0 0 10px rgba(126,211,135,.52);
+  animation: cb-rest-available-pulse 1.8s ease-in-out infinite;
+}
+@keyframes cb-rest-available-pulse {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(126,211,135,.48), 0 0 7px rgba(126,211,135,.34); }
+  50% { box-shadow: 0 0 0 1px rgba(154,231,163,.75), 0 0 14px rgba(126,211,135,.62); }
+}
+.cb-tool-rest-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 7px;
+  padding-right: 10px;
+  margin-right: 2px;
+  border-right: 1px solid rgba(255,255,255,.12);
+}
+.cb-tool-rest-grant {
+  min-width: 145px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  text-align: left;
+  border-color: rgba(126,211,135,.42);
+  background: linear-gradient(180deg, rgba(48,87,55,.34), rgba(22,43,27,.42));
+}
+.cb-tool-rest-grant > i {
+  color: #8bd594;
+  font-size: 17px;
+}
+.cb-tool-rest-grant span,
+.cb-tool-rest-grant strong,
+.cb-tool-rest-grant small {
+  display: block;
+  min-width: 0;
+}
+.cb-tool-rest-grant small {
+  margin-top: 2px;
+  opacity: .65;
+  font-size: 10px;
+}
+.cb-tool-rest-grant:hover:not(:disabled) {
+  border-color: rgba(154,231,163,.76);
+  box-shadow: 0 0 8px rgba(126,211,135,.28);
+}
+@media (max-width: 980px) {
+  .cb-tool-rest-actions {
+    flex: 1 1 100%;
+    padding-right: 0;
+    margin-right: 0;
+    padding-bottom: 8px;
+    border-right: 0;
+    border-bottom: 1px solid rgba(255,255,255,.12);
+  }
+  .cb-tool-rest-grant { flex: 1 1 160px; }
+}
+
+/* Subclass choice stays on Class Progression and uses the formerly empty
+   canvas as a rich review surface before Spells & Features. */
+.cb-progression-review-layout {
+  display: grid;
+  grid-template-columns: minmax(230px, .72fr) minmax(0, 2fr);
+  gap: 16px;
+  min-height: 0;
+  margin-top: 14px;
+}
+.cb-progression-summary-column {
+  min-width: 0;
+}
+.cb-progression-summary-stack {
+  grid-template-columns: 1fr;
+  margin: 0;
+}
+.cb-progression-summary-stack > div {
+  display: grid;
+  gap: 5px;
+}
+.cb-progression-summary-stack > div > strong {
+  text-align: right;
+}
+.cb-progression-summary-column .cb-notice {
+  margin: 10px 0 0;
+}
+.cb-subclass-review-panel {
+  min-width: 0;
+  max-height: 570px;
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid rgba(209,176,107,.28);
+  border-radius: 7px;
+  background: linear-gradient(145deg, rgba(34,31,27,.94), rgba(18,18,19,.98));
+}
+.cb-subclass-review-header {
+  display: grid;
+  grid-template-columns: 58px minmax(0,1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255,255,255,.09);
+}
+.cb-subclass-review-header > img {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border: 1px solid rgba(209,176,107,.45);
+  border-radius: 6px;
+}
+.cb-subclass-review-header h3 {
+  margin: 2px 0 0;
+  font-family: var(--dnd5e-font-roboto-slab, serif);
+  font-size: 22px;
+}
+.cb-subclass-review-header p {
+  margin: 3px 0 0;
+  opacity: .68;
+}
+.cb-subclass-description {
+  margin: 12px 0;
+  padding: 11px 12px;
+  border-left: 3px solid var(--cb-gold);
+  background: rgba(255,255,255,.025);
+  line-height: 1.45;
+}
+.cb-subclass-description > :first-child { margin-top: 0; }
+.cb-subclass-description > :last-child { margin-bottom: 0; }
+.cb-subclass-section-title {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 15px 0 8px;
+}
+.cb-subclass-section-title h4 {
+  margin: 2px 0 0;
+}
+.cb-subclass-section-title > strong {
+  color: var(--cb-gold);
+  font-size: 18px;
+}
+.cb-subclass-now-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 7px;
+}
+.cb-subclass-feature-card {
+  display: grid;
+  grid-template-columns: 38px minmax(0,1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 5px;
+  background: rgba(255,255,255,.03);
+}
+.cb-subclass-feature-card img {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+.cb-subclass-feature-card strong,
+.cb-subclass-feature-card small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cb-subclass-feature-card small { margin-top: 2px; opacity: .6; }
+.cb-subclass-feature-badge {
+  white-space: nowrap;
+  font-size: 10px;
+  color: #8bd594;
+}
+.cb-subclass-level-list {
+  display: grid;
+  gap: 7px;
+}
+.cb-subclass-level-row {
+  display: grid;
+  grid-template-columns: 64px minmax(0,1fr);
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 5px;
+  background: rgba(255,255,255,.022);
+}
+.cb-subclass-level-row.current {
+  border-color: rgba(126,211,135,.48);
+  box-shadow: inset 3px 0 0 rgba(126,211,135,.68);
+}
+.cb-subclass-level-row.past { opacity: .68; }
+.cb-subclass-level-number {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  border-right: 1px solid rgba(255,255,255,.08);
+}
+.cb-subclass-level-number span {
+  font-size: 9px;
+  text-transform: uppercase;
+  opacity: .55;
+}
+.cb-subclass-level-number strong {
+  color: var(--cb-gold);
+  font-size: 20px;
+}
+.cb-subclass-level-content,
+.cb-subclass-advancement-entry {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.cb-subclass-advancement-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.cb-subclass-advancement-items button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 230px;
+  min-height: 30px;
+  padding: 3px 7px;
+  text-align: left;
+}
+.cb-subclass-advancement-items img {
+  width: 24px;
+  height: 24px;
+  object-fit: cover;
+  border-radius: 3px;
+}
+.cb-subclass-advancement-items span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 900px) {
+  .cb-progression-review-layout { grid-template-columns: 1fr; }
+  .cb-subclass-review-panel { max-height: none; }
+}
+@media (max-width: 620px) {
+  .cb-subclass-review-header { grid-template-columns: 48px minmax(0,1fr); }
+  .cb-subclass-review-header > button { grid-column: 1 / -1; }
+  .cb-subclass-now-grid { grid-template-columns: 1fr; }
+}

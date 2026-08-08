@@ -15,7 +15,8 @@ export class ProtectedTransactionDialogService {
     key,
     matchClass,
     dialogOptions,
-    fallback = null
+    fallback = null,
+    visualBackdrop = true
   } = {}) {
     if (!key || !matchClass || !dialogOptions) {
       throw new Error("A protected transaction dialog requires a key, match class, and dialog options.");
@@ -37,7 +38,7 @@ export class ProtectedTransactionDialogService {
       matchClass,
       app: null,
       element: null,
-      overlay: this.#createOverlay(),
+      overlay: this.#createOverlay({ visualBackdrop }),
       blocked: new Map(),
       renderHook: null,
       pointerHandler: null,
@@ -128,9 +129,9 @@ export class ProtectedTransactionDialogService {
     });
   }
 
-  static #createOverlay() {
+  static #createOverlay({ visualBackdrop = true } = {}) {
     const overlay = document.createElement("div");
-    overlay.className = "cb-protected-transaction-backdrop";
+    overlay.className = `cb-protected-transaction-backdrop${visualBackdrop ? "" : " cb-protected-transaction-backdrop-clear"}`;
     overlay.dataset.moduleId = MODULE_ID;
     overlay.setAttribute("role", "presentation");
     overlay.setAttribute("aria-hidden", "true");

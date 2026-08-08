@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.9d";
-export const MODULE_BUILD = "community-beta-099d-phb-feature-compatibility";
+export const MODULE_VERSION = "0.9.9e";
+export const MODULE_BUILD = "community-beta-099e-rest-subclass-roll-privacy";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -99,8 +99,8 @@ export const RULES_ASSISTANCE_DEFINITIONS = Object.freeze([
     key: "bardicInspirationPostFailure",
     ruleId: "bardic-inspiration-post-failure",
     label: "Bard — Bardic Inspiration",
-    description: "After a failed native D20 Test, offers the recipient the source Bard's current inspiration die and consumes the effect only when used.",
-    tag: "Post-Failure"
+    description: "Offers the recipient the source Bard's current inspiration die after every eligible D20 Test without revealing hidden success or failure; consumes the effect only when used.",
+    tag: "Post-Roll"
   }),
   Object.freeze({
     key: "mageArmorEffectApplication",
@@ -215,6 +215,7 @@ export function defaultSettings() {
     chargeScribingCostOnFailedCheck: true,
     halfLongRestRecoveryOnShortRest: false,
     shortRestHomebrewCooldownMinutes: 5,
+    gmManagedRestAccess: false,
     assistWithDiceAutomation: false,
     rulesAssistance: {
       rules: defaultRulesAssistanceRules()

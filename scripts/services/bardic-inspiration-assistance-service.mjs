@@ -14,10 +14,10 @@ const RESPONSE_TIMEOUT_MS = 10000;
 const OWNER_LEVEL = globalThis.CONST?.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? 3;
 
 /**
- * Adds the missing post-failure choice for the native 2024 Bardic Inspiration
- * effect. The source Bard and the official class scale remain authoritative;
- * this layer only offers the recipient a choice, rolls the native die, and
- * consumes the already-applied effect when the recipient chooses to use it.
+ * Adds the native 2024 Bardic Inspiration post-roll choice without leaking a
+ * hidden D&D5e success/failure result to the player. The prompt is offered for
+ * every eligible D20 Test while the native Inspiration effect is available;
+ * the source Bard and official class scale remain authoritative.
  */
 export class BardicInspirationAssistanceService {
   static #hooksRef = null;
@@ -85,13 +85,19 @@ export class BardicInspirationAssistanceService {
 
   static async #enqueueRolls(kind, rolls, data) {
     const actor = data?.subject?.actor ?? data?.subject ?? null;
-    if (!actor || !this.#isResponsibleClient(actor)) return;
+    if (!actor || !this.#isResponsibleClient(actor) || !this.enabled()) return;
+
+    // Resolve availability before publishing anything into the shared queue.
+    // This keeps Character Builder completely out of rolls for actors that do
+    // not currently have the native Bardic Inspiration effect.
+    const inspiration = await this.#findNativeInspiration(actor);
+    if (!inspiration) return;
 
     const candidates = (Array.isArray(rolls) ? rolls : [rolls]).filter(roll => {
       if (!roll || this.#handledRolls.has(roll)) return false;
       this.#handledRolls.add(roll);
       if (roll?.options?.dnd5eCharacterBuilderRulesAssistance?.[RULE_ID]) return false;
-      return roll.isFailure === true && Number.isFinite(Number(roll.options?.target));
+      return Number.isFinite(Number(roll.total));
     });
     if (!candidates.length) return;
 
@@ -99,7 +105,8 @@ export class BardicInspirationAssistanceService {
       const actorUuid = actor.uuid ?? `Actor.${actor.id}`;
       const rollType = this.#structuredRollType(kind);
       const originalTotal = Number(roll.total ?? 0);
-      const target = Number(roll.options.target);
+      const target = Number.isFinite(Number(roll.options?.target)) ? Number(roll.options.target) : null;
+      const nativeSuccess = this.#nativeOutcome(kind, roll, target, originalTotal);
       const pending = SharedRollResolutionQueueService.markPending({
         roll,
         actorUuid,
@@ -107,7 +114,7 @@ export class BardicInspirationAssistanceService {
         originalTotal,
         currentTotal: originalTotal,
         target,
-        succeeded: false
+        succeeded: nativeSuccess
       });
 
       return SharedRollResolutionQueueService.enqueue({
@@ -120,10 +127,10 @@ export class BardicInspirationAssistanceService {
         originalTotal,
         currentTotal: originalTotal,
         target,
-        succeeded: false,
+        succeeded: nativeSuccess,
         execute: async context => {
           try {
-            if (this.enabled()) await this.#handleFailedRoll(kind, actor, roll, data);
+            await this.#handleEligibleRoll(kind, actor, roll, data);
           } catch (error) {
             this.#reportError(error);
           }
@@ -137,7 +144,7 @@ export class BardicInspirationAssistanceService {
             : Number(context.currentTotal ?? resolvedOriginal);
           const succeeded = typeof metadata?.success === "boolean"
             ? metadata.success
-            : (kind === "attack" && roll.isFumble ? false : currentTotal >= target);
+            : (typeof context.succeeded === "boolean" ? context.succeeded : nativeSuccess);
           const adjustments = metadata?.used === true && Number.isFinite(Number(metadata.bonus))
             ? [{ source: "Bardic Inspiration", bonus: Number(metadata.bonus) }]
             : [];
@@ -169,7 +176,7 @@ export class BardicInspirationAssistanceService {
     }));
   }
 
-  static async #handleFailedRoll(kind, actor, roll, data) {
+  static async #handleEligibleRoll(kind, actor, roll, _data) {
     const inspiration = await this.#findNativeInspiration(actor);
     if (!inspiration) return false;
 
@@ -194,10 +201,11 @@ export class BardicInspirationAssistanceService {
       return false;
     }
 
+    const originalTotal = Number(roll.total ?? 0);
+    const target = Number.isFinite(Number(roll.options?.target)) ? Number(roll.options.target) : null;
+    const nativeSuccess = this.#nativeOutcome(kind, roll, target, originalTotal);
     const use = await this.#confirmUse({ actor, sourceActor, die, kind, roll });
     if (!use) {
-      const originalTotal = Number(roll.total ?? 0);
-      const target = Number(roll.options.target);
       this.#markRoll(roll, {
         offered: true,
         used: false,
@@ -210,14 +218,15 @@ export class BardicInspirationAssistanceService {
         originalTotal,
         finalTotal: originalTotal,
         target,
-        success: false
+        success: nativeSuccess
       });
       this.#recordAudit(actor, {
         ruleId: RULE_ID,
-        action: "Player kept Bardic Inspiration after a failed D20 Test",
+        action: "Player kept Bardic Inspiration after an eligible D20 Test",
         effectId: effect.id ?? null,
         sourceActorId: sourceActor?.id ?? null,
-        rollType: kind
+        rollType: kind,
+        nativeOutcome: nativeSuccess
       });
       return false;
     }
@@ -232,11 +241,15 @@ export class BardicInspirationAssistanceService {
       }
 
       const bonusRoll = await this.#rollDie(die.formula, actor, roll);
-      const originalTotal = Number(roll.total ?? 0);
       const bonusTotal = Number(bonusRoll.total ?? 0);
       const finalTotal = originalTotal + bonusTotal;
-      const target = Number(roll.options.target);
-      const success = kind === "attack" && roll.isFumble ? false : finalTotal >= target;
+      const success = kind === "attack" && roll.isFumble
+        ? false
+        : target != null
+          ? finalTotal >= target
+          : nativeSuccess === true
+            ? true
+            : null;
 
       this.#consumedEffects.add(lockKey);
       const consumed = await this.#consumeEffect(liveEffect, actor);
@@ -255,6 +268,7 @@ export class BardicInspirationAssistanceService {
         bonus: bonusTotal,
         originalTotal,
         finalTotal,
+        target,
         success
       });
       await this.#postResult({
@@ -266,6 +280,7 @@ export class BardicInspirationAssistanceService {
         originalTotal,
         bonusTotal,
         finalTotal,
+        target,
         success,
         consumed
       });
@@ -296,14 +311,15 @@ export class BardicInspirationAssistanceService {
     const dieLabel = foundry.utils.escapeHTML(die.formula);
     const content = `
       <section class="cb-bardic-inspiration-confirmation">
-        <p><strong>${actorName}</strong> failed a ${rollLabel} with a total of <strong>${total}</strong>.</p>
-        <p>A native Bardic Inspiration die from <strong>${bardName}</strong> is available: <strong>${dieLabel}</strong>.</p>
-        <p>Use it now and remove the effect, or keep it for another failed D20 Test.</p>
+        <div class="cb-bardic-roll-total"><span>${rollLabel}</span><strong>${total}</strong></div>
+        <p><strong>${actorName}</strong> has Bardic Inspiration from <strong>${bardName}</strong>: <strong>${dieLabel}</strong>.</p>
+        <p>Wait for the GM's ruling, then use the die if you need it or keep it for a later eligible D20 Test.</p>
       </section>`;
 
     return ProtectedTransactionDialogService.confirm({
       key: `bardic-inspiration:${actor.id}:${roll.parent?.id ?? foundry.utils.randomID?.(8) ?? Date.now()}`,
       matchClass: "cb-bardic-inspiration-dialog",
+      visualBackdrop: false,
       dialogOptions: {
         classes: [
           "dnd5e-character-builder",
@@ -311,13 +327,13 @@ export class BardicInspirationAssistanceService {
           "cb-protected-transaction-dialog",
           "cb-bardic-inspiration-dialog"
         ],
-        window: { title: "Use Bardic Inspiration?", modal: true },
+        window: { title: "Bardic Inspiration", modal: false },
         content,
-        yes: { label: `Use Bardic Inspiration (${die.formula})`, icon: "fa-solid fa-dice" },
-        no: { label: "Keep Inspiration", icon: "fa-solid fa-shield-heart" }
+        yes: { label: `Use ${die.formula}`, icon: "fa-solid fa-dice" },
+        no: { label: "Keep", icon: "fa-solid fa-shield-heart" }
       },
       fallback: () => globalThis.Dialog?.confirm?.({
-        title: "Use Bardic Inspiration?",
+        title: "Bardic Inspiration",
         content,
         defaultYes: false
       }) ?? false
@@ -457,23 +473,22 @@ export class BardicInspirationAssistanceService {
   }
 
   static async #postResult({
-    actor, sourceActor, roll, bonusRoll, kind, originalTotal, bonusTotal, finalTotal, success, consumed
+    actor, sourceActor, roll, bonusRoll, kind, originalTotal, bonusTotal, finalTotal, target, success, consumed
   }) {
-    const resultLabel = success ? "Success" : "Still a Failure";
     const escapedActor = foundry.utils.escapeHTML(actor.name ?? "Character");
     const escapedBard = foundry.utils.escapeHTML(sourceActor?.name ?? "Bard");
     const escapedType = foundry.utils.escapeHTML(this.#rollLabel(kind));
-    const flavor = `
+    const publicFlavor = `
       <section class="cb-bardic-inspiration-result">
-        <p><strong>${escapedActor}</strong> used Bardic Inspiration from <strong>${escapedBard}</strong> on a failed ${escapedType}.</p>
-        <p><strong>${originalTotal}</strong> + <strong>${bonusTotal}</strong> = <strong>${finalTotal}</strong> — <strong>${resultLabel}</strong></p>
+        <p><strong>${escapedActor}</strong> used Bardic Inspiration from <strong>${escapedBard}</strong> on a ${escapedType}.</p>
+        <p><strong>${originalTotal}</strong> + <strong>${bonusTotal}</strong> = <strong>${finalTotal}</strong></p>
         ${consumed ? "" : "<p><strong>Warning:</strong> the effect could not be removed automatically.</p>"}
       </section>`;
     const speaker = ChatMessage.getSpeaker({ actor });
     const rollMode = roll?.options?.rollMode ?? CONFIG.Dice?.BasicRoll?.getMessageMode?.();
-    const messageData = {
+    const publicMessageData = {
       speaker,
-      flavor,
+      flavor: publicFlavor,
       flags: {
         [MODULE_ID]: {
           rulesAssistance: {
@@ -482,6 +497,40 @@ export class BardicInspirationAssistanceService {
               originalTotal,
               bonus: bonusTotal,
               finalTotal,
+              consumed,
+              sourceActorId: sourceActor?.id ?? null,
+              outcomeHidden: true
+            }
+          }
+        }
+      }
+    };
+    if (typeof bonusRoll.toMessage === "function") {
+      await bonusRoll.toMessage(publicMessageData, { rollMode });
+    } else {
+      await ChatMessage.create({ ...publicMessageData, rolls: [bonusRoll] }, { rollMode });
+    }
+
+    const gmRecipients = ChatMessage.getWhisperRecipients?.("GM") ?? [];
+    if (!gmRecipients.length) return;
+    const resultLabel = success === true ? "Success" : success === false ? "Failure" : "Outcome requires GM adjudication";
+    const targetLine = target != null ? `<br>Target: <strong>${target}</strong>` : "";
+    await ChatMessage.create({
+      speaker,
+      whisper: gmRecipients.map(user => user.id ?? user),
+      content: `<section class="cb-bardic-inspiration-gm-result">
+        <p><strong>GM Resolution — Bardic Inspiration</strong></p>
+        <p>${escapedActor}: ${originalTotal} + ${bonusTotal} = <strong>${finalTotal}</strong>${targetLine}<br><strong>${resultLabel}</strong></p>
+      </section>`,
+      flags: {
+        [MODULE_ID]: {
+          rulesAssistance: {
+            bardicInspirationGM: {
+              originalMessageId: roll.parent?.id ?? null,
+              originalTotal,
+              bonus: bonusTotal,
+              finalTotal,
+              target,
               success,
               consumed,
               sourceActorId: sourceActor?.id ?? null
@@ -489,12 +538,7 @@ export class BardicInspirationAssistanceService {
           }
         }
       }
-    };
-    if (typeof bonusRoll.toMessage === "function") {
-      await bonusRoll.toMessage(messageData, { rollMode });
-      return;
-    }
-    await ChatMessage.create({ ...messageData, rolls: [bonusRoll] }, { rollMode });
+    });
   }
 
   static async #consumeEffect(effect, actor) {
@@ -582,6 +626,14 @@ export class BardicInspirationAssistanceService {
     };
   }
 
+  static #nativeOutcome(kind, roll, target, total) {
+    if (kind === "attack" && roll?.isFumble) return false;
+    if (roll?.isSuccess === true) return true;
+    if (roll?.isFailure === true) return false;
+    if (target != null && Number.isFinite(Number(total))) return Number(total) >= target;
+    return null;
+  }
+
   static #structuredRollType(kind) {
     return {
       attack: "attackRoll",
@@ -625,7 +677,7 @@ export class BardicInspirationAssistanceService {
   }
 
   static #reportError(error) {
-    console.warn(`${MODULE_ID} | Bardic Inspiration post-failure assistance failed.`, error);
+    console.warn(`${MODULE_ID} | Bardic Inspiration post-roll assistance failed.`, error);
   }
 }
 

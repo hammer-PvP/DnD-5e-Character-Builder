@@ -8,6 +8,7 @@ import { ModalStackService } from "../services/modal-stack-service.mjs";
 import { RulesAssistanceService } from "../services/rules-assistance-service.mjs";
 import { RulesAssistanceSettingsService } from "../services/rules-assistance-settings-service.mjs";
 import { RulesAssistanceConfigApp } from "./rules-assistance-config-app.mjs";
+import { RestAccessService } from "../services/rest-access-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -194,6 +195,7 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       chargeScribingCostOnFailedCheck: form.querySelector('[name="chargeScribingCostOnFailedCheck"]')?.checked ?? true,
       halfLongRestRecoveryOnShortRest: form.querySelector('[name="halfLongRestRecoveryOnShortRest"]')?.checked ?? false,
       shortRestHomebrewCooldownMinutes,
+      gmManagedRestAccess: form.querySelector('[name="gmManagedRestAccess"]')?.checked ?? false,
       assistWithDiceAutomation: form.querySelector('[name="assistWithDiceAutomation"]')?.checked ?? false,
       rulesAssistance: foundry.utils.deepClone(storedWorldSettings.rulesAssistance ?? defaultSettings().rulesAssistance),
       hitPointAdvancement: {
@@ -241,7 +243,12 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
 
     await SplashTutorialService.setSuppressed(tutorialSuppressed);
     const previousRulesMode = String((game.settings.get(MODULE_ID, "settings") ?? {}).rulesMode ?? "modern2024");
+    const previousManagedRestAccess = storedWorldSettings.gmManagedRestAccess === true;
     await game.settings.set(MODULE_ID, "settings", settings);
+    if (previousManagedRestAccess && settings.gmManagedRestAccess !== true) {
+      try { await RestAccessService.clearAllGrants(); }
+      catch (error) { console.warn(`${MODULE_ID} | Could not clear managed rest grants after disabling the setting.`, error); }
+    }
     await RulesAssistanceService.refresh();
     if (previousRulesMode !== settings.rulesMode) {
       const result = await RulesCompatibilityService.applyWorldPolicy();

@@ -2,6 +2,7 @@ import { MODULE_ID } from "../constants.mjs";
 import { LevelUpService } from "../services/level-up-service.mjs";
 import { EpicBoonService } from "../services/epic-boon-service.mjs";
 import { ProgressionToolService } from "../services/progression-tool-service.mjs";
+import { RestAccessService } from "../services/rest-access-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -28,6 +29,7 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
     const settings = LevelUpService.settings();
     const mode = settings.levelUpMode === "xp" ? "xp" : "milestone";
     const epicBoonEnabled = Boolean(settings.enableEpicBoons && settings.enableGrantEpicBoons);
+    const managedRestAccess = settings.gmManagedRestAccess === true;
     const actors = game.actors
       .filter(actor => actor.type === "character"
         && !actor.getFlag(MODULE_ID, "isDraft")
@@ -52,7 +54,11 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
         const boonEligibility = EpicBoonService.grantEligibility(actor);
         const levelUpEligible = !levelUpDisabledReason;
         const epicBoonEligible = epicBoonEnabled && boonEligibility.eligible;
-        const selectable = levelUpEligible || epicBoonEligible;
+        const restEligible = managedRestAccess && created;
+        const restAccess = RestAccessService.state(actor);
+        const shortRestAvailable = restAccess.short?.available === true;
+        const longRestAvailable = restAccess.long?.available === true;
+        const selectable = levelUpEligible || epicBoonEligible || restEligible;
         const disabledReason = selectable
           ? ""
           : pendingEpicBoon
@@ -64,7 +70,9 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
             ? "Epic Boon Ready"
             : levelUpEligible
               ? "Ready"
-              : disabledReason;
+              : restEligible
+                ? "Rest Controls"
+                : disabledReason;
         return {
           id: actor.id,
           name: actor.name,
@@ -78,6 +86,9 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
           pendingEpicBoon,
           levelUpEligible,
           epicBoonEligible,
+          restEligible,
+          shortRestAvailable,
+          longRestAvailable,
           disabled: !selectable,
           disabledReason,
           status,
@@ -89,6 +100,7 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
       milestone: mode === "milestone",
       xpMode: mode === "xp",
       epicBoonEnabled,
+      managedRestAccess,
       actors,
       busy: this.busy
     };
@@ -102,6 +114,8 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
     root.querySelector('[data-action="current-scene"]')?.addEventListener("click", event => this.#selectCurrentScene(event));
     root.querySelector('[data-action="apply"]')?.addEventListener("click", event => this.#applyProgression(event));
     root.querySelector('[data-action="grant-epic-boon"]')?.addEventListener("click", event => this.#grantEpicBoons(event));
+    root.querySelector('[data-action="grant-short-rest"]')?.addEventListener("click", event => this.#grantRest(event, "short"));
+    root.querySelector('[data-action="grant-long-rest"]')?.addEventListener("click", event => this.#grantRest(event, "long"));
     root.querySelector('[data-character-search]')?.addEventListener("input", event => this.#filter(event));
     root.querySelector('[name="totalXp"]')?.addEventListener("input", () => this.#refreshPreview());
     root.querySelectorAll('[name="actorIds"]').forEach(input => input.addEventListener("change", () => this.#refreshPreview()));
@@ -114,7 +128,11 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
   }
 
   #selectedActors(kind) {
-    const dataKey = kind === "epicBoon" ? "epicBoonEligible" : "levelUpEligible";
+    const dataKey = kind === "epicBoon"
+      ? "epicBoonEligible"
+      : kind === "rest"
+        ? "restEligible"
+        : "levelUpEligible";
     return this.#selectedRows()
       .filter(row => row.dataset[dataKey] === "true")
       .map(row => game.actors.get(row.dataset.actorId))
@@ -156,8 +174,9 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
   #refreshPreview() {
     const progressionActors = this.#selectedActors("levelUp");
     const boonActors = this.#selectedActors("epicBoon");
+    const restActors = this.#selectedActors("rest");
     const countNode = this.element.querySelector('[data-selected-count]');
-    if (countNode) countNode.textContent = String(progressionActors.length);
+    if (countNode) countNode.textContent = String(this.#selectedRows().length);
 
     const totalInput = this.element.querySelector('[name="totalXp"]');
     const preview = ProgressionToolService.previewXp(totalInput?.value ?? 0, progressionActors.length);
@@ -188,6 +207,10 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
     }
     const boon = this.element.querySelector('[data-action="grant-epic-boon"]');
     if (boon) boon.disabled = this.busy || boonActors.length === 0;
+    for (const action of ["grant-short-rest", "grant-long-rest"]) {
+      const button = this.element.querySelector(`[data-action="${action}"]`);
+      if (button) button.disabled = this.busy || restActors.length === 0;
+    }
   }
 
   async #applyProgression(event) {
@@ -233,7 +256,24 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
     await this.#runBatch(() => ProgressionToolService.grantEpicBoons(actors), { epicBoon: true });
   }
 
-  async #runBatch(operation, { xpMode = false, epicBoon = false } = {}) {
+  async #grantRest(event, restType) {
+    event.preventDefault();
+    if (this.busy) return;
+    const actors = this.#selectedActors("rest");
+    if (!actors.length) return ui.notifications.warn("Select at least one completed Player Character.");
+    const label = RestAccessService.label(restType);
+    const names = actors.map(actor => `<li>${foundry.utils.escapeHTML(actor.name)}</li>`).join("");
+    const confirmed = await this.#confirm({
+      title: `Grant ${label}`,
+      content: `<p>Make <strong>${label}</strong> available to <strong>${actors.length}</strong> selected character${actors.length === 1 ? "" : "s"}?</p><ul>${names}</ul><p>The player chooses when to use it. The grant is consumed only after the native rest and Character Keeper finish successfully.</p>`,
+      yes: `Grant ${label}`
+    });
+    if (!confirmed) return;
+
+    await this.#runBatch(() => RestAccessService.grantMany(actors, restType), { restType });
+  }
+
+  async #runBatch(operation, { xpMode = false, epicBoon = false, restType = null } = {}) {
     this.busy = true;
     let refreshAfter = false;
     this.#setBusy(true);
@@ -247,6 +287,8 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
         console.warn(`${MODULE_ID} | Character Builder Tool partial result\n${summary}`, result);
       } else if (epicBoon) {
         ui.notifications.info(`Granted an Epic Boon to ${successes} character(s).`);
+      } else if (restType) {
+        ui.notifications.info(`${RestAccessService.label(restType)} is now available to ${successes} character(s).`);
       } else {
         ui.notifications.info(xpMode
           ? `Distributed ${result.xpPerActor.toLocaleString()} XP to ${successes} character(s).`

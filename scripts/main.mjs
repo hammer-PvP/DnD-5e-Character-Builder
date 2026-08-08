@@ -21,6 +21,7 @@ import { TemporaryActorService } from "./services/temporary-actor-service.mjs";
 import { ShortRestHomebrewService } from "./services/short-rest-homebrew-service.mjs";
 import { SharedRollResolutionQueueService } from "./services/shared-roll-resolution-queue-service.mjs";
 import { NativeFeatureCompatibilityService } from "./services/native-feature-compatibility-service.mjs";
+import { RestAccessService } from "./services/rest-access-service.mjs";
 
 let scribeIconPromise = null;
 
@@ -41,7 +42,15 @@ Hooks.once("init", async () => {
     scope: "world",
     config: false,
     type: Object,
-    default: defaultSettings()
+    default: defaultSettings(),
+    onChange: () => {
+      // World-setting changes are broadcast by Foundry. Refresh any open
+      // character sheets on every client so managed rest button state tracks
+      // the setting immediately without requiring a manual sheet reopen.
+      for (const actor of game.actors?.filter?.(candidate => candidate.type === "character") ?? []) {
+        actor.sheet?.render?.(false);
+      }
+    }
   });
 
   game.settings.register(MODULE_ID, "progressionBatchLedger", {
@@ -333,6 +342,7 @@ function renderCharacterActorSheetControls(app, element) {
   else if (actor.isOwner && actor.items.some(item => item.type === "class")) injectLevelUpButton(actor, root);
   replaceNativeClassEntryControls(actor, root);
   injectScribeSpellButton(actor, root);
+  configureManagedRestButtons(actor, root);
   injectCantripAugmentAnnotations(actor, root);
   injectInvocationTargetAnnotations(actor, root);
   injectAdvancementChoiceAnnotations(actor, root);
@@ -343,6 +353,10 @@ function interceptRest(actor, restType, config = {}) {
   if (!actor || actor.type !== "character") return true;
   if (actor.getFlag(MODULE_ID, "isDraft") || actor.getFlag(MODULE_ID, "isLevelUpDraft")) return true;
   if (!actor.isOwner) return true;
+  if (RestAccessService.enabled() && !RestAccessService.available(actor, restType)) {
+    ui.notifications.warn(`${RestAccessService.label(restType)} is currently locked for this character. The GM can make it available from Character Builder Tool.`);
+    return false;
+  }
   if (actor.getFlag(MODULE_ID, "runtimeManagementSafetyLock")) {
     ui.notifications.error("Character Keeper is safety-locked for this Actor. A GM must inspect the previous failed transaction before another rest.", { permanent: true });
     return false;
@@ -352,6 +366,33 @@ function interceptRest(actor, restType, config = {}) {
     ui.notifications.error(error.message);
   });
   return false;
+}
+
+function configureManagedRestButtons(actor, root) {
+  const settings = LevelUpService.settings();
+  const managed = settings.gmManagedRestAccess === true;
+  for (const type of ["short", "long"]) {
+    const button = root.querySelector(`[data-action="rest"][data-type="${type}"]`);
+    if (!button) continue;
+    button.classList.remove("cb-managed-rest", "cb-rest-available", "cb-rest-locked");
+    button.removeAttribute("data-cb-rest-managed");
+    if (!managed) {
+      // Leave the native/system/third-party disabled state untouched when the
+      // Character Builder gate is not enabled.
+      continue;
+    }
+
+    const available = RestAccessService.available(actor, type);
+    const disabledOutsideCharacterBuilder = button.disabled && button.dataset.cbRestManaged !== "true";
+    button.classList.add("cb-managed-rest", available ? "cb-rest-available" : "cb-rest-locked");
+    button.dataset.cbRestManaged = "true";
+    button.disabled = !available || disabledOutsideCharacterBuilder;
+    button.setAttribute("aria-disabled", button.disabled ? "true" : "false");
+    button.dataset.tooltip = available
+      ? `${RestAccessService.label(type)} available — granted by the GM`
+      : `${RestAccessService.label(type)} locked — the GM must grant it from Character Builder Tool`;
+    button.setAttribute("aria-label", button.dataset.tooltip);
+  }
 }
 
 function injectScribeSpellButton(actor, root) {

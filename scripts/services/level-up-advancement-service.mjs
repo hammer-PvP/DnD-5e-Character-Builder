@@ -112,15 +112,24 @@ export class LevelUpAdvancementService {
         }
       }
 
+      const resolvedClassIdentifier = classItem.system?.identifier ?? classIdentifier;
+      const newSubclass = draft.items.find(item => item.type === "subclass"
+        && !beforeItemIds.has(item.id)
+        && (!item.system?.classIdentifier || item.system.classIdentifier === resolvedClassIdentifier));
+      const subclassReviewRequired = Boolean(newSubclass);
+
       await LevelUpDraftManager.setState(draft, {
         selectedClassId: classItem.id,
-        selectedClassIdentifier: classItem.system?.identifier ?? classIdentifier,
+        selectedClassIdentifier: resolvedClassIdentifier,
         selectedClassName: classItem.name,
         sourceClassLevel: Number(classItem.system?.levels ?? 1) - 1,
         targetClassLevel: Number(classItem.system?.levels ?? 1),
         nativeRunning: false,
         nativeComplete: true,
-        step: "choices"
+        subclassReviewRequired,
+        subclassReviewComplete: !subclassReviewRequired,
+        subclassReviewItemId: newSubclass?.id ?? null,
+        step: subclassReviewRequired ? "advancements" : "choices"
       });
       return { completed: true, classItem };
     } catch (error) {

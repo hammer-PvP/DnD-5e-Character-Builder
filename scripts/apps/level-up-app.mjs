@@ -92,6 +92,9 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const rules = state.nativeComplete
       ? await LevelUpRulesService.buildContext(this.actor, this.draft, this.registry)
       : null;
+    const subclassReview = state.subclassReviewRequired
+      ? await this.#subclassReviewContext(state)
+      : null;
     const review = this.#reviewContext(state);
     const stepOrder = ["class", "hp", "advancements", "choices", "review"];
     const activeIndex = Math.max(0, stepOrder.indexOf(state.step ?? "class"));
@@ -130,6 +133,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       retainedHitPointRoll: HitPointAdvancementService.lockedRoll(this.actor),
       hpSummary: HitPointAdvancementService.summary(state.hpResult),
       rules,
+      subclassReview,
       review,
       steps,
       isGM: game.user.isGM,
@@ -226,6 +230,9 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
         case "run-native":
           await this.#runNativeAdvancements();
           break;
+        case "continue-subclass-review":
+          await this.#continueSubclassReview();
+          break;
         case "save-additional":
           await this.#saveAdditionalRules();
           break;
@@ -307,6 +314,9 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       hpMethod: state.restartClassSelection ? null : (lockedResult ? "roll" : null),
       hpResult: state.restartClassSelection ? null : lockedResult,
       nativeComplete: false,
+      subclassReviewRequired: false,
+      subclassReviewComplete: false,
+      subclassReviewItemId: null,
       itemGrantIntegrity: { items: [], repairedItemIds: [] },
       itemGrantReconciliation: { items: [], repairedItemIds: [] },
       additionalChoices: {},
@@ -344,6 +354,9 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       hpMethod: state.restartClassSelection ? null : (lockedResult ? "roll" : null),
       hpResult: state.restartClassSelection ? null : lockedResult,
       nativeComplete: false,
+      subclassReviewRequired: false,
+      subclassReviewComplete: false,
+      subclassReviewItemId: null,
       itemGrantIntegrity: { items: [], repairedItemIds: [] },
       itemGrantReconciliation: { items: [], repairedItemIds: [] },
       additionalChoices: {},
@@ -373,10 +386,27 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     this.render({ force: true });
     const result = await LevelUpAdvancementService.apply(this.draft, this.registry);
     if (result.completed) {
-      await LevelUpRulesService.autoCompleteIfEmpty(this.actor, this.draft, this.registry);
-      ui.notifications.info("Class Progression completed on the Level Up draft.");
+      const state = LevelUpDraftManager.getState(this.draft);
+      if (!state.subclassReviewRequired) {
+        await LevelUpRulesService.autoCompleteIfEmpty(this.actor, this.draft, this.registry);
+      }
+      ui.notifications.info(state.subclassReviewRequired
+        ? "Subclass selected. Review its progression before continuing."
+        : "Class Progression completed on the Level Up draft.");
     }
     this.busy = false;
+    this.render({ force: true });
+  }
+
+  async #continueSubclassReview() {
+    const state = LevelUpDraftManager.getState(this.draft);
+    if (!state.nativeComplete || !state.subclassReviewRequired) return;
+    await LevelUpDraftManager.setState(this.draft, {
+      subclassReviewRequired: false,
+      subclassReviewComplete: true,
+      step: "choices"
+    });
+    await LevelUpRulesService.autoCompleteIfEmpty(this.actor, this.draft, this.registry);
     this.render({ force: true });
   }
 
@@ -556,6 +586,99 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     return super.close(options);
   }
 
+  async #subclassReviewContext(state) {
+    const subclass = this.draft.items.get(state.subclassReviewItemId)
+      ?? this.draft.items.find(item => item.type === "subclass"
+        && (!item.system?.classIdentifier || item.system.classIdentifier === state.selectedClassIdentifier));
+    if (!subclass) return null;
+
+    const rawDescription = String(subclass.system?.description?.value ?? subclass.system?.description?.chat ?? "").trim();
+    let description = rawDescription;
+    try {
+      description = await globalThis.TextEditor?.enrichHTML?.(rawDescription, {
+        async: true,
+        relativeTo: subclass,
+        secrets: Boolean(game.user?.isGM)
+      }) ?? rawDescription;
+    } catch (_error) {
+      description = rawDescription;
+    }
+
+    const advancementData = Object.values(
+      subclass.toObject?.().system?.advancement
+      ?? subclass._source?.system?.advancement
+      ?? subclass.system?.advancement
+      ?? {}
+    );
+    const byLevel = new Map();
+    for (const advancement of advancementData) {
+      const level = Number(advancement?.level ?? 0);
+      if (!Number.isFinite(level) || level <= 0) continue;
+      const row = byLevel.get(level) ?? { level, entries: [] };
+      const configuredItems = Array.isArray(advancement?.configuration?.items)
+        ? advancement.configuration.items
+        : [];
+      const items = [];
+      for (const configured of configuredItems) {
+        const uuid = String(configured?.uuid ?? "").trim();
+        if (!uuid) continue;
+        let document = null;
+        try { document = await fromUuid(uuid); }
+        catch (_error) { document = null; }
+        items.push({
+          uuid,
+          name: document?.name ?? uuid.split(".").at(-1) ?? "Granted Feature",
+          img: document?.img ?? "icons/svg/book.svg"
+        });
+      }
+      row.entries.push({
+        type: String(advancement?.type ?? "Advancement"),
+        title: String(advancement?.title ?? advancement?.type ?? "Subclass Advancement"),
+        items
+      });
+      byLevel.set(level, row);
+    }
+
+    const progression = [...byLevel.values()]
+      .sort((a, b) => a.level - b.level)
+      .map(row => ({
+        ...row,
+        current: row.level === Number(state.targetClassLevel),
+        past: row.level < Number(state.targetClassLevel),
+        future: row.level > Number(state.targetClassLevel)
+      }));
+
+    const grantedNowIds = new Set();
+    for (const advancement of advancementData) {
+      if (Number(advancement?.level ?? 0) !== Number(state.targetClassLevel)) continue;
+      for (const id of Object.keys(advancement?.value?.added ?? {})) grantedNowIds.add(id);
+    }
+    const grantedNow = [...grantedNowIds]
+      .map(id => this.draft.items.get(id))
+      .filter(Boolean)
+      .map(item => ({
+        id: item.id,
+        name: item.name,
+        img: item.img,
+        type: item.type
+      }));
+
+    return {
+      id: subclass.id,
+      uuid: subclass.uuid,
+      name: subclass.name,
+      img: subclass.img,
+      identifier: subclass.system?.identifier ?? null,
+      classIdentifier: subclass.system?.classIdentifier ?? state.selectedClassIdentifier,
+      source: subclass.system?.source?.book ?? subclass.system?.source?.rules ?? "",
+      description,
+      progression,
+      grantedNow,
+      grantedNowCount: grantedNow.length,
+      targetClassLevel: Number(state.targetClassLevel ?? 0)
+    };
+  }
+
   #reviewContext(state) {
     const sourceIds = new Set(this.actor.items.map(item => item.id));
     const draftIds = new Set(this.draft.items.map(item => item.id));
@@ -565,8 +688,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
         id: item.id,
         name: item.name,
         img: item.img,
-        type: item.type,
-        badges: AdvancementChoiceAnnotationService.getBadges(item)
+        type: item.type
       }));
     const removed = this.actor.items
       .filter(item => !draftIds.has(item.id))

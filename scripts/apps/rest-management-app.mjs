@@ -6,6 +6,7 @@ import { RuntimeTransactionService } from "../services/runtime-transaction-servi
 import { ProtectedTransactionDialogService } from "../services/protected-transaction-dialog-service.mjs";
 import { ModalStackService } from "../services/modal-stack-service.mjs";
 import { ShortRestHomebrewService } from "../services/short-rest-homebrew-service.mjs";
+import { RestAccessService } from "../services/rest-access-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -134,6 +135,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
         const homebrewResult = type === "short"
           ? await ShortRestHomebrewService.apply(actor, { session })
           : null;
+        await RestAccessService.consume(actor, type, { restSessionId: session.id });
         await RestSessionService.clear(actor);
         notifyRestCompletion(type === "short" ? "Short Rest" : "Long Rest", homebrewResult);
         return homebrewResult;
@@ -158,6 +160,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
       const homebrewResult = type === "short"
         ? await ShortRestHomebrewService.apply(actor, { session })
         : null;
+      await RestAccessService.consume(actor, type, { restSessionId: session.id });
       await RestSessionService.clear(actor);
       notifyRestCompletion(type === "short" ? "Short Rest" : "Long Rest", homebrewResult);
       return result;
@@ -534,6 +537,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
         homebrewResult = await ShortRestHomebrewService.apply(this.actor, { session: this.session });
       }
 
+      await RestAccessService.consume(this.actor, this.restType, { restSessionId: this.session?.id ?? null });
       await RestSessionService.clear(this.actor);
       notifyRestCompletion(this.restLabel, homebrewResult);
       await this.close();
