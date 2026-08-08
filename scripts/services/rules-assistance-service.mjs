@@ -7,6 +7,7 @@ import { LayOnHandsAssistanceService } from "./lay-on-hands-assistance-service.m
 import { ContextualRollModifierService } from "./contextual-roll-modifier-service.mjs";
 import { EffectLifecycleService } from "./effect-lifecycle-service.mjs";
 import { NativeContextualEffectService } from "./native-contextual-effect-service.mjs";
+import { NativeSaveGatedEffectService } from "./native-save-gated-effect-service.mjs";
 import { RulesAssistanceSettingsService } from "./rules-assistance-settings-service.mjs";
 
 const RULES = Object.freeze({
@@ -37,6 +38,7 @@ export class RulesAssistanceService {
     ContextualRollModifierService.initialize();
     EffectLifecycleService.initialize();
     NativeContextualEffectService.initialize();
+    NativeSaveGatedEffectService.initialize();
 
     Hooks.on("dnd5e.preUseActivity", (activity, usageConfig, dialogConfig, messageConfig) =>
       this.#prepareCast(activity, usageConfig, dialogConfig, messageConfig)
@@ -59,6 +61,7 @@ export class RulesAssistanceService {
     await BardicInspirationAssistanceService.ready();
     await LayOnHandsAssistanceService.ready();
     await NativeContextualEffectService.ready();
+    await NativeSaveGatedEffectService.ready();
   }
 
   static enabled() {
@@ -78,6 +81,7 @@ export class RulesAssistanceService {
 
   static async reconcileActor(actor) {
     await NativeContextualEffectService.reconcileActor(actor, { reason: "api" });
+    await NativeSaveGatedEffectService.reconcileActor(actor, { reason: "api" });
     return AgonizingBlastBindingService.reconcileActor(actor, { reason: "api" });
   }
 
@@ -103,7 +107,8 @@ export class RulesAssistanceService {
       ...LayOnHandsAssistanceService.diagnostics(actor),
       ...ContextualRollModifierService.diagnostics(actor),
       ...EffectLifecycleService.diagnostics(actor),
-      ...NativeContextualEffectService.diagnostics(actor)
+      ...NativeContextualEffectService.diagnostics(actor),
+      ...NativeSaveGatedEffectService.diagnostics(actor)
     ].sort((a, b) => Number(a.at ?? 0) - Number(b.at ?? 0));
   }
 

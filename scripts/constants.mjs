@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.9f";
-export const MODULE_BUILD = "community-beta-099f-contextual-effects-lifecycle";
+export const MODULE_VERSION = "0.9.9g";
+export const MODULE_BUILD = "community-beta-099g-save-gated-effects-concentration";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -127,14 +127,14 @@ export const RULES_ASSISTANCE_DEFINITIONS = Object.freeze([
     key: "contextualRollModifiers",
     ruleId: "contextual-roll-modifiers",
     label: "Contextual Roll Modifiers",
-    description: "Applies ephemeral roll modifiers declared by active effects on the roller or target. Blade Ward is the first official adapter; the runtime is generic for future class, spell, and item effects.",
+    description: "Applies ephemeral roll modifiers declared by active effects on the roller or target. Blade Ward and save-gated debuffs use the same generic runtime; future class, spell, and item effects can reuse it.",
     tag: "Roll Context"
   }),
   Object.freeze({
     key: "concentrationEffectLifecycle",
     ruleId: "concentration-effect-lifecycle",
     label: "Concentration & Dependent Effects",
-    description: "Resolves failed Concentration saves after post-roll bonuses, ends native concentration, and lets D&D5e remove only effects bound to that concentration.",
+    description: "Keeps Concentration checks attached to the concentrating Actor, resolves them after post-roll bonuses, ends native concentration on final failure, and lets D&D5e remove only bound dependent effects.",
     tag: "Effect Lifecycle"
   })
 ]);
