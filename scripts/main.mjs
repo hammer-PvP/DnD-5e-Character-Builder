@@ -114,6 +114,11 @@ Hooks.once("init", async () => {
     reconcileRulesAssistance: actor => RulesAssistanceService.reconcileActor(actor),
     rulesAssistanceDiagnostics: actor => RulesAssistanceService.diagnostics(actor),
     rollResolutionQueue: SharedRollResolutionQueueService.api(),
+    contextualRollModifiers: RulesAssistanceService.contextualRollModifierApi(),
+    contextualEffects: Object.freeze({
+      bindEffectData: (effectData, lifecycle = {}) => RulesAssistanceService.bindManagedEffectData(effectData, lifecycle),
+      createEffect: (actor, effectData, lifecycle = {}) => RulesAssistanceService.createManagedEffect(actor, effectData, lifecycle)
+    }),
     openTool: () => game.user.isGM ? new CharacterBuilderToolApp().render({ force: true }) : null,
     openTutorial: () => SplashTutorialService.openNow()
   };

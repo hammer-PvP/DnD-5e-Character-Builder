@@ -149,26 +149,19 @@ export class BardicInspirationAssistanceService {
             ? [{ source: "Bardic Inspiration", bonus: Number(metadata.bonus) }]
             : [];
 
-          const finalized = SharedRollResolutionQueueService.finalize({
-            roll,
-            rollKey: pending.rollKey,
-            actorUuid,
-            rollType,
-            originalTotal: resolvedOriginal,
-            currentTotal,
-            target,
-            succeeded,
-            adjustments
-          });
-
+          // Do not finalize the shared queue inside the Character phase. Item
+          // providers and lifecycle finalizers must still be able to act on the
+          // same roll. The queue finalizes only after every ordered provider has
+          // completed.
           return {
             offered: metadata?.offered === true,
             used: metadata?.used === true,
             consumed: metadata?.consumed === true,
             bonus: Number(metadata?.bonus ?? 0),
-            currentTotal: finalized.currentTotal,
-            succeeded: finalized.succeeded,
-            finalized: true,
+            currentTotal,
+            succeeded,
+            adjustments,
+            finalized: false,
             stop: false
           };
         }

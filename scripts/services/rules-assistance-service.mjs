@@ -4,6 +4,9 @@ import { RulesAssistanceFormulaService } from "./rules-assistance-formula-servic
 import { MageArmorAssistanceService } from "./mage-armor-assistance-service.mjs";
 import { BardicInspirationAssistanceService } from "./bardic-inspiration-assistance-service.mjs";
 import { LayOnHandsAssistanceService } from "./lay-on-hands-assistance-service.mjs";
+import { ContextualRollModifierService } from "./contextual-roll-modifier-service.mjs";
+import { EffectLifecycleService } from "./effect-lifecycle-service.mjs";
+import { NativeContextualEffectService } from "./native-contextual-effect-service.mjs";
 import { RulesAssistanceSettingsService } from "./rules-assistance-settings-service.mjs";
 
 const RULES = Object.freeze({
@@ -31,6 +34,9 @@ export class RulesAssistanceService {
     MageArmorAssistanceService.initialize();
     BardicInspirationAssistanceService.initialize();
     LayOnHandsAssistanceService.initialize();
+    ContextualRollModifierService.initialize();
+    EffectLifecycleService.initialize();
+    NativeContextualEffectService.initialize();
 
     Hooks.on("dnd5e.preUseActivity", (activity, usageConfig, dialogConfig, messageConfig) =>
       this.#prepareCast(activity, usageConfig, dialogConfig, messageConfig)
@@ -52,6 +58,7 @@ export class RulesAssistanceService {
     await MageArmorAssistanceService.ready();
     await BardicInspirationAssistanceService.ready();
     await LayOnHandsAssistanceService.ready();
+    await NativeContextualEffectService.ready();
   }
 
   static enabled() {
@@ -70,7 +77,20 @@ export class RulesAssistanceService {
   }
 
   static async reconcileActor(actor) {
+    await NativeContextualEffectService.reconcileActor(actor, { reason: "api" });
     return AgonizingBlastBindingService.reconcileActor(actor, { reason: "api" });
+  }
+
+  static contextualRollModifierApi() {
+    return ContextualRollModifierService.api();
+  }
+
+  static bindManagedEffectData(effectData, lifecycle = {}) {
+    return EffectLifecycleService.bindEffectData(effectData, lifecycle);
+  }
+
+  static createManagedEffect(actor, effectData, lifecycle = {}) {
+    return EffectLifecycleService.createManagedEffect(actor, effectData, lifecycle);
   }
 
   static diagnostics(actor) {
@@ -80,7 +100,10 @@ export class RulesAssistanceService {
       ...rows.map(row => ({ ...row })),
       ...MageArmorAssistanceService.diagnostics(actor),
       ...BardicInspirationAssistanceService.diagnostics(actor),
-      ...LayOnHandsAssistanceService.diagnostics(actor)
+      ...LayOnHandsAssistanceService.diagnostics(actor),
+      ...ContextualRollModifierService.diagnostics(actor),
+      ...EffectLifecycleService.diagnostics(actor),
+      ...NativeContextualEffectService.diagnostics(actor)
     ].sort((a, b) => Number(a.at ?? 0) - Number(b.at ?? 0));
   }
 
