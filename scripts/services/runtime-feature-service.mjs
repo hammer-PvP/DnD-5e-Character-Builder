@@ -214,8 +214,11 @@ export class RuntimeFeatureService {
     if (restType !== "long") return false;
     const cosmic = this.#feature(actor, "cosmic-omen");
     const portent = this.#feature(actor, "portent");
+    const resourceful = this.#feature(actor, "resourceful");
+    const needsHeroicInspiration = Boolean(resourceful && actor.system?.attributes?.inspiration !== true);
     return Boolean(cosmic?.getFlag(MODULE_ID, "activeCosmicOmen")
-      || portent?.getFlag(MODULE_ID, "portentResults"));
+      || portent?.getFlag(MODULE_ID, "portentResults")
+      || needsHeroicInspiration);
   }
 
   static async applyRestLifecycle(actor, restType, operations = [], transactionId = null) {
@@ -238,6 +241,21 @@ export class RuntimeFeatureService {
         lifecycle: "expired-at-long-rest",
         actionId: row.actionId,
         featureItemId: feature.id,
+        transactionId
+      });
+    }
+
+    const resourceful = this.#feature(actor, "resourceful");
+    if (resourceful && actor.system?.attributes?.inspiration !== true) {
+      await actor.update({ "system.attributes.inspiration": true }, {
+        characterBuilderRuntimeManagement: true,
+        characterBuilderResourceful: true
+      });
+      results.push({
+        changed: true,
+        lifecycle: "resourceful-heroic-inspiration",
+        actionId: "resourceful",
+        featureItemId: resourceful.id,
         transactionId
       });
     }

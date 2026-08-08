@@ -130,6 +130,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     const actions = await RuntimeFeatureService.actions(actor, type, registry, session);
     if (!actions.length) {
       if (session.nativeRestCompleted) {
+        session = await this.#applyAutomaticRestLifecycle(actor, type, session);
         const homebrewResult = type === "short"
           ? await ShortRestHomebrewService.apply(actor, { session })
           : null;
@@ -153,6 +154,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
         return result;
       }
       session = await RestSessionService.markNativeRestCompleted(actor, result);
+      session = await this.#applyAutomaticRestLifecycle(actor, type, session);
       const homebrewResult = type === "short"
         ? await ShortRestHomebrewService.apply(actor, { session })
         : null;
@@ -166,6 +168,24 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     this.#instances.set(key, app);
     await app.render({ force: true });
     return app;
+  }
+
+  static async #applyAutomaticRestLifecycle(actor, restType, session) {
+    if (!session?.nativeRestCompleted || session.keeperChangesApplied) return session;
+    if (!RuntimeFeatureService.restLifecycleRequired(actor, restType)) return session;
+
+    await RuntimeTransactionService.run(actor, {
+      session,
+      label: `${restType === "short" ? "Short Rest" : "Long Rest"} Character Keeper — Automatic Lifecycle`
+    }, transactionId => RuntimeFeatureService.applyRestLifecycle(
+      actor, restType, [], transactionId
+    ));
+
+    return RestSessionService.update(actor, {
+      keeperChangesApplied: true,
+      keeperChangesAppliedAt: Date.now(),
+      status: "homebrew"
+    });
   }
 
   static async launchScribe(actor) {

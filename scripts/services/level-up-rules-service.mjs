@@ -13,6 +13,7 @@ import { WarlockProjectedCantripService } from "./warlock-projected-cantrip-serv
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
 import { AgonizingBlastBindingService } from "./agonizing-blast-binding-service.mjs";
 import { AlwaysPreparedSpellReconciliationService } from "./always-prepared-spell-reconciliation-service.mjs";
+import { NativeFeatureCompatibilityService } from "./native-feature-compatibility-service.mjs";
 
 export class LevelUpRulesService {
   static async buildContext(sourceActor, draft, registry) {
@@ -591,6 +592,7 @@ export class LevelUpRulesService {
     });
     await this.#refreshCantripAugments(draft);
     await AgonizingBlastBindingService.reconcileActor(draft, { reason: "level-up-draft" });
+    await NativeFeatureCompatibilityService.reconcileActor(draft, { reason: "level-up-draft" });
     let integrityResult = await ItemGrantIntegrityService.reconcile(draft, registry, { context: "levelUp", state });
     await FeatureSpellOwnershipService.reconcile(draft, integrityResult, state);
     const preparedReconciliation = await AlwaysPreparedSpellReconciliationService.reconcile(draft, {

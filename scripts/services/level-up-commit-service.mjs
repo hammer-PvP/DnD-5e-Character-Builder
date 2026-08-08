@@ -8,6 +8,7 @@ import { AdvancementChoiceAnnotationService } from "./advancement-choice-annotat
 import { ItemChoiceReplacementIntegrityService } from "./item-choice-replacement-integrity-service.mjs";
 import { TemporaryActorService } from "./temporary-actor-service.mjs";
 import { AlwaysPreparedSpellReconciliationService } from "./always-prepared-spell-reconciliation-service.mjs";
+import { NativeFeatureCompatibilityService } from "./native-feature-compatibility-service.mjs";
 
 /**
  * Applies a completed Level Up draft as one recoverable transaction. The live
@@ -109,6 +110,7 @@ export class LevelUpCommitService {
           characterBuilderTransactionToken: token
         });
         await AgonizingBlastBindingService.reconcileActor(actor, { reason: "level-up-commit" });
+        await NativeFeatureCompatibilityService.reconcileActor(actor, { reason: "level-up-commit" });
         const missing = itemData.filter(item => !actor.items.get(item._id));
         if (missing.length) throw new Error(`${missing.length} Level Up Item document(s) were not created on the live Actor.`);
       }

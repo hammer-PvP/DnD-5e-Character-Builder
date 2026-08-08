@@ -20,6 +20,7 @@ import { RulesAssistanceService } from "./services/rules-assistance-service.mjs"
 import { TemporaryActorService } from "./services/temporary-actor-service.mjs";
 import { ShortRestHomebrewService } from "./services/short-rest-homebrew-service.mjs";
 import { SharedRollResolutionQueueService } from "./services/shared-roll-resolution-queue-service.mjs";
+import { NativeFeatureCompatibilityService } from "./services/native-feature-compatibility-service.mjs";
 
 let scribeIconPromise = null;
 
@@ -127,6 +128,7 @@ Hooks.once("ready", async () => {
     ui.notifications.warn(`Character Builder ${MODULE_VERSION} was validated against D&D5e 5.3.3. Detected ${game.system.version}.`);
   }
   await ActorCommitService.recoverOwnedInterruptedTransactions();
+  await NativeFeatureCompatibilityService.ready();
   if (game.user.isGM) {
     try {
       await ContentSourceService.synchronizeWorldSettings({ force: true, persist: true });

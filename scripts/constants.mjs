@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.9c";
-export const MODULE_BUILD = "community-beta-099c-circle-land-state-reconciliation";
+export const MODULE_VERSION = "0.9.9d";
+export const MODULE_BUILD = "community-beta-099d-phb-feature-compatibility";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -115,6 +115,13 @@ export const RULES_ASSISTANCE_DEFINITIONS = Object.freeze([
     label: "Agonizing Blast Native Binding",
     description: "Maintains the native enchantment on the cantrip selected by the Invocation.",
     tag: "Native Binding"
+  }),
+  Object.freeze({
+    key: "layOnHandsRemovePoison",
+    ruleId: "lay-on-hands-remove-poison",
+    label: "Paladin — Lay on Hands: Remove Poison",
+    description: "After the native Remove Poison activity spends its Lay on Hands cost, removes the native Poisoned status from the selected target.",
+    tag: "Effect"
   })
 ]);
 
