@@ -1,6 +1,6 @@
 # Contextual Effect Protocol
 
-Character Builder 0.9.9f adds a source-agnostic protocol for Active Effects that modify a roll because of the relationship between the effect owner and the current roll. Blade Ward is the first official adapter, but the engine contains no Blade-Ward-specific branching.
+Character Builder 0.9.9f introduced a source-agnostic protocol for Active Effects that modify a roll because of the relationship between the effect owner and the current roll. Blade Ward is the first official adapter, but the engine contains no Blade-Ward-specific branching.
 
 ## Shared protocol
 
@@ -65,9 +65,15 @@ When concentration ends, D&D5e remains authoritative for deleting its dependents
 
 ## Post-roll concentration resolution
 
-D&D5e 5.3.3 rolls a Concentration save but does not automatically call `Actor.endConcentration()` on failure. Character Builder queues a lifecycle finalizer after Character and Item post-roll providers. The finalizer compares the latest `currentTotal` to the save DC and ends native concentration only if the final result still fails.
+D&D5e 5.3.3 rolls a Concentration save but does not automatically call `Actor.endConcentration()` on failure. Character Builder marks the roll pending and keeps the shared batch open with an inert lifecycle barrier long enough for asynchronous Character and Item providers triggered by the same roll to register. Concentration is ended only from the queue's finalized snapshot, using the final `currentTotal` against the save DC.
 
-This ordering allows Bardic Inspiration or an Item-origin post-roll bonus to rescue concentration before any dependent effect is removed.
+This ordering allows Bardic Inspiration or an Item-origin post-roll bonus to rescue concentration before any dependent effect is removed. The runtime also preserves request affinity: if a native concentration request card belongs to a concentrating Actor but the click would roll a different non-concentrating Actor because of current target selection, Character Builder cancels that mismatched roll and reissues the Concentration save for the request owner.
+
+## Save-gated effects and the native chat tray
+
+Save-gated debuffs are not automatically applied from a hidden failure. A compatibility adapter may ensure that a source Activity exposes an Item Active Effect through D&D5e's native `EffectApplicationElement`. Because non-transfer effects in that tray are GM-facing, the GM can adjudicate the save and apply the effect only to failed targets without leaking the result to players.
+
+When D&D5e applies an effect from a concentrated usage card, it uses the concentration Active Effect as the origin and writes `flags.dnd5e.dependentOn` on the target effect. Character Builder does not replace that lifecycle. If an official effect profile already contains native mechanical changes, the adapter only repairs the Activity-to-effect link. If the profile is absent or mechanically empty, a declarative contextual-effect fallback may be materialized instead. Bane 2024 is the first regression case; the application runtime itself is generic.
 
 ## Privacy
 

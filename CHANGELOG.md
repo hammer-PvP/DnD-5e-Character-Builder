@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.9g
+
+### Native save-gated effects and concentration hardening
+
+- Fixed Concentration lifecycle finalization after live testing showed a failed save could leave concentration active. Concentration is no longer ended from an ordinary queue provider; the roll stays pending behind an inert lifecycle barrier and `Actor.endConcentration()` is called only from the shared queue's finalized snapshot.
+- Added a short provider-discovery grace period so asynchronous Character Builder and Item-origin providers triggered by the same Concentration roll can join the batch before finalization. A later bonus can still rescue the save; an unrescued final failure ends native concentration.
+- Hardened native Concentration request affinity. If a whispered concentration request belongs to a concentrating Actor but current target selection would make D&D5e roll a different non-concentrating Actor, Character Builder cancels the mismatched roll and reissues it for the request owner.
+- Added a generic **Save-Gated Effect Application** compatibility layer that feeds D&D5e's own `EffectApplicationElement` instead of auto-applying hidden save failures. The GM remains the adjudicator and applies effects only to failed targets through the native Effects tray.
+- Added Bane 2024 as the first save-gated regression adapter. If the owned spell already contains a populated native Bane Active Effect, Character Builder only repairs the Activity-to-effect reference so the GM tray appears and native mechanics remain authoritative. If the effect profile is missing/empty, a generic contextual fallback supplies `-1d4` to the affected Actor's attack rolls and saving throws.
+- Effects applied from a concentrated usage card remain bound by D&D5e's native `flags.dnd5e.dependentOn` relationship. Ending the source concentration therefore removes only its dependent target effects; non-concentration effects are untouched.
+- Preserved the v0.9.9f Blade Ward incoming `-1d4` behavior and did not alter Always Prepared, Circle of the Land, Pact of the Tome, rest recovery, Level Up subclass review, or GM-managed rest availability logic.
+
 ## 0.9.9f
 
 ### Contextual roll effects and concentration lifecycle
