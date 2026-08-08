@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.9d
+
+### PHB feature compatibility and focused runtime assistance
+
+- Added an idempotent native-feature compatibility reconciliation for `Font of Inspiration`. When the feature is present, `Bardic Inspiration` is normalized to D&D5e 5.3.3's native `Short Rest → Recover All Uses` profile, so the native Short Rest restores all uses and the optional half-recovery homebrew no longer treats it as Long-Rest-only.
+- Added the equivalent reconciliation for Light Domain `Improved Warding Flare`, changing `Warding Flare` to the native Short-Rest recover-all profile once the level-6 feature is present.
+- Both recovery mutations run inside the Level Up Draft before commit and also perform a focused idempotent ready-time reconciliation, allowing existing Character Builder Actors that already own the trigger feature to be corrected without recreation. No spell ownership, Circle of the Land, Always Prepared, or resource-formula logic is changed.
+- Added `Resourceful` to the protected post-Long-Rest lifecycle. After the native Long Rest completes, a Human with Resourceful is guaranteed Heroic Inspiration if it is not already present. The operation is idempotent and does not touch any other Actor resource.
+- Extended the no-action Character Keeper path so automatic post-rest lifecycle rules can run transactionally even when the rest has no optional Keeper choices. Native rest recovery still executes first and exactly once.
+- Added an optional granular Rules Automation Assistance rule for `Lay on Hands: Remove Poison`. After the official native Activity successfully consumes its 5-point Lay on Hands cost, Character Builder removes only the native `Poisoned` status from the single recorded target through `Actor.toggleStatusEffect`.
+- Remove Poison target updates are owner/GM-authoritative. If the acting player cannot update the target Actor, the request is validated and delegated to the active GM through the module socket. No generic Active Effect deletion is performed.
+- This patch is deliberately limited to the four live-confirmed gaps above. Existing Circle of the Land reconciliation, Always Prepared spell ownership, Short Rest homebrew recovery, Bardic Inspiration post-failure logic, and shared Item Creator roll-resolution integration remain otherwise unchanged.
+
 ## 0.9.9c
 
 ### Circle of the Land ownership and Long Rest state reconciliation

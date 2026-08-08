@@ -1,6 +1,6 @@
 # Character Builder Settings Reference
 
-This reference documents every visible Character Builder setting in v0.9.9b. Unless stated otherwise, settings are **world settings**, can be changed only by a Game Master, and do not require a server restart. Saving the settings window affects future Character Creation, Level Up, Character Keeper, or runtime-assistance operations; it does not retroactively delete character content.
+This reference documents every visible Character Builder setting in v0.9.9d. Unless stated otherwise, settings are **world settings**, can be changed only by a Game Master, and do not require a server restart. Saving the settings window affects future Character Creation, Level Up, Character Keeper, or runtime-assistance operations; it does not retroactively delete character content.
 
 ## Splash Tutorial
 
@@ -232,6 +232,7 @@ Each rule is enabled by default inside the saved rule set, but does nothing whil
   - Uses the shared per-roll `character` phase before any `items`-phase provider, so later item automation receives the finalized updated result rather than competing for the same failure.
 - **Mage Armor Effect Application:** Applies and maintains the native Mage Armor effect on eligible targets.
 - **Agonizing Blast Native Binding:** Maintains the native enchantment on the cantrip selected by the Invocation.
+- **Paladin — Lay on Hands: Remove Poison:** After the native activity successfully spends its Lay on Hands cost, removes the native `Poisoned` status from the single recorded target using the D&D5e status API.
 
 ## Hit Point Advancement
 
