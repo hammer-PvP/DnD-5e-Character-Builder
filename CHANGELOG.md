@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.9h
+
+### Source-native subclass details and Milestone XP bookkeeping
+
+- Reworked the subclass **Full Details** action into a source-native viewer. Character Builder resolves the original Subclass Item source, searches Journal packs from that same package, and prefers the exact JournalEntryPage whose linked Item matches the subclass source UUID. Identifier/name matching is used only as a fallback, preventing similarly named content from another package from being substituted.
+- For D&D5e class/subclass Journal pages, the viewer reuses the native D&D5e page sheet context and `page-subclass-view` template inside a Character Builder window. Official source art, editorial description, progression table, and feature sections therefore remain authored and updated by the installed source rather than copied into the module.
+- Sources without a dedicated subclass Journal page fall back to the source Item description instead of failing. The resolver is package-generic and is not limited to the Player's Handbook.
+- Milestone **Grant Level Up** now keeps the Actor's numeric XP bookkeeping aligned with the granted target level. Character Builder reads D&D5e's own `CONFIG.DND5E.CHARACTER_EXP_LEVELS` table and sets XP to `max(current XP, minimum XP for the target level)`, so XP is never reduced.
+- The XP bookkeeping lives in the shared Milestone grant service, so both individual GM grants and Character Builder Tool batch grants behave identically. Normal XP-mode progression and XP distribution are unchanged.
+- No changes were made to Level Up acquisition/commit mechanics, Always Prepared ownership, Contextual Roll Modifiers, concentration lifecycle, save-gated effects, Character Keeper, or rest recovery.
+
 ## 0.9.9g
 
 ### Native save-gated effects and concentration hardening

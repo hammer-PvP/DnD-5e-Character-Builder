@@ -133,6 +133,8 @@ Character Builder changes only the Advancement schedule required by the selected
 
 The Level Up flow loads the Actor's current classes, features, spells, feats, equipment, proficiencies, historical choices, and managed ownership data.
 
+When the world uses **Milestone** Level Ups, a GM grant also updates the Actor's numeric XP bookkeeping to at least the D&D5e threshold for the granted target level. Existing XP above that threshold is preserved. This does not change XP-mode progression; it only keeps Milestone characters ready for a later switch to XP tracking.
+
 It supports:
 
 - advancing an existing class;
@@ -148,6 +150,8 @@ It supports:
 ### Subclass review before continuing
 
 When native D&D5e Advancement creates a new Subclass Item during Level Up, Character Builder deliberately remains on **Class Progression**. The selected subclass's own document supplies a richer review panel with its description, the features granted at the current Class level, and the source-authored Advancement progression at later Class levels. The player explicitly chooses **Continue Level Up** after reviewing the package; normal levels with no new subclass continue through the existing flow unchanged.
+
+The review's **Full Details** button resolves the subclass's original content package and displays its dedicated source Journal page inside a Character Builder viewer when the source provides one. D&D5e's native subclass Journal rendering remains authoritative, including source art, editorial text, progression tables, and feature descriptions. Character Builder does not copy the book page into the module; it reads the active source at runtime. If no dedicated Journal page exists, Full Details falls back to the source Item description.
 
 ### Feat and ASI +2 policy
 
