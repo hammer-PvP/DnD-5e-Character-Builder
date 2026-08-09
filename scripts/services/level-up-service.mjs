@@ -97,15 +97,32 @@ export class LevelUpService {
     if (!game.user.isGM) throw new Error("Only the GM can grant a Milestone Level Up.");
     const level = this.actorLevel(actor);
     if (level >= 20) throw new Error("This character is already level 20.");
-    await actor.setFlag(MODULE_ID, "levelUpGrant", {
+
+    const targetCharacterLevel = level + 1;
+    const grant = {
       available: true,
       grantedAt: Date.now(),
       grantedBy: game.user.id,
       sourceCharacterLevel: level,
-      targetCharacterLevel: level + 1,
+      targetCharacterLevel,
       ...(metadata.batchId ? { batchId: metadata.batchId } : {}),
       ...(metadata.idempotencyToken ? { idempotencyToken: metadata.idempotencyToken } : {})
-    });
+    };
+
+    const update = { [`flags.${MODULE_ID}.levelUpGrant`]: grant };
+    if (this.settings().levelUpMode === "milestone") {
+      const currentXp = Math.max(0, Math.trunc(Number(actor.system?.details?.xp?.value ?? 0)));
+      const table = CONFIG.DND5E?.CHARACTER_EXP_LEVELS ?? [];
+      // D&D5e indexes this table by the current level: index 1 is the 300 XP
+      // threshold that reaches character level 2. Therefore target N uses N-1.
+      const systemThreshold = Number(table[targetCharacterLevel - 1]);
+      const preparedThreshold = Number(actor.system?.details?.xp?.max);
+      const minimumXp = Number.isFinite(systemThreshold) ? systemThreshold
+        : (Number.isFinite(preparedThreshold) ? preparedThreshold : currentXp);
+      update["system.details.xp.value"] = Math.max(currentXp, minimumXp);
+    }
+
+    await actor.update(update, { characterBuilderMilestoneGrant: true });
     return actor.getFlag(MODULE_ID, "levelUpGrant");
   }
 

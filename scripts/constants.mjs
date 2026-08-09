@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.9g";
-export const MODULE_BUILD = "community-beta-099g-save-gated-effects-concentration";
+export const MODULE_VERSION = "0.9.9h";
+export const MODULE_BUILD = "community-beta-099h-source-details-milestone-xp";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {

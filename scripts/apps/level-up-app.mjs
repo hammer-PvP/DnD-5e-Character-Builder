@@ -10,6 +10,7 @@ import { AdvancementChoiceAnnotationService } from "../services/advancement-choi
 import { MetadataReconciliationService } from "../services/metadata-reconciliation-service.mjs";
 import { WarlockProjectedCantripService } from "../services/warlock-projected-cantrip-service.mjs";
 import { ModalStackService } from "../services/modal-stack-service.mjs";
+import { SourceFullDetailsApp } from "./source-full-details-app.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -233,6 +234,17 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
         case "continue-subclass-review":
           await this.#continueSubclassReview();
           break;
+        case "open-subclass-source": {
+          const itemId = target.dataset.itemId;
+          const subclass = itemId ? this.draft?.items?.get?.(itemId) : null;
+          if (!subclass) throw new Error("The selected subclass source could not be resolved.");
+          const app = new SourceFullDetailsApp(subclass, this);
+          ModalStackService.renderChild(this, app, { force: true }, {
+            label: `${subclass.name} Full Details`,
+            message: "Close Full Details to return to Level Up."
+          });
+          break;
+        }
         case "save-additional":
           await this.#saveAdditionalRules();
           break;

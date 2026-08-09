@@ -5406,3 +5406,75 @@
   .cb-subclass-review-header > button { grid-column: 1 / -1; }
   .cb-subclass-now-grid { grid-template-columns: 1fr; }
 }
+
+/* Source-native Full Details viewer -------------------------------------- */
+.source-full-details-app .window-content {
+  padding: 0;
+  overflow: hidden;
+}
+.cb-source-full-shell {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+  background: var(--cb-panel, rgba(15, 18, 22, .98));
+}
+.cb-source-full-header {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+  background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.015));
+}
+.cb-source-full-header > img {
+  width: 54px;
+  height: 54px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid rgba(214,178,92,.45);
+}
+.cb-source-full-header h2 {
+  margin: 1px 0 2px;
+  color: var(--cb-gold);
+  font-size: 22px;
+}
+.cb-source-full-header p {
+  margin: 0;
+  opacity: .62;
+  font-size: 11px;
+}
+.cb-source-full-fallback {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 999px;
+  font-size: 10px;
+  opacity: .72;
+}
+.cb-source-full-content {
+  min-height: 0;
+  overflow: auto;
+  padding: 18px 22px 28px;
+}
+/* The source owns the editorial body. This wrapper only gives it breathing
+   room; D&D5e/source Journal CSS remains authoritative for the inner page. */
+.cb-source-full-native > header,
+.cb-source-full-native > section,
+.cb-source-full-native .journal-page-content {
+  max-width: 900px;
+  margin-inline: auto;
+}
+.cb-source-full-document {
+  max-width: 900px;
+  margin-inline: auto;
+}
+@media (max-width: 700px) {
+  .cb-source-full-header { grid-template-columns: 44px minmax(0,1fr); }
+  .cb-source-full-header > img { width: 44px; height: 44px; }
+  .cb-source-full-fallback { grid-column: 1 / -1; justify-self: start; }
+  .cb-source-full-content { padding: 12px; }
+}
