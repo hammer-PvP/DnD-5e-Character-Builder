@@ -57,6 +57,14 @@ Supported relation families are `roller/self/outgoing` for effects owned by the 
 
 Supported operations in schema 1 are `formula`, `advantage`, and `disadvantage`. Formula changes are appended only to the current roll configuration.
 
+## Source-to-target native Damage Riders
+
+Version 0.9.9i adds a companion relationship for damage that belongs to a source Actor only against the target that bears that source's effect. This is intentionally separate from the schema-1 formula modifier protocol because the authoritative data is a native D&D5e **Damage Activity**, not a copied formula.
+
+The runtime requires one selected target, resolves the effect's controller/source through D&D5e origin/dependency metadata, verifies that controller is the attacking Actor, and appends the matching source-owned Damage Activity's roll configuration to the same native Attack damage process. The weapon and attacker are never permanently modified.
+
+Initial regression adapters are Hunter's Mark (`marked` → source spell Damage Activity; Foe Slayer's improved Activity takes precedence when owned) and Hex (`cursed` → source spell Damage Activity). Concentration cleanup remains completely native: once the dependent mark/curse effect disappears, there is no relationship for the rider engine to match.
+
 ## Lifecycle
 
 The modifier engine does not own duration or concentration. Lifecycle metadata is separate. `cb.contextualEffects.bindEffectData` and `createEffect` can bind a runtime effect to a concentration anchor. Concentration mode maps to D&D5e's native `flags.dnd5e.dependentOn` relationship.

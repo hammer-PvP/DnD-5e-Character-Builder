@@ -179,6 +179,12 @@
 
         <hr>
         <div class="cb-settings-toggle">
+          <label><input type="checkbox" name="playerSheetIntegrity" {{checked settings.playerSheetIntegrity}}> Player Character Sheet Integrity</label>
+          <p class="hint"><strong>Optional; disabled by default.</strong> Players can use features and spend resources normally, but native/manual recovery, resource refunds, self-granted Heroic Inspiration, and direct drops of Classes, Subclasses, Species, Backgrounds, Feats, and Spells onto a managed character are blocked. GM actions, native recovery, and Character Builder transactions remain available.</p>
+        </div>
+
+        <hr>
+        <div class="cb-settings-toggle">
           <label><input type="checkbox" name="halfLongRestRecoveryOnShortRest" {{checked settings.halfLongRestRecoveryOnShortRest}}> Half Long-Rest Recovery on Short Rest</label>
           <p class="hint"><strong>Optional homebrew; disabled by default.</strong> After the native Short Rest completes, recover half of each eligible Long-Rest-only reserve, rounded down. Native Hit Dice, Short-Rest recovery, Pact Magic, and all other D&amp;D5e rest behavior continue normally.</p>
         </div>

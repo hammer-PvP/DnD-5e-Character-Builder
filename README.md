@@ -198,6 +198,14 @@ The GM may enable **GM-Managed Rest Availability** when the campaign needs expli
 
 The player still starts the rest from their own native D&D5e button. Character Builder only gates availability; it does not implement a second rest engine. The grant is consumed after the native rest and Character Keeper finish successfully. Disabling the setting returns rests to normal unrestricted D&D5e behavior.
 
+### Optional Player Character Sheet Integrity
+
+The GM may enable **Player Character Sheet Integrity** when characters are expected to gain progression and recover expendable resources only through the rules, the GM, or Character Builder. It is disabled by default.
+
+With the setting enabled, a non-GM owner can still attack, cast, use features, spend spell slots/uses/resources, and complete legitimate native rest or feature recovery. The native sheet is prevented from being used to refill those reserves manually, self-grant Heroic Inspiration, or create/drop structural Class, Subclass, Species/Race, Background, Feat/Feature, or Spell documents. Ordinary inventory Items remain available. Chat-card **Refund Resource** is GM-only.
+
+The integrity layer guards native Actor-sheet interaction rather than rejecting every positive Actor update. This is deliberate: D&D5e rests, feature recovery, Character Builder transactions, and other legitimate runtime operations must remain able to restore resources.
+
 ### Optional Half Long-Rest Recovery on Short Rest
 
 The GM may enable an optional homebrew rule named **Half Long-Rest Recovery on Short Rest**. It is disabled by default, so installing or updating Character Builder does not change any campaign's rest rules.
@@ -228,6 +236,8 @@ The current rule list includes:
 - Agonizing Blast Native Binding;
 - Paladin — Lay on Hands: Remove Poison;
 - Contextual Roll Modifiers;
+- Source-to-Target Damage Riders (Hunter's Mark / Hex);
+- Bard — Cutting Words manual reaction assistance;
 - Concentration & Dependent Effects.
 
 Damage assistance uses native D&D5e roll hooks and changes only the current roll configuration. Effect assistance reuses the native Active Effect already supplied by the source spell or feature. It never creates duplicate weapons, duplicate spells, duplicate Activities, replacement chat commands, or permanent formula edits.
@@ -245,6 +255,12 @@ Agonizing Blast uses Character Builder's managed Invocation target to apply and 
 Lay on Hands `Remove Poison` waits for the native Activity to complete and spend its normal 5-point cost, then removes only the native `Poisoned` status from the single recorded target. It never searches for or deletes unrelated Active Effects.
 
 **Contextual Roll Modifiers** are source-agnostic and ephemeral. Active Effects may declare a formula, advantage, or disadvantage that applies to rolls made by their owner or to incoming rolls against their owner. The runtime evaluates the declaration against the current roll and target and never writes the modifier permanently onto the attacker, weapon, or Actor. Blade Ward 2024 is the first incoming-roll adapter: while its concentration-bound effect is active on the caster, an attack made against that caster receives `-1d4` on that attack roll. Save-gated debuffs can use the same runtime after their effect is applied to a target. No target selected means no incoming modifier is guessed.
+
+**Source-to-Target Damage Riders** extend contextual automation to damage that exists because a specific source Actor has marked or cursed a specific target. The runtime resolves the controller from the target effect, requires that controller to be the current attacker and that target to be the single selected target, then appends the source document's own Damage Activity to the native Attack damage process. Hunter's Mark uses `Bonus Mark Damage`, upgrading to Foe Slayer's native improved Activity when present; Hex uses `Bonus Hex Damage`. The formulas and damage types remain source-authored rather than hard-coded into weapons.
+
+**Cutting Words** remains a manual Bard decision. The Bard targets a hostile roller to reduce that creature's most recent eligible D20 roll, or targets a friendly recipient to arm a reduction against the latest pending damage message. The damage mode uses the campaign-approved simplified order: D&D5e first calculates its normal final damage, then Cutting Words subtracts the Bardic die immediately before HP/temporary HP are changed. No automatic success-sensitive prompt appears. Cutting Words consumes the same native Bardic Inspiration reserve used by the normal Inspiration Activity.
+
+Character Builder also exposes a versioned **Resource Consumption Event** after D&D5e finishes native Activity consumption. Consumers can subscribe through `api.resourceEvents` to learn which reserve actually changed and which Item/Activity caused it. This deliberately does not mean that a Bardic Inspiration effect was granted to a target; see `docs/RESOURCE-EVENT-PROTOCOL.md`.
 
 **Concentration & Dependent Effects** keeps D&D5e authoritative for concentration documents and target-effect cleanup. A Concentration roll is kept pending until the shared post-roll queue reaches its final total, including Character Builder and Item-origin providers. If the final result still fails, Character Builder calls the native `Actor.endConcentration()` API and D&D5e removes effects carrying its native `flags.dnd5e.dependentOn` link. Character Builder also corrects the native concentration-request edge case where clicking a whispered DC request while another non-concentrating Actor is targeted would otherwise roll that wrong Actor. Non-concentration effects remain unaffected.
 

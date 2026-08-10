@@ -1,6 +1,6 @@
 # Character Builder Settings Reference
 
-This reference documents every visible Character Builder setting in v0.9.9g. Unless stated otherwise, settings are **world settings**, can be changed only by a Game Master, and do not require a server restart. Saving the settings window affects future Character Creation, Level Up, Character Keeper, or runtime-assistance operations; it does not retroactively delete character content.
+This reference documents every visible Character Builder setting in v0.9.9i. Unless stated otherwise, settings are **world settings**, can be changed only by a Game Master, and do not require a server restart. Saving the settings window affects future Character Creation, Level Up, Character Keeper, or runtime-assistance operations; it does not retroactively delete character content.
 
 ## Splash Tutorial
 
@@ -183,6 +183,20 @@ At least one method must remain enabled.
 - **Disabling later:** Existing Character Builder rest grants are cleared and normal unrestricted D&D5e rest behavior resumes.
 - **Interaction with D&D5e settings:** This setting does not override a stricter native D&D5e rest policy or another module's independent restriction.
 
+## Character Keeper — Player Character Sheet Integrity
+
+### Player Character Sheet Integrity
+
+- **Scope:** World, GM-only.
+- **Default:** **Off**.
+- **Disabled:** Character Builder does not restrict ordinary native resource editing/refunds or structural Actor-sheet creation beyond the module's existing class-progression protections.
+- **Enabled — player may:** use attacks, spells, features, Activities, and inventory normally; spend spell/Pact slots, Actor resources, Item uses, and Activity uses; complete legitimate D&D5e recovery; use Character Builder-authorized progression/maintenance flows.
+- **Enabled — player may not:** refill spell/Pact slots from native slot controls; increase Actor/Item/Activity uses manually; self-grant Heroic Inspiration; use chat-card **Refund Resource**; create or drag Class, Subclass, Species/Race, Background, Feat/Feature, or Spell documents through the native Actor sheet.
+- **Inventory:** Ordinary physical/inventory Items are not blocked by this setting.
+- **GM:** GM interaction remains unrestricted.
+- **Implementation boundary:** The guard is attached to native Actor-sheet controls/drop/create paths and Activity refund. It does not reject every resource-increasing document update, because doing so would break rests and legitimate feature/runtime recovery.
+- **Conflict risk:** If another module replaces the native Actor-sheet creation/drop or Activity refund methods, libWrapper coordinates wrapper order where possible. Test that module's custom UI separately.
+
 ## Character Keeper — Optional Homebrew Rest Recovery
 
 ### Half Long-Rest Recovery on Short Rest
@@ -252,6 +266,8 @@ Each rule is enabled by default inside the saved rule set, but does nothing whil
 - **Agonizing Blast Native Binding:** Maintains the native enchantment on the cantrip selected by the Invocation.
 - **Paladin — Lay on Hands: Remove Poison:** After the native activity successfully spends its Lay on Hands cost, removes the native `Poisoned` status from the single recorded target using the D&D5e status API.
 - **Contextual Roll Modifiers:** Reads declarative modifiers from active effects on the roller or the single current target and applies them only to the current native roll. Blade Ward 2024 is the first official adapter (`Incoming Attack Roll -1d4`). The runtime never writes the penalty onto the attacker or weapon.
+- **Source-to-Target Damage Riders:** Appends a source document's native Damage Activity to the current Attack damage process only when that source Actor controls the matching effect on the single selected target. Hunter's Mark and Hex are the initial adapters; Foe Slayer supplies Hunter's Mark's improved native damage Activity when present.
+- **Bard — Cutting Words:** No automatic popup. A hostile target binds to its latest eligible Attack/Ability/Skill/Tool roll; a friendly target binds to the latest pending Damage message. The approved damage mode subtracts the Bardic die from D&D5e's final calculated damage immediately before HP, after normal resistance/vulnerability/immunity math.
 - **Concentration & Dependent Effects:** After all Character/Item post-roll providers resolve, a failed Concentration save ends concentration through native `Actor.endConcentration()`. Effects bound through D&D5e `dependentOn` are then removed by the system. A post-roll bonus that turns the save into a success preserves concentration.
 
 ## Hit Point Advancement

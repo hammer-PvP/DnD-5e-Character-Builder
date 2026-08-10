@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.9.9i
+
+### Player-sheet integrity, source-target damage riders, Cutting Words, and resource events
+
+- Added optional **Player Character Sheet Integrity**. When enabled, non-GM owners can still use the sheet and spend resources normally, but D&D5e's native/manual UI can no longer refill spell or Pact slots, restore Actor/Item/Activity uses, self-grant Heroic Inspiration, or use chat-card **Refund Resource**. GM changes and legitimate D&D5e recovery remain untouched.
+- Native Actor-sheet creation/drop paths now block player-added structural character content (Class, Subclass, Species/Race, Background, Feat/Feature, and Spell) while leaving ordinary inventory Items available. Character Builder-authorized Advancement/transaction paths remain allowed.
+- Added generic **Source-to-Target Damage Riders**. When an attacker's own source effect is active on the single selected target, Character Builder can append the source document's native Damage Activity to that same D&D5e damage process without modifying the weapon or Actor.
+- Added **Hunter's Mark** as a source-target regression adapter. Its native `Bonus Mark Damage` Activity is appended automatically against the marked target; an owned **Foe Slayer** feature supplies its native improved damage Activity instead, so the d6-to-d10 progression remains source-authored.
+- Added **Hex** as a second source-target regression adapter using the spell's native `Bonus Hex Damage` Activity. The rider is limited to the caster/controller attacking the target that bears that Hex effect.
+- Added an ephemeral cross-client **Recent Roll Registry** built from public D&D5e ChatMessages for manual reaction assistance.
+- Added **Cutting Words** assistance with no automatic result-sensitive popup. Targeting a hostile creature binds Cutting Words to that creature's latest eligible Attack Roll or Ability/Skill/Tool Check and publishes only the original total, Bardic die reduction, and adjusted total. AC, DC, Success, Failure, hit, and miss information are never added to player-facing output.
+- Added the approved simplified Cutting Words damage workflow: targeting a friendly recipient binds to the latest pending Damage message; after D&D5e calculates resistance, vulnerability, immunity, and other native damage math, the Bardic die is subtracted from that final pending amount (minimum 0) in `dnd5e.preApplyDamage`, immediately before HP/temporary HP are updated. This intentionally favors deterministic Foundry behavior over pre-resistance mixed-damage distribution.
+- Cutting Words continues to consume the **canonical Bardic Inspiration Item** through its native D&D5e consumption target. No duplicate or synchronized Cutting Words resource pool is introduced.
+- Added the versioned **Resource Consumption Event** API (`Symbol.for("dnd5e.resource-events.v1")` / `api.resourceEvents`). It publishes the resource that D&D5e actually consumed plus the causing Item/Activity after native consumption completes. Cutting Words therefore reports a Bardic Inspiration consumption event even though a different Activity caused the spend.
+- Resource consumption is intentionally distinct from effect/application semantics. A consumer can react to "Bardic Inspiration was spent" without treating Cutting Words as "Bardic Inspiration was granted to a target." Item-specific listeners remain the responsibility of their owning runtime.
+- Source-target rider rolls are excluded from Great Weapon Fighting's weapon-die floor adjustment so a marked/hexed rider cannot accidentally inherit a weapon-only fighting-style transformation.
+- **Full Details is unchanged from 0.9.9h.** No source-viewer template, resolver, or presentation behavior was modified.
+
 ## 0.9.9h
 
 ### Source-native subclass details and Milestone XP bookkeeping
