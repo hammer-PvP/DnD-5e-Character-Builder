@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.9k
+
+### Roll Queue v3, Concentration finalization, and native Hex application bridge
+
+- Replaced the shared roll queue's timing-based provider-discovery assumption with protocol v3 **claim / enqueue / release** coordination. Providers that need asynchronous eligibility discovery can claim a roll synchronously before their first `await`, preventing terminal finalization until they either enqueue their provider or explicitly release the claim.
+- `enqueue()` now publishes pending state automatically when necessary, so an Item-only provider can participate in the shared queue without depending on a Character Builder provider having already marked the roll.
+- Concentration now opens a deferred lifecycle gate at D&D5e's `postConcentrationRollConfiguration` hook, before the Concentration D20Roll is evaluated. The old fixed 100 ms discovery grace period is removed entirely.
+- The Concentration lifecycle requests finalization only after D&D5e reaches the native post-roll concentration stage, releases only its own lifecycle gate, and calls `Actor.endConcentration()` exclusively from the terminal finalized result. Character/Item discovery claims and queued providers therefore remain authoritative until their decisions complete.
+- Character Builder's own Bardic Inspiration provider now follows the same protocol v3 rule: it claims synchronously before asynchronous source/effect discovery, then releases the discovery claim as soon as its Character-phase provider is registered or ruled out.
+- When a provider changes `currentTotal` without explicitly returning an updated outcome, the queue refreshes its internal numeric outcome from the latest total/target while preserving attack critical/fumble semantics. Hidden outcome data remains internal and is never added to the public finalized snapshot.
+- Cutting Words keeps the already-live-validated disposition workflow (Friendly target = final pending damage reduction; Hostile/Neutral target = latest eligible D20 adjustment). Its D20 mode continues reading the public finalized `currentTotal`, which now represents the true terminal Character/Item provider result when all runtimes participate in protocol v3.
+- Replaced the unsuccessful post-created-message Hex tray patch with a native **effect-application bridge**. If the initial Hex usage omits its effect tray, Character Builder re-enters D&D5e through the source spell's existing no-consumption utility Activity, carries forward the original target/concentration/scaling context, and creates a normal native Effects card containing the six source-authored Hex choices. Character Builder neither chooses nor directly creates the curse effect.
+- Once the GM applies one of the native `Hexed Strength/Dexterity/Constitution/Intelligence/Wisdom/Charisma` effects, the existing source-to-target rider engine remains responsible for attaching Hex's native `Bonus Hex Damage` Activity to attacks by that Hex's controller.
+- Added `docs/ITEM-CREATOR-ROLL-QUEUE-HANDOFF.md` documenting the protocol v3 integration requirements for Item Creator, especially the synchronous claim requirement needed to keep Concentration open while an Item-origin Use/Keep decision is unresolved.
+- Hunter's Mark, Cutting Words final-damage behavior, Player Sheet Integrity, Resource Consumption Events, Bane, Blade Ward, Always Prepared reconciliation, and subclass Full Details are otherwise unchanged. Full Details remains frozen.
+
 ## 0.9.9j
 
 ### Cutting Words finalized-roll handoff and native Hex effect tray reconciliation
