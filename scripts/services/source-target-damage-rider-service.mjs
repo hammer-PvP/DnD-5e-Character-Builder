@@ -2,13 +2,21 @@ import { MODULE_ID } from "../constants.mjs";
 import { RulesAssistanceSettingsService } from "./rules-assistance-settings-service.mjs";
 
 const RULE_ID = "source-target-damage-riders";
+const BINDING_FLAG = "sourceTargetDamageRiderBinding";
 const ADAPTERS = Object.freeze([
-  Object.freeze({ sourceIdentifier: "hunters-mark", status: "marked", upgradeIdentifier: "foe-slayer", effectBridge: null }),
+  Object.freeze({
+    sourceIdentifier: "hunters-mark",
+    status: "marked",
+    upgradeIdentifier: "foe-slayer",
+    effectBridge: null,
+    bindAppliedEffect: false
+  }),
   Object.freeze({
     sourceIdentifier: "hex",
     status: "cursed",
     upgradeIdentifier: null,
-    effectBridge: "native-no-consumption-activity"
+    effectBridge: "native-no-consumption-activity",
+    bindAppliedEffect: true
   })
 ]);
 
@@ -24,6 +32,13 @@ export class SourceTargetDamageRiderService {
   static initialize() {
     if (this.#initialized) return;
     this.#initialized = true;
+    Hooks.on("preCreateActiveEffect", (effect, data) => {
+      try {
+        this.#bindAppliedTargetEffect(effect, data);
+      } catch (error) {
+        console.warn(`${MODULE_ID} | Source-target applied-effect binding failed.`, error);
+      }
+    });
     Hooks.on("dnd5e.preRollDamage", (process, dialog, message) => this.#prepare(process, dialog, message));
     Hooks.on("dnd5e.postUseActivity", (activity, usageConfig, results) => {
       void this.#bridgeNativeEffectApplication(activity, usageConfig, results).catch(error => {
@@ -184,40 +199,144 @@ export class SourceTargetDamageRiderService {
     return ids;
   }
 
+  /**
+   * Capture the source/controller relationship at the exact point where
+   * D&D5e creates the selected native target effect. Hex can reach this hook
+   * through either of two native paths:
+   *   - origin/dependentOn = the caster's Concentration ActiveEffect; or
+   *   - origin/dependentOn = the selected Hex ActiveEffect embedded in the
+   *     caster's Hex Item when an intermediary usage card lost concentration.
+   *
+   * The second shape was the missing case in v0.9.9l. Preserve the native
+   * chosen Hex effect, but repair it back onto the live concentration when it
+   * is discoverable and persist an explicit source-target binding for damage
+   * resolution. Hunter's Mark does not use this repair path.
+   */
+  static #bindAppliedTargetEffect(effect, data) {
+    if (!this.enabled() || !data || typeof data !== "object") return;
+
+    const statuses = new Set(Array.from(data.statuses ?? effect?.statuses ?? []));
+    const candidates = ADAPTERS.filter(adapter => adapter.bindAppliedEffect && (!adapter.status || statuses.has(adapter.status)));
+    if (!candidates.length) return;
+
+    const originUuid = data.origin ?? effect?.origin ?? null;
+    const dependentUuid = foundry.utils.getProperty(data, "flags.dnd5e.dependentOn")
+      ?? effect?.getFlag?.("dnd5e", "dependentOn")
+      ?? null;
+
+    let resolved = this.#sourceFromUuid(originUuid, effect);
+    if (!resolved?.sourceItem && dependentUuid && dependentUuid !== originUuid) {
+      resolved = this.#sourceFromUuid(dependentUuid, effect);
+    }
+    if (!resolved?.controllerActor || !resolved.sourceItem) return;
+
+    const adapter = candidates.find(row => row.sourceIdentifier === resolved.sourceItem.system?.identifier);
+    if (!adapter) return;
+
+    const concentration = this.#concentrationForSourceItem(resolved.controllerActor, resolved.sourceItem);
+    const anchorUuid = concentration?.uuid ?? (resolved.anchorEffect?.parent?.documentName === "Actor"
+      ? resolved.anchorEffect.uuid
+      : null);
+
+    // If D&D5e fell back to Hex.Item.ActiveEffect as the origin, restore the
+    // native concentration dependency. This makes concentration cleanup work
+    // exactly as it does when the original usage card carried the anchor.
+    if (concentration) {
+      data.origin = concentration.uuid;
+      foundry.utils.setProperty(data, "flags.dnd5e.dependentOn", concentration.uuid);
+    }
+
+    foundry.utils.setProperty(data, `flags.${MODULE_ID}.${BINDING_FLAG}`, {
+      version: 1,
+      sourceIdentifier: adapter.sourceIdentifier,
+      controllerActorUuid: resolved.controllerActor.uuid ?? null,
+      sourceItemUuid: resolved.sourceItem.uuid ?? null,
+      anchorUuid
+    });
+
+    this.#record(resolved.controllerActor, {
+      ruleId: RULE_ID,
+      action: "Bound native target effect to source controller",
+      sourceIdentifier: adapter.sourceIdentifier,
+      targetActorUuid: effect?.parent?.uuid ?? null,
+      anchorUuid,
+      repairedConcentrationDependency: Boolean(concentration && originUuid !== concentration.uuid)
+    });
+  }
+
   static #resolveEffectSource(effect) {
-    let origin = null;
-    try {
-      origin = globalThis.fromUuidSync?.(effect.origin, { relative: effect, strict: false }) ?? null;
-    } catch (_error) {}
-
-    if (origin?.documentName === "ActiveEffect" && origin.parent?.documentName === "Actor") {
-      const actor = origin.parent;
-      const itemId = origin.getFlag?.("dnd5e", "item")?.id;
-      const itemUuid = origin.getFlag?.("dnd5e", "item")?.uuid;
-      const sourceItem = actor.items?.get?.(itemId)
-        ?? (itemUuid ? globalThis.fromUuidSync?.(itemUuid, { relative: actor, strict: false }) : null);
-      return { controllerActor: actor, sourceItem };
+    const binding = effect.getFlag?.(MODULE_ID, BINDING_FLAG)
+      ?? effect.flags?.[MODULE_ID]?.[BINDING_FLAG]
+      ?? null;
+    if (binding?.controllerActorUuid && binding?.sourceItemUuid) {
+      const controllerActor = this.#fromUuid(binding.controllerActorUuid, effect);
+      const sourceItem = this.#fromUuid(binding.sourceItemUuid, controllerActor ?? effect);
+      if (controllerActor?.documentName === "Actor" && sourceItem?.documentName === "Item") {
+        return { controllerActor, sourceItem };
+      }
     }
 
-    if (origin?.documentName === "Item" && origin.actor) {
-      return { controllerActor: origin.actor, sourceItem: origin };
-    }
+    const origin = this.#sourceFromUuid(effect.origin, effect);
+    if (origin?.sourceItem) return origin;
 
     const dependent = effect.getFlag?.("dnd5e", "dependentOn");
-    if (dependent) {
-      try {
-        const concentration = globalThis.fromUuidSync?.(dependent, { relative: effect, strict: false });
-        if (concentration?.parent?.documentName === "Actor") {
-          const actor = concentration.parent;
-          const itemId = concentration.getFlag?.("dnd5e", "item")?.id;
-          const itemUuid = concentration.getFlag?.("dnd5e", "item")?.uuid;
-          const sourceItem = actor.items?.get?.(itemId)
-            ?? (itemUuid ? globalThis.fromUuidSync?.(itemUuid, { relative: actor, strict: false }) : null);
-          return { controllerActor: actor, sourceItem };
-        }
-      } catch (_error) {}
-    }
+    const dependency = this.#sourceFromUuid(dependent, effect);
+    if (dependency?.sourceItem) return dependency;
+
     return null;
+  }
+
+  static #sourceFromUuid(uuid, relative) {
+    const document = this.#fromUuid(uuid, relative);
+    if (!document) return null;
+
+    if (document.documentName === "ActiveEffect" && document.parent?.documentName === "Actor") {
+      const actor = document.parent;
+      const itemRef = document.getFlag?.("dnd5e", "item") ?? document.flags?.dnd5e?.item ?? {};
+      const sourceItem = actor.items?.get?.(itemRef.id)
+        ?? this.#fromUuid(itemRef.uuid, actor);
+      return sourceItem ? { controllerActor: actor, sourceItem, anchorEffect: document } : null;
+    }
+
+    // Native D&D5e EffectApplicationElement uses the selected Item-embedded
+    // ActiveEffect as origin whenever its ChatMessage cannot resolve a
+    // concentration effect. This is the Hex shape v0.9.9l did not resolve.
+    if (document.documentName === "ActiveEffect" && document.parent?.documentName === "Item") {
+      const sourceItem = document.parent;
+      const controllerActor = sourceItem.actor ?? sourceItem.parent;
+      if (controllerActor?.documentName === "Actor") {
+        return { controllerActor, sourceItem, anchorEffect: document };
+      }
+    }
+
+    if (document.documentName === "Item" && document.actor) {
+      return { controllerActor: document.actor, sourceItem: document, anchorEffect: null };
+    }
+
+    return null;
+  }
+
+  static #concentrationForSourceItem(actor, sourceItem) {
+    if (!actor || !sourceItem) return null;
+    const concentrating = CONFIG.DND5E?.specialStatusEffects?.CONCENTRATING
+      ?? CONFIG.specialStatusEffects?.CONCENTRATING
+      ?? "concentrating";
+    const effects = Array.from(actor.concentration?.effects ?? actor.effects ?? []);
+    return effects.find(candidate => {
+      if (!candidate || candidate.disabled || candidate.isSuppressed) return false;
+      if (concentrating && !candidate.statuses?.has?.(concentrating)) return false;
+      const itemRef = candidate.getFlag?.("dnd5e", "item") ?? candidate.flags?.dnd5e?.item ?? {};
+      return itemRef.id === sourceItem.id || itemRef.uuid === sourceItem.uuid;
+    }) ?? null;
+  }
+
+  static #fromUuid(uuid, relative) {
+    if (!uuid) return null;
+    try {
+      return globalThis.fromUuidSync?.(uuid, { relative, strict: false }) ?? null;
+    } catch (_error) {
+      return null;
+    }
   }
 
   static #selectRiderActivity(actor, sourceItem, adapter) {
