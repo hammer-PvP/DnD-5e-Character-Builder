@@ -196,6 +196,7 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       halfLongRestRecoveryOnShortRest: form.querySelector('[name="halfLongRestRecoveryOnShortRest"]')?.checked ?? false,
       shortRestHomebrewCooldownMinutes,
       gmManagedRestAccess: form.querySelector('[name="gmManagedRestAccess"]')?.checked ?? false,
+      playerSheetIntegrity: form.querySelector('[name="playerSheetIntegrity"]')?.checked ?? false,
       assistWithDiceAutomation: form.querySelector('[name="assistWithDiceAutomation"]')?.checked ?? false,
       rulesAssistance: foundry.utils.deepClone(storedWorldSettings.rulesAssistance ?? defaultSettings().rulesAssistance),
       hitPointAdvancement: {

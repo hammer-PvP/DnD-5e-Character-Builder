@@ -9,6 +9,9 @@ import { EffectLifecycleService } from "./effect-lifecycle-service.mjs";
 import { NativeContextualEffectService } from "./native-contextual-effect-service.mjs";
 import { NativeSaveGatedEffectService } from "./native-save-gated-effect-service.mjs";
 import { RulesAssistanceSettingsService } from "./rules-assistance-settings-service.mjs";
+import { SourceTargetDamageRiderService } from "./source-target-damage-rider-service.mjs";
+import { CuttingWordsAssistanceService } from "./cutting-words-assistance-service.mjs";
+import { ResourceEventService } from "./resource-event-service.mjs";
 
 const RULES = Object.freeze({
   GREAT_WEAPON_FIGHTING: "great-weapon-fighting",
@@ -39,6 +42,9 @@ export class RulesAssistanceService {
     EffectLifecycleService.initialize();
     NativeContextualEffectService.initialize();
     NativeSaveGatedEffectService.initialize();
+    SourceTargetDamageRiderService.initialize();
+    CuttingWordsAssistanceService.initialize();
+    ResourceEventService.initialize();
 
     Hooks.on("dnd5e.preUseActivity", (activity, usageConfig, dialogConfig, messageConfig) =>
       this.#prepareCast(activity, usageConfig, dialogConfig, messageConfig)
@@ -62,6 +68,7 @@ export class RulesAssistanceService {
     await LayOnHandsAssistanceService.ready();
     await NativeContextualEffectService.ready();
     await NativeSaveGatedEffectService.ready();
+    CuttingWordsAssistanceService.ready();
   }
 
   static enabled() {
@@ -89,6 +96,10 @@ export class RulesAssistanceService {
     return ContextualRollModifierService.api();
   }
 
+  static resourceEventApi() {
+    return ResourceEventService.api();
+  }
+
   static bindManagedEffectData(effectData, lifecycle = {}) {
     return EffectLifecycleService.bindEffectData(effectData, lifecycle);
   }
@@ -108,7 +119,9 @@ export class RulesAssistanceService {
       ...ContextualRollModifierService.diagnostics(actor),
       ...EffectLifecycleService.diagnostics(actor),
       ...NativeContextualEffectService.diagnostics(actor),
-      ...NativeSaveGatedEffectService.diagnostics(actor)
+      ...NativeSaveGatedEffectService.diagnostics(actor),
+      ...SourceTargetDamageRiderService.diagnostics(actor),
+      ...CuttingWordsAssistanceService.diagnostics(actor)
     ].sort((a, b) => Number(a.at ?? 0) - Number(b.at ?? 0));
   }
 
@@ -177,7 +190,8 @@ export class RulesAssistanceService {
     if (!this.enabled() || !rollConfig) return;
     const context = process?.dnd5eCharacterBuilderRulesAssistance ?? {};
 
-    if (context.greatWeaponFighting && this.ruleEnabled(RULES.GREAT_WEAPON_FIGHTING)) {
+    if (context.greatWeaponFighting && this.ruleEnabled(RULES.GREAT_WEAPON_FIGHTING)
+      && !rollConfig.options?.dnd5eCharacterBuilderDamageRider) {
       this.#applyGreatWeaponFighting(process, rollConfig, index);
     }
     if (index !== 0) return;

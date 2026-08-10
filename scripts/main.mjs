@@ -22,6 +22,7 @@ import { ShortRestHomebrewService } from "./services/short-rest-homebrew-service
 import { SharedRollResolutionQueueService } from "./services/shared-roll-resolution-queue-service.mjs";
 import { NativeFeatureCompatibilityService } from "./services/native-feature-compatibility-service.mjs";
 import { RestAccessService } from "./services/rest-access-service.mjs";
+import { PlayerSheetIntegrityService } from "./services/player-sheet-integrity-service.mjs";
 
 let scribeIconPromise = null;
 
@@ -62,6 +63,7 @@ Hooks.once("init", async () => {
 
 
   RulesAssistanceService.initialize();
+  PlayerSheetIntegrityService.initialize();
 
   game.settings.register(MODULE_ID, "tutorialForceRevision", {
     scope: "world",
@@ -115,6 +117,7 @@ Hooks.once("init", async () => {
     rulesAssistanceDiagnostics: actor => RulesAssistanceService.diagnostics(actor),
     rollResolutionQueue: SharedRollResolutionQueueService.api(),
     contextualRollModifiers: RulesAssistanceService.contextualRollModifierApi(),
+    resourceEvents: RulesAssistanceService.resourceEventApi(),
     contextualEffects: Object.freeze({
       bindEffectData: (effectData, lifecycle = {}) => RulesAssistanceService.bindManagedEffectData(effectData, lifecycle),
       createEffect: (actor, effectData, lifecycle = {}) => RulesAssistanceService.createManagedEffect(actor, effectData, lifecycle)
@@ -176,13 +179,15 @@ Hooks.once("ready", async () => {
   await SplashTutorialService.initializeForCurrentUser();
 });
 
-Hooks.on("preCreateItem", (item, data, options) =>
-  ClassProgressionGuard.blockDirectCreate(item, data, options)
-);
+Hooks.on("preCreateItem", (item, data, options) => {
+  return ClassProgressionGuard.blockDirectCreate(item, data, options);
+});
 
-Hooks.on("dnd5e.preAdvancementManagerComplete", (manager, updates, toCreate, toUpdate, toDelete) =>
-  ClassProgressionGuard.blockNativeAdvancement(manager, updates, toCreate, toUpdate, toDelete)
-);
+Hooks.on("dnd5e.preAdvancementManagerComplete", (manager, updates, toCreate, toUpdate, toDelete) => {
+  const integrity = PlayerSheetIntegrityService.blockNativeAdvancement(manager, updates, toCreate, toUpdate, toDelete);
+  if (integrity === false) return false;
+  return ClassProgressionGuard.blockNativeAdvancement(manager, updates, toCreate, toUpdate, toDelete);
+});
 
 Hooks.on("dnd5e.preShortRest", (actor, config) => interceptRest(actor, "short", config));
 Hooks.on("dnd5e.preLongRest", (actor, config) => interceptRest(actor, "long", config));
@@ -348,6 +353,7 @@ function renderCharacterActorSheetControls(app, element) {
   replaceNativeClassEntryControls(actor, root);
   injectScribeSpellButton(actor, root);
   configureManagedRestButtons(actor, root);
+  PlayerSheetIntegrityService.protectSheet(actor, root);
   injectCantripAugmentAnnotations(actor, root);
   injectInvocationTargetAnnotations(actor, root);
   injectAdvancementChoiceAnnotations(actor, root);

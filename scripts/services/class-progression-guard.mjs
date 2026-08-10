@@ -35,7 +35,7 @@ export class ClassProgressionGuard {
   static blockDirectCreate(item, _data, options = {}) {
     const actor = item?.parent;
     if (!this.isProtectedActor(actor) || !this.isClassProgressionItem(item)) return;
-    if (this.isAuthorized(options)) return;
+    if (game.user?.isGM || this.isAuthorized(options)) return;
 
     // Native sheet and drag/drop creation keeps the source Item ID. Limit this
     // guard to those interactive paths (and native Advancement completion) so
@@ -47,7 +47,7 @@ export class ClassProgressionGuard {
 
   static blockNativeAdvancement(manager, _updates, toCreate = []) {
     const actor = manager?.actor;
-    if (!this.isProtectedActor(actor) || this.isAuthorized(manager?.options ?? {})) return;
+    if (!this.isProtectedActor(actor) || game.user?.isGM || this.isAuthorized(manager?.options ?? {})) return;
     if (!toCreate.some(data => this.isClassProgressionItem(data))) return;
     ui.notifications.warn("Class and subclass content must be added through Character Builder.");
     return false;

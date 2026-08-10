@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.9h";
-export const MODULE_BUILD = "community-beta-099h-source-details-milestone-xp";
+export const MODULE_VERSION = "0.9.9i";
+export const MODULE_BUILD = "community-beta-099i-runtime-integrity-reactions-riders";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -131,6 +131,20 @@ export const RULES_ASSISTANCE_DEFINITIONS = Object.freeze([
     tag: "Roll Context"
   }),
   Object.freeze({
+    key: "sourceTargetDamageRiders",
+    ruleId: "source-target-damage-riders",
+    label: "Source-to-Target Damage Riders",
+    description: "Adds native damage rider Activities when the attacker's own mark or curse is active on the selected target. Hunter's Mark and Hex use this generic relationship.",
+    tag: "Damage Context"
+  }),
+  Object.freeze({
+    key: "cuttingWordsReaction",
+    ruleId: "cutting-words-reaction",
+    label: "Bard — Cutting Words",
+    description: "Supports manual Cutting Words against the latest eligible hostile D20 roll or final pending damage to a friendly target, without automatic result-revealing prompts.",
+    tag: "Reaction"
+  }),
+  Object.freeze({
     key: "concentrationEffectLifecycle",
     ruleId: "concentration-effect-lifecycle",
     label: "Concentration & Dependent Effects",
@@ -230,6 +244,7 @@ export function defaultSettings() {
     halfLongRestRecoveryOnShortRest: false,
     shortRestHomebrewCooldownMinutes: 5,
     gmManagedRestAccess: false,
+    playerSheetIntegrity: false,
     assistWithDiceAutomation: false,
     rulesAssistance: {
       rules: defaultRulesAssistanceRules()

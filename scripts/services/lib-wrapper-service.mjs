@@ -1,6 +1,14 @@
 import { MODULE_ID } from "../constants.mjs";
+import { PlayerSheetIntegrityService } from "./player-sheet-integrity-service.mjs";
 
 const ADVANCEMENT_CLOSE_TARGET = "dnd5e.applications.advancement.AdvancementManager.prototype._onClose";
+const ACTOR_SHEET_ADD_TARGET = "dnd5e.applications.actor.BaseActorSheet.prototype._addDocument";
+const ACTOR_SHEET_DROP_TARGET = "dnd5e.applications.actor.BaseActorSheet.prototype._onDropCreateItems";
+const ACTIVITY_REFUND_TARGETS = Object.freeze([
+  "AttackActivity", "CastActivity", "CheckActivity", "DamageActivity", "EnchantActivity",
+  "ForwardActivity", "HealActivity", "OrderActivity", "SaveActivity", "SummonActivity",
+  "TransformActivity", "UtilityActivity"
+].map(name => `dnd5e.documents.activity.${name}.prototype.refund`));
 
 /**
  * Central libWrapper integration point.
@@ -64,6 +72,43 @@ export class LibWrapperService {
         },
         "WRAPPER"
       );
+      api.register(
+        MODULE_ID,
+        ACTOR_SHEET_ADD_TARGET,
+        function (wrapped, ...args) {
+          if (!PlayerSheetIntegrityService.mayAddDocumentFromNativeSheet(this)) return undefined;
+          return wrapped(...args);
+        },
+        "WRAPPER"
+      );
+      api.register(
+        MODULE_ID,
+        ACTOR_SHEET_DROP_TARGET,
+        function (wrapped, event, items, behavior, ...args) {
+          const allowed = PlayerSheetIntegrityService.filterNativeDropItems(this, items ?? []);
+          if (!allowed.length) return [];
+          return wrapped(event, allowed, behavior, ...args);
+        },
+        "WRAPPER"
+      );
+      for (const target of ACTIVITY_REFUND_TARGETS) {
+        try {
+          api.register(
+            MODULE_ID,
+            target,
+            function (wrapped, ...args) {
+              if (!PlayerSheetIntegrityService.mayRefund(this)) return undefined;
+              return wrapped(...args);
+            },
+            "WRAPPER"
+          );
+        } catch (error) {
+          // Some activity classes inherit the method without libWrapper exposing
+          // an independent target. UI protection still applies; log the exact
+          // class so conflict reports remain actionable.
+          console.warn(`${MODULE_ID} | Could not register resource-refund wrapper for ${target}.`, error);
+        }
+      }
       this.#registered = true;
       return true;
     } catch (error) {
