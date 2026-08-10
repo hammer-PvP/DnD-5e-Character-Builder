@@ -8,14 +8,14 @@ const ADAPTERS = Object.freeze([
     sourceIdentifier: "hunters-mark",
     status: "marked",
     upgradeIdentifier: "foe-slayer",
-    effectBridge: null,
+    effectApplication: null,
     bindAppliedEffect: false
   }),
   Object.freeze({
     sourceIdentifier: "hex",
     status: "cursed",
     upgradeIdentifier: null,
-    effectBridge: "native-no-consumption-activity",
+    effectApplication: "direct-native-choice",
     bindAppliedEffect: true
   })
 ]);
@@ -41,8 +41,8 @@ export class SourceTargetDamageRiderService {
     });
     Hooks.on("dnd5e.preRollDamage", (process, dialog, message) => this.#prepare(process, dialog, message));
     Hooks.on("dnd5e.postUseActivity", (activity, usageConfig, results) => {
-      void this.#bridgeNativeEffectApplication(activity, usageConfig, results).catch(error => {
-        console.warn(`${MODULE_ID} | Source-target native effect bridge failed.`, error);
+      void this.#handleNativeTargetEffectApplication(activity, usageConfig, results).catch(error => {
+        console.warn(`${MODULE_ID} | Source-target native effect application failed.`, error);
       });
     });
   }
@@ -112,76 +112,180 @@ export class SourceTargetDamageRiderService {
     if (seen.size) process.dnd5eCharacterBuilderSourceTargetRidersApplied = true;
   }
 
-  static async #bridgeNativeEffectApplication(activity, usageConfig, results) {
-    if (!this.enabled() || usageConfig?.dnd5eCharacterBuilderEffectBridge) return;
+  static async #handleNativeTargetEffectApplication(activity, usageConfig, results) {
+    if (!this.enabled() || usageConfig?.dnd5eCharacterBuilderEffectPrompt) return;
+
     const sourceIdentifier = activity?.item?.system?.identifier;
     const adapter = ADAPTERS.find(row => row.sourceIdentifier === sourceIdentifier);
-    if (!adapter?.effectBridge) return;
-
-    // If D&D5e already produced its native EffectApplicationElement, preserve
-    // it exactly as-is. The bridge exists only for the source path where the
-    // initial spell-use message omitted its declared effect tray.
-    const message = results?.message;
-    if (Array.isArray(message?.system?.effects) && message.system.effects.length) return;
-
-    const liveItem = activity?.actor?.items?.get?.(activity.item?.id) ?? null;
-    if (!liveItem) return;
+    if (adapter?.effectApplication !== "direct-native-choice") return;
 
     const declaredEffectIds = this.#declaredEffectIds(activity);
     if (!declaredEffectIds.length) return;
 
-    // Re-enter D&D5e through an existing no-consumption Activity that declares
-    // the same native effects. Hex 2024 provides "Curse New Creature" for this
-    // purpose. We do not create an Active Effect ourselves; D&D5e creates a
-    // normal Usage ChatMessage and its native EffectApplicationElement remains
-    // responsible for the player's choice and GM application.
-    const activities = liveItem.system?.activities?.contents
-      ?? Array.from(liveItem.system?.activities?.values?.() ?? liveItem.system?.activities ?? []);
-    const helper = activities.find(candidate => {
-      if (!candidate || candidate.id === activity.id || candidate.type !== "utility") return false;
-      if (candidate.consumption?.spellSlot === true) return false;
-      const candidateIds = this.#declaredEffectIds(candidate);
-      return declaredEffectIds.every(id => candidateIds.includes(id));
-    });
-    if (!helper?.use) return;
+    const sourceActor = activity?.actor;
+    const liveItem = sourceActor?.items?.get?.(activity.item?.id) ?? null;
+    if (!sourceActor || !liveItem) return;
 
-    const system = {};
-    system.effects = declaredEffectIds.map(id => `.ActiveEffect.${id}`);
-    if (message?.system?.concentration) system.concentration = message.system.concentration;
-    if (message?.system?.spellLevel != null) system.spellLevel = message.system.spellLevel;
-    if (message?.system?.scaling != null) system.scaling = foundry.utils.deepClone(message.system.scaling);
+    const effects = declaredEffectIds
+      .map(id => liveItem.effects?.get?.(id))
+      .filter(effect => effect && (!adapter.status || effect.statuses?.has?.(adapter.status)));
+    if (!effects.length) return;
 
-    const originalTargets = foundry.utils.getProperty(message, "flags.dnd5e.targets")
-      ?? message?.getFlag?.("dnd5e", "targets")
-      ?? null;
-    const messageData = { system };
-    if (originalTargets != null) {
-      foundry.utils.setProperty(messageData, "flags.dnd5e.targets", foundry.utils.deepClone(originalTargets));
+    const message = results?.message ?? null;
+    const targets = this.#resolveUsageTargetActors(message);
+    if (targets.length !== 1) {
+      ui.notifications?.warn?.(`${liveItem.name}: target exactly one creature before using this activity.`);
+      this.#record(sourceActor, {
+        ruleId: RULE_ID,
+        action: "Skipped native target-effect choice because target count was not one",
+        sourceIdentifier,
+        targetCount: targets.length
+      });
+      return;
     }
 
-    const bridgeResults = await helper.use({
-      consume: false,
-      concentration: { begin: false },
-      scaling: message?.system?.scaling ?? 0,
-      subsequentActions: false,
-      dnd5eCharacterBuilderEffectBridge: true
-    }, {
-      configure: false
-    }, {
-      create: true,
-      data: messageData
-    });
+    // The native D&D5e usage card can retain effect UUIDs without rendering a
+    // usable EffectApplicationElement in this Hex path. The Character Builder
+    // owns the choice for this adapter, so clear the unusable tray payload and
+    // present one deterministic choice instead of creating a second usage card.
+    if (message?.update && Array.isArray(message.system?.effects) && message.system.effects.length) {
+      try {
+        await message.update({ "system.effects": [] });
+      } catch (error) {
+        console.warn(`${MODULE_ID} | Could not clear the unused native Hex effect tray.`, error);
+      }
+    }
 
-    this.#record(activity.actor, {
-      ruleId: RULE_ID,
-      action: "Created native effect-application bridge",
-      sourceIdentifier,
-      sourceActivityId: activity.id ?? null,
-      bridgeActivityId: helper.id ?? null,
-      effectCount: declaredEffectIds.length,
-      sourceMessageId: message?.id ?? null,
-      bridgeMessageId: bridgeResults?.message?.id ?? null
+    const targetActor = targets[0];
+    const chosen = await this.#chooseNativeTargetEffect(liveItem, targetActor, effects);
+    if (!chosen) {
+      this.#record(sourceActor, {
+        ruleId: RULE_ID,
+        action: "Native target-effect choice canceled",
+        sourceIdentifier,
+        targetActorUuid: targetActor.uuid ?? null
+      });
+      return;
+    }
+
+    const concentrationId = message?.system?.concentration ?? null;
+    const concentration = sourceActor.effects?.get?.(concentrationId)
+      ?? this.#concentrationForSourceItem(sourceActor, liveItem);
+    if (!concentration) {
+      ui.notifications?.warn?.(`${liveItem.name}: the active concentration effect could not be found, so the curse was not applied.`);
+      this.#record(sourceActor, {
+        ruleId: RULE_ID,
+        action: "Skipped native target effect because concentration was unavailable",
+        sourceIdentifier,
+        targetActorUuid: targetActor.uuid ?? null,
+        chosenEffectId: chosen.id ?? null
+      });
+      return;
+    }
+
+    const applied = await this.#applyNativeTargetEffect(chosen, targetActor, {
+      concentration,
+      message,
+      sourceItem: liveItem
     });
+    if (!applied) return;
+
+    this.#record(sourceActor, {
+      ruleId: RULE_ID,
+      action: "Applied selected native target effect",
+      sourceIdentifier,
+      targetActorUuid: targetActor.uuid ?? null,
+      chosenEffectId: chosen.id ?? null,
+      appliedEffectUuid: applied.uuid ?? null,
+      anchorUuid: concentration.uuid ?? null
+    });
+  }
+
+  static #resolveUsageTargetActors(message) {
+    const actors = [];
+    const seen = new Set();
+    const push = actor => {
+      if (!actor?.uuid || seen.has(actor.uuid)) return;
+      seen.add(actor.uuid);
+      actors.push(actor);
+    };
+
+    const descriptors = foundry.utils.getProperty(message, "flags.dnd5e.targets")
+      ?? message?.getFlag?.("dnd5e", "targets")
+      ?? [];
+    for (const descriptor of Array.from(descriptors ?? [])) {
+      const uuid = typeof descriptor === "string" ? descriptor : descriptor?.uuid;
+      const document = this.#fromUuid(uuid, message);
+      if (document?.documentName === "Actor") push(document);
+      else if (document?.actor?.documentName === "Actor") push(document.actor);
+    }
+
+    if (!actors.length) {
+      for (const token of Array.from(game.user?.targets ?? [])) push(token?.actor);
+    }
+    return actors;
+  }
+
+  static async #chooseNativeTargetEffect(sourceItem, targetActor, effects) {
+    const DialogV2 = foundry.applications?.api?.DialogV2;
+    if (!DialogV2?.wait) {
+      ui.notifications?.warn?.(`${sourceItem.name}: Foundry DialogV2 is unavailable, so the curse choice could not be shown.`);
+      return null;
+    }
+
+    const targetName = foundry.utils.escapeHTML(targetActor?.name ?? "target");
+    const content = `<div class="character-builder-prompt">
+      <p>Choose the ability that <strong>${foundry.utils.escapeHTML(sourceItem.name)}</strong> curses on <strong>${targetName}</strong>.</p>
+      <p>The selected native D&D5e effect will be applied to that target and linked to this concentration.</p>
+    </div>`;
+
+    const buttons = effects.map(effect => ({
+      action: `effect-${effect.id}`,
+      label: String(effect.name ?? "Curse").replace(/^Hexed\s+/i, ""),
+      icon: "fa-solid fa-bolt"
+    }));
+    buttons.push({ action: "cancel", label: "Cancel", icon: "fa-solid fa-xmark" });
+
+    const action = await DialogV2.wait({
+      window: { title: `${sourceItem.name} — Choose Curse`, modal: true },
+      content,
+      buttons,
+      close: () => "cancel"
+    });
+    if (!action || action === "cancel") return null;
+    const id = String(action).replace(/^effect-/, "");
+    return effects.find(effect => effect.id === id) ?? null;
+  }
+
+  static async #applyNativeTargetEffect(effect, targetActor, { concentration, message, sourceItem }) {
+    if (!game.user?.isGM && !targetActor?.isOwner) {
+      ui.notifications?.warn?.(`${sourceItem.name}: you do not have permission to apply an effect to ${targetActor?.name ?? "that target"}.`);
+      return null;
+    }
+
+    const origin = concentration ?? effect;
+    const existing = Array.from(targetActor.effects ?? []).find(candidate =>
+      !candidate?.disabled && candidate.origin === origin.uuid
+    );
+    if (existing) return existing;
+
+    const effectFlags = {
+      flags: {
+        dnd5e: {
+          dependentOn: origin.uuid,
+          scaling: message?.system?.scaling ?? 0,
+          spellLevel: message?.system?.spellLevel ?? sourceItem.system?.level ?? null
+        }
+      }
+    };
+    const effectData = foundry.utils.mergeObject({
+      ...effect.toObject(),
+      disabled: false,
+      transfer: false,
+      origin: origin.uuid
+    }, effectFlags, { inplace: false });
+
+    return ActiveEffect.implementation.create(effectData, { parent: targetActor });
   }
 
   static #declaredEffectIds(activity) {
