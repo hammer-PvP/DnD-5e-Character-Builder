@@ -33,6 +33,27 @@ OR
 
 A timeout exists only as a failsafe for abandoned claims. It is not the normal finalization mechanism.
 
+### Discovery barrier guarantee
+
+An active claim blocks **provider execution as well as finalization**. Providers may enqueue while one or more discoveries are unresolved, but the queue does not begin draining until all active discovery claims for that roll are released. This allows slower Character-phase discovery and faster Item-phase discovery to converge before canonical priority ordering begins:
+
+```text
+CB claim
+IC claim
+→ IC discovers first and enqueues Items 300
+→ IC release
+→ CB claim still active, so nothing executes
+→ CB discovers and enqueues Character 200
+→ CB release
+→ claims = 0
+→ Character 200 executes
+→ Items 300 executes
+```
+
+The drain selects **one provider at a time** and re-sorts the live entries after each provider completes. If a new earlier-phase provider is discovered while another provider Promise is open, it can still take its correct place before a waiting later-phase provider.
+
+A claim opened after a provider has already started cannot retroactively preempt that provider. It does, however, pause execution before the next provider is selected. For deterministic initial ordering, every runtime that may perform asynchronous discovery must therefore claim synchronously from the relevant D&D5e roll hook before its first `await`.
+
 ## Public API
 
 ```js
@@ -45,7 +66,16 @@ The compatibility symbol remains:
 Symbol.for("dnd5e.roll-resolution-queue.v1")
 ```
 
-The API reports `version: 3` and exposes:
+The API reports `version: 3`. A conforming v3 implementation also exposes:
+
+```js
+queue.capabilities.discoveryBarrier === true
+queue.capabilities.dynamicPriorityDrain === true
+```
+
+External runtimes should require `discoveryBarrier === true` before enabling asynchronous v3 claim integration. Character Builder v0.9.9k exposed `version: 3` but did not yet enforce claims as an execution barrier; v0.9.9l is the first conforming implementation for this guarantee.
+
+The API exposes:
 
 - `enqueue(options)`
 - `markPending(options)`
@@ -61,7 +91,7 @@ The API reports `version: 3` and exposes:
 
 ## Async discovery rule
 
-If a provider performs **any await before it knows whether it will enqueue**, it must claim synchronously from the D&D5e roll hook before the first await.
+If a provider performs **any await before it knows whether it will enqueue**, it must claim synchronously from the D&D5e roll hook before the first await. This synchronous claim participates in the discovery barrier and is what guarantees that a faster later phase cannot execute before a slower earlier phase has finished discovery.
 
 ```js
 const claim = queue.claim({
@@ -194,7 +224,7 @@ Hooks.on("dnd5e-character-builder.rollResolutionPending", (payload, roll) => {})
 Hooks.on("dnd5e-character-builder.rollResolutionFinalized", (payload, roll) => {});
 ```
 
-The finalized hook means **terminal**: no queued provider or active discovery claim remains for that roll.
+The finalized hook means **terminal**: no queued provider or active discovery claim remains for that roll. In v0.9.9l, the same active claims also prevent provider drain from starting, so terminal order and execution order use the same discovery barrier.
 
 ## Structured internal payload
 

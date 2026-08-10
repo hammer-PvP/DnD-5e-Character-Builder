@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.9l
+
+### Roll Queue v3 discovery-barrier ordering hotfix
+
+- Fixed a protocol-v3 ordering race found during Item Creator integration review. Active `claim()` handles now block **provider execution**, not only terminal finalization, so asynchronously discovered providers from later phases cannot run before slower discovery in an earlier phase completes.
+- The queue now treats claims as a true **discovery barrier**: providers may enqueue while claims are active, but execution begins only after the last active discovery claim is released or expires through the existing failsafe. No millisecond discovery delay was added.
+- Reworked the drain to select and execute exactly **one live provider at a time**, re-sorting the remaining queue after every provider. A newly enqueued Character-phase provider can therefore still run before an already-waiting Item-phase provider when it is discovered while an earlier provider Promise is open.
+- `release()` and claim failsafe expiry now wake providers waiting behind the discovery barrier. If a claim opens while a provider is already running, it cannot retroactively preempt that provider, but it pauses the queue before the next provider is selected.
+- The public queue remains protocol `version: 3` because the documented v3 contract already required ordered claim/discovery behavior; v0.9.9k was a non-conforming implementation. v0.9.9l adds explicit API capabilities `discoveryBarrier` and `dynamicPriorityDrain` so external runtimes can distinguish the corrected implementation without checking Character Builder version strings.
+- Updated the Roll Resolution Protocol and Item Creator handoff. Item Creator should require `queue.version >= 3` **and** `queue.capabilities.discoveryBarrier === true` before enabling v3 claim-based integration.
+- Concentration lifecycle, Bardic Inspiration claim/release behavior, Cutting Words, Hex bridge, Hunter's Mark, Player Sheet Integrity, Resource Events, and frozen Full Details are otherwise unchanged from v0.9.9k.
+
 ## 0.9.9k
 
 ### Roll Queue v3, Concentration finalization, and native Hex application bridge
