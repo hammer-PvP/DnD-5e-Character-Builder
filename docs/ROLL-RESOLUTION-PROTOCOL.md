@@ -132,3 +132,9 @@ Post-roll decisions that can imply a hidden outcome should follow the same UX co
 ## Responsibility boundary
 
 The protocol coordinates ordering and privacy semantics only. Character Builder controls native character-origin assistance that D&D5e does not automate adequately. The Item Creator runtime remains authoritative for effects originating from personalized Items, including their duration, turn tracking, use limits, consumption, expiration, and removal. Item Creator-specific implementation belongs to that module; Character Builder does not implement or mutate Item Creator effects.
+
+## Public finalized-total handoff (v0.9.9j)
+
+When a roll finishes all shared-queue providers after its D&D5e ChatMessage already exists, Character Builder mirrors a deliberately public-safe snapshot to `flags.dnd5e-character-builder.publicRollResolution`. The snapshot contains roll identity/type plus `originalTotal`, finalized `currentTotal`, and finalized state only. Hidden target/DC and success/failure state are never copied to the ChatMessage flag.
+
+This lets manual later reactions such as Cutting Words read the total that Item-origin providers actually finalized without rerunning those providers or exposing hidden adjudication data. The Recent Roll Registry reconciles both ChatMessage creation and later updates; if the public finalized snapshot is absent, it falls back to the native roll total.

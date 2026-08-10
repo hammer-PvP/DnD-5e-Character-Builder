@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.9j
+
+### Cutting Words finalized-roll handoff and native Hex effect tray reconciliation
+
+- Cutting Words hostile/D20 assistance now reads the **latest finalized `currentTotal`** from the shared roll-resolution queue when available, instead of always using the ChatMessage's original base roll. Item-origin modifiers that participate in the shared queue therefore resolve first and Cutting Words subtracts from that already-resolved total without rerunning any provider.
+- The shared queue now mirrors only a **public-safe finalized snapshot** (`originalTotal`, `currentTotal`, roll identity/type, finalized state) onto the originating ChatMessage. Hidden target/DC and success/failure data are never written to that public coordination flag.
+- The Recent Roll Registry reconciles ChatMessage updates as well as creation, so a roll captured before Item Creator or another later-phase provider finishes is updated in place when the finalized total arrives on all clients. If no finalized snapshot exists, the original D&D5e roll total remains the fallback.
+- Reformatted the Cutting Words D20 result card to show the target, roll category, resolved total, Bardic die reduction, and adjusted total on separate lines. It still never reports hit/miss, success/failure, AC, or DC.
+- Added a surgical source-effect tray reconciliation for source-target rider adapters. If a declared native Activity has applicable Active Effects but its usage ChatMessage omitted the effect references, Character Builder restores those references and lets D&D5e's own `EffectApplicationElement` render/apply them.
+- **Hex** therefore retains its native six-choice workflow (`Hexed Strength`, Dexterity, Constitution, Intelligence, Wisdom, Charisma): Character Builder does not choose or auto-apply a curse. Once the GM applies the selected native Hex effect, the existing source-to-target rider runtime can add the spell's native `Bonus Hex Damage`.
+- Hunter's Mark source-target damage behavior, Cutting Words friendly/final-damage reduction, canonical Bardic Inspiration consumption, Resource Consumption Events, Player Sheet Integrity, and Full Details are otherwise unchanged.
+
 ## 0.9.9i
 
 ### Player-sheet integrity, source-target damage riders, Cutting Words, and resource events
