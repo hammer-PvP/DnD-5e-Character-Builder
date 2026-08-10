@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.9n
+
+### Hex native applied-effect source binding hotfix
+
+- Fixed the remaining Hex 2024 source-to-target automation gap without changing the working Hunter's Mark path. D&D5e can create a selected Hex target effect with its source shaped as `Actor → Item Hex → ActiveEffect Hexed <Ability>` when an intermediary usage card cannot resolve the original concentration. v0.9.9l did not recognize that native origin shape.
+- The Hex adapter now captures the controller/source relationship at `preCreateActiveEffect`, after the GM has chosen one of D&D5e's native six Hex effects but before that effect is created on the target. Character Builder does not choose, replace, or synthesize `Hexed Strength/Dexterity/Constitution/Intelligence/Wisdom/Charisma`.
+- When the selected Hex effect arrives through the Item-embedded ActiveEffect fallback, Character Builder resolves the owning Warlock and live Hex Item, reconnects `origin` / `flags.dnd5e.dependentOn` to the matching native Concentration effect when available, and stores a small source-target binding on the created target effect.
+- Damage resolution reads that explicit binding first and then retains the previous native-origin/dependency resolver as fallback. Only attacks made by the Hex controller against the single target bearing that Hex can receive the spell's own `Bonus Hex Damage` Activity. Formula, damage type, critical handling, and concentration cleanup remain D&D5e/source-authored.
+- Hunter's Mark is explicitly excluded from the new applied-effect binding path and continues using the already validated v0.9.9l resolver. Shared Roll Queue v3, delayed concentration finalization, Cutting Words, Bardic Inspiration, Player Sheet Integrity, Resource Events, and all other rules-assistance paths are unchanged.
+
 ## 0.9.9l
 
 ### Roll Queue v3 discovery-barrier ordering hotfix

@@ -1,6 +1,6 @@
 # Character Builder Settings Reference
 
-This reference documents every visible Character Builder setting in v0.9.9l. Unless stated otherwise, settings are **world settings**, can be changed only by a Game Master, and do not require a server restart. Saving the settings window affects future Character Creation, Level Up, Character Keeper, or runtime-assistance operations; it does not retroactively delete character content.
+This reference documents every visible Character Builder setting in v0.9.9n. Unless stated otherwise, settings are **world settings**, can be changed only by a Game Master, and do not require a server restart. Saving the settings window affects future Character Creation, Level Up, Character Keeper, or runtime-assistance operations; it does not retroactively delete character content.
 
 ## Splash Tutorial
 
@@ -266,7 +266,7 @@ Each rule is enabled by default inside the saved rule set, but does nothing whil
 - **Agonizing Blast Native Binding:** Maintains the native enchantment on the cantrip selected by the Invocation.
 - **Paladin — Lay on Hands: Remove Poison:** After the native activity successfully spends its Lay on Hands cost, removes the native `Poisoned` status from the single recorded target using the D&D5e status API.
 - **Contextual Roll Modifiers:** Reads declarative modifiers from active effects on the roller or the single current target and applies them only to the current native roll. Blade Ward 2024 is the first official adapter (`Incoming Attack Roll -1d4`). The runtime never writes the penalty onto the attacker or weapon.
-- **Source-to-Target Damage Riders:** Appends a source document's native Damage Activity to the current Attack damage process only when that source Actor controls the matching effect on the single selected target. Hunter's Mark and Hex are the initial adapters; Foe Slayer supplies Hunter's Mark's improved native damage Activity when present.
+- **Source-to-Target Damage Riders:** Appends a source document's native Damage Activity to the current Attack damage process only when that source Actor controls the matching effect on the single selected target. Hunter's Mark and Hex are the initial adapters; Foe Slayer supplies Hunter's Mark's improved native damage Activity when present. Hex also records the controller/source binding when D&D5e creates the GM-selected native `Hexed <Ability>` target effect, repairing its concentration dependency if an intermediary native usage card lost that anchor.
 - **Bard — Cutting Words:** No automatic popup. A hostile target binds to its latest eligible Attack/Ability/Skill/Tool roll; a friendly target binds to the latest pending Damage message. The approved damage mode subtracts the Bardic die from D&D5e's final calculated damage immediately before HP, after normal resistance/vulnerability/immunity math.
 - **Concentration & Dependent Effects:** After all Character/Item post-roll providers resolve, a failed Concentration save ends concentration through native `Actor.endConcentration()`. Effects bound through D&D5e `dependentOn` are then removed by the system. A post-roll bonus that turns the save into a success preserves concentration.
 
