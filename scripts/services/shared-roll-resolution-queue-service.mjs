@@ -91,10 +91,7 @@ export class SharedRollResolutionQueueService {
       });
     });
 
-    if (!batch.scheduled && !batch.running) {
-      batch.scheduled = true;
-      queueMicrotask(() => void this.#drain(state, batch));
-    }
+    this.#scheduleDrain(state, batch);
     return result;
   }
 
@@ -196,6 +193,10 @@ export class SharedRollResolutionQueueService {
           providerId: claim.providerId,
           reason: claim.reason
         });
+        // A claim is a discovery barrier, not only a finalization gate. If a
+        // failsafe releases the last discovery claim, wake any ordered
+        // providers that were intentionally waiting behind that barrier.
+        this.#scheduleDrain(state, live);
         this.#maybeFinalizeOrCleanup(state, live);
       }, timeoutMs);
     }
@@ -244,6 +245,10 @@ export class SharedRollResolutionQueueService {
       succeeded
     });
     if (Array.isArray(adjustments)) batch.context.adjustments.push(...this.#normalizeAdjustments(adjustments));
+    // Releasing the final discovery claim opens the execution barrier. Entries
+    // accumulated by slower/faster modules can now be compared together and
+    // executed in canonical priority order.
+    this.#scheduleDrain(state, batch);
     this.#maybeFinalizeOrCleanup(state, batch);
     return true;
   }
@@ -384,6 +389,10 @@ export class SharedRollResolutionQueueService {
     state.api = Object.freeze({
       version: 3,
       symbol: "dnd5e.roll-resolution-queue.v1",
+      capabilities: Object.freeze({
+        discoveryBarrier: true,
+        dynamicPriorityDrain: true
+      }),
       phases: PHASE_PRIORITIES,
       hooks: Object.freeze({ pending: PENDING_HOOK, finalized: FINALIZED_HOOK }),
       enqueue: options => SharedRollResolutionQueueService.enqueue(options),
@@ -661,59 +670,98 @@ export class SharedRollResolutionQueueService {
     return `roll:${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}:${state.sequence++}`}`;
   }
 
+  /**
+   * Schedule provider execution only when the discovery barrier is open.
+   * Claims deliberately allow entries to accumulate without executing so that
+   * asynchronously discovered Character (200) and Item (300) providers can be
+   * compared in one canonical priority space.
+   */
+  static #scheduleDrain(state, batch) {
+    if (!batch || batch.context.finalized) return false;
+    if (batch.running || batch.scheduled) return false;
+    if (!batch.entries.length) return false;
+    if ((batch.claims?.size ?? 0) > 0) return false;
+
+    batch.scheduled = true;
+    queueMicrotask(() => void this.#drain(state, batch));
+    return true;
+  }
+
   static async #drain(state, batch) {
-    if (batch.running) return;
-    batch.running = true;
+    // A claim may be opened after enqueue scheduled this microtask but before
+    // the microtask actually runs. Re-check the discovery barrier here.
     batch.scheduled = false;
+    if (batch.running || batch.context.finalized) return;
+    if ((batch.claims?.size ?? 0) > 0 || !batch.entries.length) {
+      this.#maybeFinalizeOrCleanup(state, batch);
+      return;
+    }
+
+    batch.running = true;
     try {
       while (batch.entries.length) {
-        const entries = batch.entries.splice(0).sort((a, b) =>
+        // Claims opened while an earlier provider is awaiting cannot preempt
+        // work that already started, but they do pause the queue before the
+        // next provider so newly discovered earlier phases can take priority.
+        if ((batch.claims?.size ?? 0) > 0) break;
+
+        // Select exactly one provider from the current live queue. Re-sort
+        // after every provider so an entry discovered while an earlier
+        // provider's Promise was open can still run before a later phase.
+        batch.entries.sort((a, b) =>
           a.priority - b.priority || a.order - b.order || a.providerId.localeCompare(b.providerId)
         );
-        for (const entry of entries) {
-          if (batch.context.stopped) {
-            entry.resolve({ skipped: true, reason: "stopped", context: batch.context });
-            continue;
-          }
-          try {
-            const value = await entry.execute(batch.context);
-            if (value && typeof value === "object") {
-              batch.context.results.push({
-                providerId: entry.providerId,
-                phase: entry.phase,
-                ...value
-              });
-              const changedTotal = Number.isFinite(Number(value.currentTotal));
-              if (changedTotal) batch.context.currentTotal = Number(value.currentTotal);
-              if (typeof value.succeeded === "boolean") {
-                batch.context.succeeded = value.succeeded;
-                batch.context.success = value.succeeded;
-              } else if (typeof value.success === "boolean") {
-                batch.context.succeeded = value.success;
-                batch.context.success = value.success;
-              } else if (changedTotal && batch.context.target != null) {
-                const inferred = this.#inferSucceeded(batch);
-                if (typeof inferred === "boolean") {
-                  batch.context.succeeded = inferred;
-                  batch.context.success = inferred;
-                }
-              }
-              if (Array.isArray(value.adjustments)) {
-                batch.context.adjustments.push(...this.#normalizeAdjustments(value.adjustments));
-              }
-              if (value.stop === true) batch.context.stopped = true;
-            }
-            entry.resolve({ value, context: batch.context });
-          } catch (error) {
-            entry.reject(error);
-          }
+        const entry = batch.entries.shift();
+        if (!entry) break;
+
+        if (batch.context.stopped) {
+          entry.resolve({ skipped: true, reason: "stopped", context: batch.context });
+          await Promise.resolve();
+          continue;
         }
-        // Providers that enqueue while an earlier provider's Promise is open
-        // join the next ordered pass before terminal finalization.
+
+        try {
+          const value = await entry.execute(batch.context);
+          if (value && typeof value === "object") {
+            batch.context.results.push({
+              providerId: entry.providerId,
+              phase: entry.phase,
+              ...value
+            });
+            const changedTotal = Number.isFinite(Number(value.currentTotal));
+            if (changedTotal) batch.context.currentTotal = Number(value.currentTotal);
+            if (typeof value.succeeded === "boolean") {
+              batch.context.succeeded = value.succeeded;
+              batch.context.success = value.succeeded;
+            } else if (typeof value.success === "boolean") {
+              batch.context.succeeded = value.success;
+              batch.context.success = value.success;
+            } else if (changedTotal && batch.context.target != null) {
+              const inferred = this.#inferSucceeded(batch);
+              if (typeof inferred === "boolean") {
+                batch.context.succeeded = inferred;
+                batch.context.success = inferred;
+              }
+            }
+            if (Array.isArray(value.adjustments)) {
+              batch.context.adjustments.push(...this.#normalizeAdjustments(value.adjustments));
+            }
+            if (value.stop === true) batch.context.stopped = true;
+          }
+          entry.resolve({ value, context: batch.context });
+        } catch (error) {
+          entry.reject(error);
+        }
+
+        // Give synchronous continuation work a chance to register a claim or a
+        // newly discovered provider before selecting the next priority.
         await Promise.resolve();
       }
     } finally {
       batch.running = false;
+      // If entries remain because a claim paused execution, release()/failsafe
+      // will wake the drain. Otherwise this schedules the next pass when safe.
+      this.#scheduleDrain(state, batch);
       this.#maybeFinalizeOrCleanup(state, batch);
     }
   }
