@@ -1,14 +1,22 @@
 # Changelog
 
+## 0.9.9o
+
+### Hex direct native-effect choice hotfix
+
+- Replaced the unsuccessful Hex effect-tray bridge with a deterministic post-use choice that runs immediately after a Hex utility Activity containing the source-authored curse effects. The Character Builder no longer waits for D&D5e's `EffectApplicationElement` to appear in the Hex usage card.
+- The Hex prompt presents the six Active Effects already authored on the owned Hex Item (`Hexed Strength`, Dexterity, Constitution, Intelligence, Wisdom, or Charisma) and applies the selected native effect to the single target recorded by D&D5e for that usage. No curse mechanics or `1d6` formula are recreated by the Character Builder.
+- The selected effect is created with the live D&D5e concentration Active Effect as both `origin` and `flags.dnd5e.dependentOn`, preserving normal concentration cleanup. The v0.9.9n source-controller binding remains in place so the generic source-to-target rider can resolve Hex's own `Bonus Hex Damage` Activity afterward.
+- The unusable Hex effect payload on the usage ChatMessage is cleared before the Character Builder choice is shown, avoiding a duplicate or dead native tray. `Curse New Creature` uses the same source-authored choice path because it declares the same Hex effects.
+- Hunter's Mark is explicitly excluded from this direct-choice path and continues using the already validated native source-target behavior. Shared Roll Queue v3, delayed concentration resolution, Bardic Inspiration, Cutting Words, Resource Events, Player Sheet Integrity, and all other v0.9.9l/n behavior are unchanged.
+
 ## 0.9.9n
 
-### Hex native applied-effect source binding hotfix
+### Hex source-target binding attempt
 
-- Fixed the remaining Hex 2024 source-to-target automation gap without changing the working Hunter's Mark path. D&D5e can create a selected Hex target effect with its source shaped as `Actor → Item Hex → ActiveEffect Hexed <Ability>` when an intermediary usage card cannot resolve the original concentration. v0.9.9l did not recognize that native origin shape.
-- The Hex adapter now captures the controller/source relationship at `preCreateActiveEffect`, after the GM has chosen one of D&D5e's native six Hex effects but before that effect is created on the target. Character Builder does not choose, replace, or synthesize `Hexed Strength/Dexterity/Constitution/Intelligence/Wisdom/Charisma`.
-- When the selected Hex effect arrives through the Item-embedded ActiveEffect fallback, Character Builder resolves the owning Warlock and live Hex Item, reconnects `origin` / `flags.dnd5e.dependentOn` to the matching native Concentration effect when available, and stores a small source-target binding on the created target effect.
-- Damage resolution reads that explicit binding first and then retains the previous native-origin/dependency resolver as fallback. Only attacks made by the Hex controller against the single target bearing that Hex can receive the spell's own `Bonus Hex Damage` Activity. Formula, damage type, critical handling, and concentration cleanup remain D&D5e/source-authored.
-- Hunter's Mark is explicitly excluded from the new applied-effect binding path and continues using the already validated v0.9.9l resolver. Shared Roll Queue v3, delayed concentration finalization, Cutting Words, Bardic Inspiration, Player Sheet Integrity, Resource Events, and all other rules-assistance paths are unchanged.
+- Added recognition for D&D5e target effects whose source shape is `ActiveEffect -> Item -> Actor`, and persisted an explicit source-controller binding when a Hex curse effect is actually created.
+- Added concentration dependency repair when the selected Hex effect reaches `preCreateActiveEffect` through the Item-embedded Active Effect rather than through the caster's concentration.
+- Live testing showed this downstream repair was insufficient because the failing Hex path never exposed the native effect application choice and therefore never created a target effect for the new hook to bind. Hunter's Mark and the previously validated concentration/roll-resolution behavior were not regressed.
 
 ## 0.9.9l
 
