@@ -94,12 +94,13 @@ export class CuttingWordsAssistanceService {
     const reduction = Number(Array.from(rolls ?? [])[0]?.total);
     if (!Number.isFinite(reduction) || reduction < 0) return;
     if (pending.mode === "d20") {
-      const original = Number(pending.recent.total ?? 0);
+      const original = Number(pending.recent.currentTotal ?? pending.recent.total ?? 0);
       const adjusted = original - reduction;
+      const rollLabel = this.#rollLabel(pending.recent.rollType);
       await ChatMessage.create({
         speaker: ChatMessage.getSpeaker({ actor: activity.actor }),
         flavor: `${foundry.utils.escapeHTML(activity.item?.name ?? "Cutting Words")} — Roll Adjustment`,
-        content: `<div class="dnd5e chat-card"><p><strong>${foundry.utils.escapeHTML(pending.targetName ?? "Target")}</strong>: ${original} − ${reduction} = <strong>${adjusted}</strong></p><p class="notes">Cutting Words adjusted the most recent eligible roll.</p></div>`,
+        content: `<div class="dnd5e chat-card"><p><strong>${foundry.utils.escapeHTML(pending.targetName ?? "Target")}</strong> — ${foundry.utils.escapeHTML(rollLabel)}</p><p>Resolved total: <strong>${original}</strong></p><p>Cutting Words: <strong>−${reduction}</strong></p><p>Adjusted total: <strong>${adjusted}</strong></p><p class="notes">Success or failure remains for the GM to adjudicate.</p></div>`,
         flags: {
           [MODULE_ID]: {
             cuttingWords: {
@@ -283,6 +284,16 @@ export class CuttingWordsAssistanceService {
 
   static #isActiveGM() {
     return Boolean(game.user?.isGM && game.user?.active && game.users?.activeGM?.id === game.user.id);
+  }
+
+  static #rollLabel(type) {
+    switch (String(type ?? "")) {
+      case "attack": return "Attack Roll";
+      case "ability": return "Ability Check";
+      case "skill": return "Skill Check";
+      case "tool": return "Tool Check";
+      default: return "D20 Roll";
+    }
   }
 
   static #record(actor, row) {

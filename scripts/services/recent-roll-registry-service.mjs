@@ -1,6 +1,13 @@
+import { MODULE_ID } from "../constants.mjs";
+
+const ROLL_FLAG = "dnd5eCharacterBuilderRollResolution";
+
 /**
  * Ephemeral registry of public roll messages. It is fed from ChatMessage
- * creation so every connected client observes the same recent-roll history.
+ * creation/update so every connected client observes the same recent-roll
+ * history. When the shared roll-resolution queue finalizes after the original
+ * ChatMessage exists, the public-safe finalized total is reconciled back into
+ * the existing registry row instead of leaving Cutting Words on the base roll.
  */
 export class RecentRollRegistryService {
   static #initialized = false;
@@ -12,6 +19,7 @@ export class RecentRollRegistryService {
     if (this.#initialized) return;
     this.#initialized = true;
     Hooks.on("createChatMessage", message => this.#captureMessage(message));
+    Hooks.on("updateChatMessage", message => this.#captureMessage(message));
   }
 
   static latestD20(actorUuid, { maxAgeMs = 60000 } = {}) {
@@ -35,23 +43,65 @@ export class RecentRollRegistryService {
       ?? game.actors?.get?.(message.speaker?.actor)
       ?? null;
     const actorUuid = actor?.uuid ?? (message.speaker?.actor ? `Actor.${message.speaker.actor}` : null);
+    const resolution = this.#publicResolution(message, rolls[0]);
+    const currentTotal = Number.isFinite(Number(resolution?.currentTotal))
+      ? Number(resolution.currentTotal)
+      : Number(rolls[0].total);
+    const originalTotal = Number.isFinite(Number(resolution?.originalTotal))
+      ? Number(resolution.originalTotal)
+      : Number(rolls[0].total);
     const row = {
       messageId: message.id,
       messageUuid: message.uuid ?? null,
       actorUuid,
       actorName: actor?.name ?? message.speaker?.alias ?? "Creature",
       rollType,
-      total: Number(rolls[0].total),
-      at: Date.now()
+      total: currentTotal,
+      originalTotal,
+      currentTotal,
+      finalized: resolution?.finalized === true,
+      rollKey: resolution?.rollKey ?? null,
+      at: Number(resolution?.at ?? message.timestamp ?? Date.now()) || Date.now()
     };
 
     if (["attack", "ability", "skill", "tool"].includes(rollType) && actorUuid) {
-      const rows = this.#d20ByActor.get(actorUuid) ?? [];
-      rows.push(row);
-      this.#d20ByActor.set(actorUuid, rows.slice(-20));
+      this.#upsertD20(actorUuid, row);
     }
-    if (rollType === "damage") this.#damage.push(row);
+    if (rollType === "damage") this.#upsertDamage(row);
     this.#prune();
+  }
+
+  static #publicResolution(message, roll) {
+    const publicSnapshot = message?.getFlag?.(MODULE_ID, "publicRollResolution");
+    if (publicSnapshot && typeof publicSnapshot === "object") return publicSnapshot;
+
+    // If the queue finalized before ChatMessage persistence, D&D5e serializes
+    // the Roll options with the snapshot already attached. Read only the
+    // public-safe numeric fields needed by the registry.
+    const stored = roll?.options?.[ROLL_FLAG];
+    if (!stored || typeof stored !== "object") return null;
+    return {
+      rollKey: stored.rollKey ?? null,
+      originalTotal: stored.originalTotal,
+      currentTotal: stored.currentTotal,
+      finalized: stored.finalized === true,
+      at: Date.now()
+    };
+  }
+
+  static #upsertD20(actorUuid, row) {
+    const rows = this.#d20ByActor.get(actorUuid) ?? [];
+    const index = rows.findIndex(existing => existing.messageId === row.messageId);
+    if (index >= 0) rows[index] = { ...rows[index], ...row };
+    else rows.push(row);
+    this.#d20ByActor.set(actorUuid, rows.slice(-20));
+  }
+
+  static #upsertDamage(row) {
+    const index = this.#damage.findIndex(existing => existing.messageId === row.messageId);
+    if (index >= 0) this.#damage[index] = { ...this.#damage[index], ...row };
+    else this.#damage.push(row);
+    this.#damage = this.#damage.slice(-40);
   }
 
   static #prune() {

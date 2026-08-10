@@ -1,3 +1,5 @@
+import { MODULE_ID } from "../constants.mjs";
+
 const QUEUE_SYMBOL = Symbol.for("dnd5e.roll-resolution-queue.v1");
 const DEFAULT_PRIORITY = 1000;
 const COMPLETED_TTL_MS = 60000;
@@ -296,6 +298,7 @@ export class SharedRollResolutionQueueService {
 
     const payload = this.#snapshot(batch);
     this.#writeRollSnapshot(batch.roll, payload);
+    void this.#persistPublicMessageSnapshot(batch.roll, payload);
     state.completed.set(batch.key, {
       payload: this.#clonePayload(payload),
       expiresAt: Date.now() + COMPLETED_TTL_MS
@@ -342,6 +345,39 @@ export class SharedRollResolutionQueueService {
     if (!roll || (typeof roll !== "object" && typeof roll !== "function")) return;
     roll.options ??= {};
     roll.options[ROLL_FLAG] = this.#clonePayload(payload);
+  }
+
+  static async #persistPublicMessageSnapshot(roll, payload) {
+    const message = roll?.parent?.documentName === "ChatMessage" ? roll.parent : null;
+    if (!message?.update) return;
+
+    // This flag is deliberately public-safe. Never persist hidden target/DC or
+    // success/failure state to a ChatMessage merely to coordinate reactions.
+    const snapshot = {
+      schema: 1,
+      rollKey: payload.rollKey ?? null,
+      actorUuid: payload.actorUuid ?? null,
+      rollType: payload.rollType ?? null,
+      originalTotal: this.#finiteNumber(payload.originalTotal),
+      currentTotal: this.#finiteNumber(payload.currentTotal),
+      finalized: payload.finalized === true,
+      at: Date.now()
+    };
+
+    try {
+      const current = message.getFlag?.(MODULE_ID, "publicRollResolution");
+      if (current?.rollKey === snapshot.rollKey
+        && Number(current?.currentTotal) === Number(snapshot.currentTotal)
+        && current?.finalized === snapshot.finalized) return;
+      await message.update({ [`flags.${MODULE_ID}.publicRollResolution`]: snapshot }, {
+        dnd5eCharacterBuilderRollResolution: true
+      });
+    } catch (error) {
+      // The roll may finalize before its message is persisted or on a client
+      // that cannot update that message. The serialized roll snapshot and
+      // local finalized hook still provide a safe fallback.
+      console.debug?.("Character Builder | Could not persist public roll-resolution snapshot.", error);
+    }
   }
 
   static #publish(hook, payload, roll) {

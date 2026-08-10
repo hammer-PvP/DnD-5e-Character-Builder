@@ -20,6 +20,11 @@ export class SourceTargetDamageRiderService {
     if (this.#initialized) return;
     this.#initialized = true;
     Hooks.on("dnd5e.preRollDamage", (process, dialog, message) => this.#prepare(process, dialog, message));
+    Hooks.on("dnd5e.postUseActivity", (activity, _usageConfig, results) => {
+      void this.#reconcileNativeEffectTray(activity, results).catch(error => {
+        console.warn(`${MODULE_ID} | Source-target effect tray reconciliation failed.`, error);
+      });
+    });
   }
 
   static enabled() {
@@ -85,6 +90,34 @@ export class SourceTargetDamageRiderService {
       });
     }
     if (seen.size) process.dnd5eCharacterBuilderSourceTargetRidersApplied = true;
+  }
+
+  static async #reconcileNativeEffectTray(activity, results) {
+    if (!this.enabled()) return;
+    const sourceIdentifier = activity?.item?.system?.identifier;
+    if (!ADAPTERS.some(adapter => adapter.sourceIdentifier === sourceIdentifier)) return;
+
+    const effects = Array.from(activity?.applicableEffects ?? []).filter(effect => effect?.id);
+    if (!effects.length) return;
+    const message = results?.message;
+    if (!message?.update) return;
+    if (Array.isArray(message.system?.effects) && message.system.effects.length) return;
+
+    // Preserve D&D5e's own EffectApplicationElement. This only reconciles the
+    // activity's declared effect references into a usage message when the
+    // native message omitted them; selection and application remain native.
+    const refs = effects.map(effect => `.ActiveEffect.${effect.id}`);
+    await message.update({ "system.effects": refs }, {
+      dnd5eCharacterBuilderEffectTrayReconcile: true
+    });
+    this.#record(activity.actor, {
+      ruleId: RULE_ID,
+      action: "Reconciled native effect tray",
+      sourceIdentifier,
+      activityId: activity.id ?? null,
+      effectCount: refs.length,
+      messageId: message.id ?? null
+    });
   }
 
   static #resolveEffectSource(effect) {
