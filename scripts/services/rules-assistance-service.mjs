@@ -36,10 +36,12 @@ export class RulesAssistanceService {
     this.#initialized = true;
     AgonizingBlastBindingService.initialize();
     MageArmorAssistanceService.initialize();
+    // Lifecycle opens Concentration resolution gates before post-roll
+    // character/item providers register on the generic Saving Throw hook.
+    EffectLifecycleService.initialize();
     BardicInspirationAssistanceService.initialize();
     LayOnHandsAssistanceService.initialize();
     ContextualRollModifierService.initialize();
-    EffectLifecycleService.initialize();
     NativeContextualEffectService.initialize();
     NativeSaveGatedEffectService.initialize();
     SourceTargetDamageRiderService.initialize();

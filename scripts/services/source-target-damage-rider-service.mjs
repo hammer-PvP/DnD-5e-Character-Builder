@@ -3,8 +3,13 @@ import { RulesAssistanceSettingsService } from "./rules-assistance-settings-serv
 
 const RULE_ID = "source-target-damage-riders";
 const ADAPTERS = Object.freeze([
-  Object.freeze({ sourceIdentifier: "hunters-mark", status: "marked", upgradeIdentifier: "foe-slayer" }),
-  Object.freeze({ sourceIdentifier: "hex", status: "cursed", upgradeIdentifier: null })
+  Object.freeze({ sourceIdentifier: "hunters-mark", status: "marked", upgradeIdentifier: "foe-slayer", effectBridge: null }),
+  Object.freeze({
+    sourceIdentifier: "hex",
+    status: "cursed",
+    upgradeIdentifier: null,
+    effectBridge: "native-no-consumption-activity"
+  })
 ]);
 
 /**
@@ -20,9 +25,9 @@ export class SourceTargetDamageRiderService {
     if (this.#initialized) return;
     this.#initialized = true;
     Hooks.on("dnd5e.preRollDamage", (process, dialog, message) => this.#prepare(process, dialog, message));
-    Hooks.on("dnd5e.postUseActivity", (activity, _usageConfig, results) => {
-      void this.#reconcileNativeEffectTray(activity, results).catch(error => {
-        console.warn(`${MODULE_ID} | Source-target effect tray reconciliation failed.`, error);
+    Hooks.on("dnd5e.postUseActivity", (activity, usageConfig, results) => {
+      void this.#bridgeNativeEffectApplication(activity, usageConfig, results).catch(error => {
+        console.warn(`${MODULE_ID} | Source-target native effect bridge failed.`, error);
       });
     });
   }
@@ -92,32 +97,91 @@ export class SourceTargetDamageRiderService {
     if (seen.size) process.dnd5eCharacterBuilderSourceTargetRidersApplied = true;
   }
 
-  static async #reconcileNativeEffectTray(activity, results) {
-    if (!this.enabled()) return;
+  static async #bridgeNativeEffectApplication(activity, usageConfig, results) {
+    if (!this.enabled() || usageConfig?.dnd5eCharacterBuilderEffectBridge) return;
     const sourceIdentifier = activity?.item?.system?.identifier;
-    if (!ADAPTERS.some(adapter => adapter.sourceIdentifier === sourceIdentifier)) return;
+    const adapter = ADAPTERS.find(row => row.sourceIdentifier === sourceIdentifier);
+    if (!adapter?.effectBridge) return;
 
-    const effects = Array.from(activity?.applicableEffects ?? []).filter(effect => effect?.id);
-    if (!effects.length) return;
+    // If D&D5e already produced its native EffectApplicationElement, preserve
+    // it exactly as-is. The bridge exists only for the source path where the
+    // initial spell-use message omitted its declared effect tray.
     const message = results?.message;
-    if (!message?.update) return;
-    if (Array.isArray(message.system?.effects) && message.system.effects.length) return;
+    if (Array.isArray(message?.system?.effects) && message.system.effects.length) return;
 
-    // Preserve D&D5e's own EffectApplicationElement. This only reconciles the
-    // activity's declared effect references into a usage message when the
-    // native message omitted them; selection and application remain native.
-    const refs = effects.map(effect => `.ActiveEffect.${effect.id}`);
-    await message.update({ "system.effects": refs }, {
-      dnd5eCharacterBuilderEffectTrayReconcile: true
+    const liveItem = activity?.actor?.items?.get?.(activity.item?.id) ?? null;
+    if (!liveItem) return;
+
+    const declaredEffectIds = this.#declaredEffectIds(activity);
+    if (!declaredEffectIds.length) return;
+
+    // Re-enter D&D5e through an existing no-consumption Activity that declares
+    // the same native effects. Hex 2024 provides "Curse New Creature" for this
+    // purpose. We do not create an Active Effect ourselves; D&D5e creates a
+    // normal Usage ChatMessage and its native EffectApplicationElement remains
+    // responsible for the player's choice and GM application.
+    const activities = liveItem.system?.activities?.contents
+      ?? Array.from(liveItem.system?.activities?.values?.() ?? liveItem.system?.activities ?? []);
+    const helper = activities.find(candidate => {
+      if (!candidate || candidate.id === activity.id || candidate.type !== "utility") return false;
+      if (candidate.consumption?.spellSlot === true) return false;
+      const candidateIds = this.#declaredEffectIds(candidate);
+      return declaredEffectIds.every(id => candidateIds.includes(id));
     });
+    if (!helper?.use) return;
+
+    const system = {};
+    system.effects = declaredEffectIds.map(id => `.ActiveEffect.${id}`);
+    if (message?.system?.concentration) system.concentration = message.system.concentration;
+    if (message?.system?.spellLevel != null) system.spellLevel = message.system.spellLevel;
+    if (message?.system?.scaling != null) system.scaling = foundry.utils.deepClone(message.system.scaling);
+
+    const originalTargets = foundry.utils.getProperty(message, "flags.dnd5e.targets")
+      ?? message?.getFlag?.("dnd5e", "targets")
+      ?? null;
+    const messageData = { system };
+    if (originalTargets != null) {
+      foundry.utils.setProperty(messageData, "flags.dnd5e.targets", foundry.utils.deepClone(originalTargets));
+    }
+
+    const bridgeResults = await helper.use({
+      consume: false,
+      concentration: { begin: false },
+      scaling: message?.system?.scaling ?? 0,
+      subsequentActions: false,
+      dnd5eCharacterBuilderEffectBridge: true
+    }, {
+      configure: false
+    }, {
+      create: true,
+      data: messageData
+    });
+
     this.#record(activity.actor, {
       ruleId: RULE_ID,
-      action: "Reconciled native effect tray",
+      action: "Created native effect-application bridge",
       sourceIdentifier,
-      activityId: activity.id ?? null,
-      effectCount: refs.length,
-      messageId: message.id ?? null
+      sourceActivityId: activity.id ?? null,
+      bridgeActivityId: helper.id ?? null,
+      effectCount: declaredEffectIds.length,
+      sourceMessageId: message?.id ?? null,
+      bridgeMessageId: bridgeResults?.message?.id ?? null
     });
+  }
+
+  static #declaredEffectIds(activity) {
+    const ids = [];
+    const entries = activity?.effects?.contents
+      ?? Array.from(activity?.effects?.values?.() ?? activity?.effects ?? []);
+    for (const entry of entries) {
+      const id = entry?.effect?.id ?? entry?._id ?? entry?.id ?? null;
+      if (id && !ids.includes(String(id))) ids.push(String(id));
+    }
+    if (ids.length) return ids;
+    for (const effect of Array.from(activity?.applicableEffects ?? [])) {
+      if (effect?.id && !ids.includes(String(effect.id))) ids.push(String(effect.id));
+    }
+    return ids;
   }
 
   static #resolveEffectSource(effect) {

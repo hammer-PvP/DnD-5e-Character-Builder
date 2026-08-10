@@ -3,6 +3,7 @@ import { MODULE_ID } from "../constants.mjs";
 const QUEUE_SYMBOL = Symbol.for("dnd5e.roll-resolution-queue.v1");
 const DEFAULT_PRIORITY = 1000;
 const COMPLETED_TTL_MS = 60000;
+const DEFAULT_CLAIM_FAILSAFE_MS = 300000;
 const PENDING_HOOK = "dnd5e-character-builder.rollResolutionPending";
 const FINALIZED_HOOK = "dnd5e-character-builder.rollResolutionFinalized";
 const ROLL_FLAG = "dnd5eCharacterBuilderRollResolution";
@@ -10,19 +11,24 @@ const ROLL_FLAG = "dnd5eCharacterBuilderRollResolution";
 const PHASE_PRIORITIES = Object.freeze({
   native: 100,
   character: 200,
-  items: 300
+  items: 300,
+  lifecycle: 900
 });
 
 /**
  * Shared per-roll provider queue and public resolution contract.
  *
- * Native D&D5e resolution completes before providers enqueue. Character
- * automation runs before item automation so each provider receives the roll
- * context produced by the previous phase instead of opening competing prompts.
+ * Protocol v3 adds explicit provider-discovery claims and deferred
+ * finalization. A provider that needs asynchronous work before it can enqueue
+ * a prompt claims the roll synchronously, then releases that claim once its
+ * provider has been registered (or once it determines it has nothing to do).
  *
- * Protocol v2 adds explicit pending/finalized snapshots. The global symbol is
- * intentionally retained as v1 so item runtimes using the original queue keep
- * working while gaining the new API methods.
+ * Concentration uses deferred finalization: its lifecycle gate opens before
+ * the native roll is evaluated and requests finalization only after D&D5e has
+ * finished the concentration workflow. The batch cannot finalize while any
+ * provider claim or queued provider remains pending.
+ *
+ * The global symbol intentionally remains v1 for backward compatibility.
  */
 export class SharedRollResolutionQueueService {
   static api() {
@@ -46,6 +52,11 @@ export class SharedRollResolutionQueueService {
     if (typeof execute !== "function") throw new TypeError("A roll-resolution provider requires an execute function.");
     const state = this.#state();
     const key = this.#rollKey(state, roll, rollKey);
+    const completed = this.#completed(state, key);
+    if (completed && !state.batches.has(key)) {
+      return Promise.resolve({ skipped: true, reason: "finalized", context: this.#clonePayload(completed.payload) });
+    }
+
     const provider = String(providerId ?? "anonymous-provider");
     const resolvedPriority = priority != null && Number.isFinite(Number(priority))
       ? Number(priority)
@@ -60,6 +71,13 @@ export class SharedRollResolutionQueueService {
       target,
       succeeded
     });
+    batch.context.finalized = false;
+    if (!batch.pendingPublished) {
+      batch.pendingPublished = true;
+      const payload = this.#snapshot(batch);
+      this.#writeRollSnapshot(batch.roll, payload);
+      this.#publish(PENDING_HOOK, payload, batch.roll);
+    }
 
     const result = new Promise((resolve, reject) => {
       batch.entries.push({
@@ -88,7 +106,8 @@ export class SharedRollResolutionQueueService {
     originalTotal = null,
     currentTotal = null,
     target = null,
-    succeeded = null
+    succeeded = null,
+    deferFinalization = false
   } = {}) {
     const state = this.#state();
     const key = this.#rollKey(state, roll, rollKey);
@@ -101,6 +120,7 @@ export class SharedRollResolutionQueueService {
       target,
       succeeded
     });
+    if (deferFinalization === true) batch.manualFinalization = true;
     batch.context.finalized = false;
 
     const payload = this.#snapshot(batch);
@@ -112,7 +132,128 @@ export class SharedRollResolutionQueueService {
     return payload;
   }
 
-  static finalize({
+  /**
+   * Claim a roll while a provider performs asynchronous eligibility discovery.
+   * Call this synchronously from the D&D5e roll hook, before the first await.
+   * Once the provider has been enqueued (or ruled out), call release().
+   */
+  static claim({
+    roll,
+    rollKey = null,
+    providerId = "anonymous-provider",
+    reason = "provider-discovery",
+    actorUuid = null,
+    rollType = null,
+    originalTotal = null,
+    currentTotal = null,
+    target = null,
+    succeeded = null,
+    deferFinalization = false,
+    timeout = DEFAULT_CLAIM_FAILSAFE_MS
+  } = {}) {
+    const state = this.#state();
+    const key = this.#rollKey(state, roll, rollKey);
+    const completed = this.#completed(state, key);
+    if (completed && !state.batches.has(key)) {
+      return Object.freeze({
+        active: false,
+        rollKey: key,
+        claimId: null,
+        release: () => false
+      });
+    }
+
+    const batch = this.#ensureBatch(state, { roll, rollKey: key });
+    this.#applyDescriptor(batch, {
+      actorUuid,
+      rollType,
+      originalTotal,
+      currentTotal,
+      target,
+      succeeded
+    });
+    if (deferFinalization === true) batch.manualFinalization = true;
+
+    const claimId = `claim:${globalThis.foundry?.utils?.randomID?.(20)
+      ?? globalThis.crypto?.randomUUID?.()
+      ?? `${Date.now()}:${state.sequence++}`}`;
+    const claim = {
+      claimId,
+      providerId: String(providerId ?? "anonymous-provider"),
+      reason: String(reason ?? "provider-discovery"),
+      createdAt: Date.now(),
+      timeout: null
+    };
+    const timeoutMs = Number(timeout);
+    if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+      claim.timeout = setTimeout(() => {
+        const live = state.batches.get(key);
+        if (!live?.claims?.has(claimId)) return;
+        live.claims.delete(claimId);
+        console.warn(`${MODULE_ID} | Roll-resolution claim expired after failsafe timeout.`, {
+          rollKey: key,
+          claimId,
+          providerId: claim.providerId,
+          reason: claim.reason
+        });
+        this.#maybeFinalizeOrCleanup(state, live);
+      }, timeoutMs);
+    }
+    batch.claims.set(claimId, claim);
+
+    return Object.freeze({
+      active: true,
+      rollKey: key,
+      claimId,
+      release: updates => SharedRollResolutionQueueService.release({
+        roll,
+        rollKey: key,
+        claimId,
+        ...(updates && typeof updates === "object" ? updates : {})
+      })
+    });
+  }
+
+  static release({
+    roll,
+    rollKey = null,
+    claimId,
+    actorUuid,
+    rollType,
+    originalTotal,
+    currentTotal,
+    target,
+    succeeded,
+    adjustments
+  } = {}) {
+    if (!claimId) return false;
+    const state = this.#state();
+    const key = this.#rollKey(state, roll, rollKey);
+    const batch = state.batches.get(key);
+    if (!batch) return false;
+    const claim = batch.claims.get(String(claimId));
+    if (!claim) return false;
+    if (claim.timeout) clearTimeout(claim.timeout);
+    batch.claims.delete(String(claimId));
+    this.#applyDescriptor(batch, {
+      actorUuid,
+      rollType,
+      originalTotal,
+      currentTotal,
+      target,
+      succeeded
+    });
+    if (Array.isArray(adjustments)) batch.context.adjustments.push(...this.#normalizeAdjustments(adjustments));
+    this.#maybeFinalizeOrCleanup(state, batch);
+    return true;
+  }
+
+  /**
+   * Request terminal finalization. Deferred batches finalize only after this
+   * request and once entries, running providers, and discovery claims are all
+   * clear. This method never bypasses an active claim.
+   */
+  static requestFinalization({
     roll,
     rollKey = null,
     actorUuid,
@@ -125,8 +266,10 @@ export class SharedRollResolutionQueueService {
   } = {}) {
     const state = this.#state();
     const key = this.#rollKey(state, roll, rollKey);
+    const completed = this.#completed(state, key);
+    if (completed && !state.batches.has(key)) return this.#clonePayload(completed.payload);
+
     const batch = this.#ensureBatch(state, { roll, rollKey: key });
-    if (batch.context.finalized && batch.finalizedPublished) return this.#snapshot(batch);
     this.#applyDescriptor(batch, {
       actorUuid,
       rollType,
@@ -136,7 +279,33 @@ export class SharedRollResolutionQueueService {
       succeeded
     });
     if (Array.isArray(adjustments)) batch.context.adjustments = this.#normalizeAdjustments(adjustments);
-    return this.#finalizeBatch(state, batch);
+    batch.finalizationRequested = true;
+    batch.manualFinalization = true;
+
+    // Do not terminally close a deferred batch in the middle of a synchronous
+    // D&D5e hook dispatch. Later listeners on that same hook (for example an
+    // Item runtime loaded after Character Builder) must get one deterministic
+    // call-stack turn to claim the roll before terminal finalization is armed.
+    if (!batch.finalizationArmScheduled) {
+      batch.finalizationArmed = false;
+      batch.finalizationArmScheduled = true;
+      queueMicrotask(() => {
+        const live = state.batches.get(key);
+        if (!live || live.context.finalized) return;
+        live.finalizationArmScheduled = false;
+        live.finalizationArmed = true;
+        this.#maybeFinalizeOrCleanup(state, live);
+      });
+    }
+    return this.#snapshot(batch);
+  }
+
+  /**
+   * Backward-compatible explicit finalization. Protocol v3 treats finalize()
+   * as a request and will not bypass provider claims or running entries.
+   */
+  static finalize(options = {}) {
+    return this.requestFinalization(options);
   }
 
   static getResolution({ roll, rollKey = null } = {}) {
@@ -145,9 +314,8 @@ export class SharedRollResolutionQueueService {
     const batch = state.batches.get(key);
     if (batch) return this.#snapshot(batch);
 
-    const completed = state.completed.get(key);
-    if (completed && completed.expiresAt > Date.now()) return this.#clonePayload(completed.payload);
-    if (completed) state.completed.delete(key);
+    const completed = this.#completed(state, key);
+    if (completed) return this.#clonePayload(completed.payload);
 
     const stored = roll?.options?.[ROLL_FLAG];
     return stored && typeof stored === "object" ? this.#clonePayload(stored) : null;
@@ -185,7 +353,7 @@ export class SharedRollResolutionQueueService {
     }
 
     const state = {
-      version: 2,
+      version: 3,
       batches: new Map(),
       completed: new Map(),
       rollIds: new WeakMap(),
@@ -198,18 +366,31 @@ export class SharedRollResolutionQueueService {
   }
 
   static #upgradeState(state) {
-    state.version = Math.max(2, Number(state.version ?? 0));
+    state.version = Math.max(3, Number(state.version ?? 0));
     state.batches ??= new Map();
     state.completed ??= new Map();
     state.rollIds ??= new WeakMap();
     state.sequence ??= 0;
+    for (const batch of state.batches.values()) {
+      batch.claims ??= new Map();
+      batch.manualFinalization ??= false;
+      batch.finalizationRequested ??= false;
+      batch.finalizationArmed ??= true;
+      batch.finalizationArmScheduled ??= false;
+      batch.waiters ??= new Set();
+      batch.context ??= {};
+      batch.context.adjustments ??= [];
+    }
     state.api = Object.freeze({
-      version: 2,
+      version: 3,
       symbol: "dnd5e.roll-resolution-queue.v1",
       phases: PHASE_PRIORITIES,
       hooks: Object.freeze({ pending: PENDING_HOOK, finalized: FINALIZED_HOOK }),
       enqueue: options => SharedRollResolutionQueueService.enqueue(options),
       markPending: options => SharedRollResolutionQueueService.markPending(options),
+      claim: options => SharedRollResolutionQueueService.claim(options),
+      release: options => SharedRollResolutionQueueService.release(options),
+      requestFinalization: options => SharedRollResolutionQueueService.requestFinalization(options),
       finalize: options => SharedRollResolutionQueueService.finalize(options),
       getResolution: options => SharedRollResolutionQueueService.getResolution(options),
       waitForFinalized: options => SharedRollResolutionQueueService.waitForFinalized(options),
@@ -222,6 +403,7 @@ export class SharedRollResolutionQueueService {
     if (batch) {
       if (!batch.roll && roll) batch.roll = roll;
       batch.waiters ??= new Set();
+      batch.claims ??= new Map();
       batch.context.adjustments ??= [];
       return batch;
     }
@@ -238,6 +420,7 @@ export class SharedRollResolutionQueueService {
       key: rollKey,
       roll: roll ?? null,
       entries: [],
+      claims: new Map(),
       context: {
         roll: roll ?? null,
         rollKey,
@@ -257,6 +440,10 @@ export class SharedRollResolutionQueueService {
       running: false,
       pendingPublished: false,
       finalizedPublished: false,
+      manualFinalization: false,
+      finalizationRequested: false,
+      finalizationArmed: true,
+      finalizationArmScheduled: false,
       waiters: new Set()
     };
     state.batches.set(rollKey, batch);
@@ -271,7 +458,8 @@ export class SharedRollResolutionQueueService {
     if (originalTotal != null) batch.context.originalTotal = originalTotal;
 
     const currentTotal = this.#finiteNumber(descriptor.currentTotal);
-    if (currentTotal != null) batch.context.currentTotal = currentTotal;
+    const changedTotal = currentTotal != null;
+    if (changedTotal) batch.context.currentTotal = currentTotal;
     else if (batch.context.currentTotal == null && batch.context.originalTotal != null) {
       batch.context.currentTotal = batch.context.originalTotal;
     }
@@ -282,11 +470,39 @@ export class SharedRollResolutionQueueService {
     if (typeof descriptor.succeeded === "boolean") {
       batch.context.succeeded = descriptor.succeeded;
       batch.context.success = descriptor.succeeded;
+    } else if (changedTotal && batch.context.target != null) {
+      const inferred = this.#inferSucceeded(batch);
+      if (typeof inferred === "boolean") {
+        batch.context.succeeded = inferred;
+        batch.context.success = inferred;
+      }
     }
+  }
+
+  static #maybeFinalizeOrCleanup(state, batch) {
+    if (!batch || batch.context.finalized) return batch ? this.#snapshot(batch) : null;
+    const idle = !batch.running && !batch.scheduled && batch.entries.length === 0;
+    const claimed = (batch.claims?.size ?? 0) > 0;
+    const permitted = batch.pendingPublished
+      && (!batch.manualFinalization || (batch.finalizationRequested && batch.finalizationArmed !== false));
+
+    if (idle && !claimed && permitted) return this.#finalizeBatch(state, batch);
+
+    // Claims may be opened before a provider determines that a roll is
+    // relevant. If no pending state/provider was ever published, remove the
+    // empty coordination shell after the final claim is released.
+    if (idle && !claimed && !batch.pendingPublished && !batch.waiters?.size) {
+      state.batches.delete(batch.key);
+    }
+    return null;
   }
 
   static #finalizeBatch(state, batch) {
     if (batch.context.finalized && batch.finalizedPublished) return this.#snapshot(batch);
+    if (batch.running || batch.scheduled || batch.entries.length || batch.claims?.size) return this.#snapshot(batch);
+    if (batch.manualFinalization && (!batch.finalizationRequested || batch.finalizationArmed === false)) {
+      return this.#snapshot(batch);
+    }
 
     batch.context.finalized = true;
     if (typeof batch.context.succeeded !== "boolean"
@@ -314,6 +530,7 @@ export class SharedRollResolutionQueueService {
       waiter.resolve(this.#clonePayload(payload));
     }
     batch.waiters?.clear?.();
+    state.batches.delete(batch.key);
     return payload;
   }
 
@@ -327,6 +544,8 @@ export class SharedRollResolutionQueueService {
       target: this.#finiteNumber(batch.context.target),
       succeeded: typeof batch.context.succeeded === "boolean" ? batch.context.succeeded : null,
       finalized: batch.context.finalized === true,
+      finalizationRequested: batch.finalizationRequested === true,
+      pendingClaims: Number(batch.claims?.size ?? 0),
       adjustments: Object.freeze(this.#normalizeAdjustments(batch.context.adjustments))
     });
   }
@@ -351,8 +570,8 @@ export class SharedRollResolutionQueueService {
     const message = roll?.parent?.documentName === "ChatMessage" ? roll.parent : null;
     if (!message?.update) return;
 
-    // This flag is deliberately public-safe. Never persist hidden target/DC or
-    // success/failure state to a ChatMessage merely to coordinate reactions.
+    // Deliberately public-safe. Never persist hidden target/DC, success/failure,
+    // claim metadata, or provider details merely to coordinate later reactions.
     const snapshot = {
       schema: 1,
       rollKey: payload.rollKey ?? null,
@@ -373,9 +592,6 @@ export class SharedRollResolutionQueueService {
         dnd5eCharacterBuilderRollResolution: true
       });
     } catch (error) {
-      // The roll may finalize before its message is persisted or on a client
-      // that cannot update that message. The serialized roll snapshot and
-      // local finalized hook still provide a safe fallback.
       console.debug?.("Character Builder | Could not persist public roll-resolution snapshot.", error);
     }
   }
@@ -398,8 +614,28 @@ export class SharedRollResolutionQueueService {
       target: payload.target,
       succeeded: payload.succeeded,
       finalized: payload.finalized === true,
+      finalizationRequested: payload.finalizationRequested === true,
+      pendingClaims: Number(payload.pendingClaims ?? 0),
       adjustments: (payload.adjustments ?? []).map(entry => ({ ...entry }))
     };
+  }
+
+  static #completed(state, key) {
+    const completed = state.completed.get(key);
+    if (completed && completed.expiresAt > Date.now()) return completed;
+    if (completed) state.completed.delete(key);
+    return null;
+  }
+
+  static #inferSucceeded(batch) {
+    const currentTotal = this.#finiteNumber(batch?.context?.currentTotal);
+    const target = this.#finiteNumber(batch?.context?.target);
+    if (currentTotal == null || target == null) return null;
+    if (batch?.context?.rollType === "attackRoll") {
+      if (batch.roll?.isFumble === true) return false;
+      if (batch.roll?.isCritical === true) return true;
+    }
+    return currentTotal >= target;
   }
 
   static #finiteNumber(value) {
@@ -413,6 +649,11 @@ export class SharedRollResolutionQueueService {
     if (roll && (typeof roll === "object" || typeof roll === "function")) {
       const existing = state.rollIds.get(roll);
       if (existing) return existing;
+      const stored = roll?.options?.[ROLL_FLAG]?.rollKey;
+      if (stored) {
+        state.rollIds.set(roll, String(stored));
+        return String(stored);
+      }
       const id = `roll:${globalThis.foundry?.utils?.randomID?.(24) ?? globalThis.crypto?.randomUUID?.() ?? `${Date.now()}:${state.sequence++}`}`;
       state.rollIds.set(roll, id);
       return id;
@@ -442,13 +683,20 @@ export class SharedRollResolutionQueueService {
                 phase: entry.phase,
                 ...value
               });
-              if (Number.isFinite(Number(value.currentTotal))) batch.context.currentTotal = Number(value.currentTotal);
+              const changedTotal = Number.isFinite(Number(value.currentTotal));
+              if (changedTotal) batch.context.currentTotal = Number(value.currentTotal);
               if (typeof value.succeeded === "boolean") {
                 batch.context.succeeded = value.succeeded;
                 batch.context.success = value.succeeded;
               } else if (typeof value.success === "boolean") {
                 batch.context.succeeded = value.success;
                 batch.context.success = value.success;
+              } else if (changedTotal && batch.context.target != null) {
+                const inferred = this.#inferSucceeded(batch);
+                if (typeof inferred === "boolean") {
+                  batch.context.succeeded = inferred;
+                  batch.context.success = inferred;
+                }
               }
               if (Array.isArray(value.adjustments)) {
                 batch.context.adjustments.push(...this.#normalizeAdjustments(value.adjustments));
@@ -460,14 +708,13 @@ export class SharedRollResolutionQueueService {
             entry.reject(error);
           }
         }
-        // Providers that enqueue during an earlier provider's Promise can join
-        // the same roll before the next ordered pass.
+        // Providers that enqueue while an earlier provider's Promise is open
+        // join the next ordered pass before terminal finalization.
         await Promise.resolve();
       }
     } finally {
-      if (batch.pendingPublished && !batch.context.finalized) this.#finalizeBatch(state, batch);
-      state.batches.delete(batch.key);
       batch.running = false;
+      this.#maybeFinalizeOrCleanup(state, batch);
     }
   }
 }

@@ -4,9 +4,8 @@ import { SharedRollResolutionQueueService } from "./shared-roll-resolution-queue
 
 const RULE_ID = "concentration-effect-lifecycle";
 const FLAG_KEY = "contextualEffect";
-const BARRIER_PRIORITY = 10000;
-const PROVIDER_DISCOVERY_GRACE_MS = 100;
 const FINALIZED_HOOK = "dnd5e-character-builder.rollResolutionFinalized";
+const CONCENTRATION_GATE_PROVIDER = `${MODULE_ID}:${RULE_ID}:resolution-gate`;
 
 /**
  * Generic lifecycle bridge for runtime effects.
@@ -16,8 +15,9 @@ const FINALIZED_HOOK = "dnd5e-character-builder.rollResolutionFinalized";
  *   1. bind declared concentration-dependent effects to the native
  *      `flags.dnd5e.dependentOn` relationship;
  *   2. keep concentration request rolls attached to the concentrating Actor;
- *   3. end native concentration only after the shared post-roll queue has
- *      reached its final total.
+ *   3. open a shared-queue resolution gate before a Concentration roll is
+ *      evaluated and end native concentration only after every claimed
+ *      Character/Item provider has released that roll.
  *
  * D&D5e then deletes concentration dependents through its own registry.
  */
@@ -25,6 +25,7 @@ export class EffectLifecycleService {
   static #initialized = false;
   static #handledRolls = new WeakSet();
   static #pending = new Map();
+  static #gates = new Map();
   static #reroutes = new Set();
   static #audit = new Map();
 
@@ -41,9 +42,7 @@ export class EffectLifecycleService {
     });
 
     // Native concentration request cards can be clicked while a different
-    // Actor is targeted/selected. D&D5e then rolls that Actor instead of the
-    // Actor that posted the concentration challenge. Correct only the clear
-    // mismatch case: request owner is concentrating, current subject is not.
+    // Actor is targeted/selected. Correct only the clear mismatch case.
     Hooks.on("dnd5e.preRollConcentration", (config, dialog, message) => {
       try {
         return this.#redirectMismatchedConcentrationRequest(config, dialog, message);
@@ -52,10 +51,34 @@ export class EffectLifecycleService {
       }
     });
 
+    // D&D5e exposes this after the Concentration D20Roll exists but before it
+    // is evaluated. Open a deferred-finalization gate here, before any
+    // post-roll provider can begin asynchronous discovery.
+    Hooks.on("dnd5e.postConcentrationRollConfiguration", (rolls, config) => {
+      try {
+        this.#openConcentrationGates(rolls, config);
+      } catch (error) {
+        console.warn(`${MODULE_ID} | Could not open Concentration resolution gate.`, error);
+      }
+    });
+
+    // rollConcentration delegates to rollSavingThrow first. Capture the
+    // evaluated total on this earlier hook so Character providers registered
+    // after this service see an already-pending deferred batch.
+    Hooks.on("dnd5e.rollSavingThrow", (rolls, data) => {
+      try {
+        this.#captureConcentrationSavingThrow(rolls, data);
+      } catch (error) {
+        console.warn(`${MODULE_ID} | Could not capture Concentration saving throw.`, error);
+      }
+    });
+
     Hooks.on("dnd5e.rollConcentration", (rolls, data) => {
-      void this.#queueConcentrationResolution(rolls, data).catch(error => {
-        console.warn(`${MODULE_ID} | Concentration lifecycle resolution failed.`, error);
-      });
+      try {
+        this.#requestConcentrationFinalization(rolls, data);
+      } catch (error) {
+        console.warn(`${MODULE_ID} | Concentration finalization request failed.`, error);
+      }
     });
 
     Hooks.on(FINALIZED_HOOK, (payload, roll) => {
@@ -74,11 +97,6 @@ export class EffectLifecycleService {
     return (this.#audit.get(key) ?? []).map(row => ({ ...row }));
   }
 
-  /**
-   * Attach lifecycle provenance to effect data. Concentration mode uses the
-   * D&D5e-native dependency registry, so ending concentration remains a native
-   * lifecycle operation rather than Character Builder deleting arbitrary AEs.
-   */
   static bindEffectData(effectData, {
     mode = "duration",
     anchorUuid = null,
@@ -132,9 +150,6 @@ export class EffectLifecycleService {
       ?? null;
     const lifecycle = declaration?.lifecycle ?? null;
 
-    // D&D5e's native Apply Effects tray uses a concentration ActiveEffect as
-    // the origin and writes dependentOn itself. This safety net also covers
-    // compatible external materializers that provide only the origin.
     const origin = data.origin ?? effect?.origin ?? null;
     let nativeConcentrationOrigin = false;
     if (origin && !foundry.utils.getProperty(data, "flags.dnd5e.dependentOn")) {
@@ -202,62 +217,117 @@ export class EffectLifecycleService {
     return false;
   }
 
-  static async #queueConcentrationResolution(rolls, data) {
+  static #openConcentrationGates(rolls, config) {
     if (!this.enabled()) return;
-    const actor = data?.subject?.actor ?? data?.subject ?? null;
+    const actor = config?.subject ?? null;
     if (!actor?.endConcentration || !this.#hasConcentration(actor)) return;
+    const actorUuid = actor.uuid ?? `Actor.${actor.id}`;
+    const configuredTarget = Number.isFinite(Number(config?.target)) ? Number(config.target) : null;
+
+    for (const roll of Array.isArray(rolls) ? rolls : [rolls]) {
+      if (!roll) continue;
+      const claim = SharedRollResolutionQueueService.claim({
+        roll,
+        providerId: CONCENTRATION_GATE_PROVIDER,
+        reason: "concentration-lifecycle-finalization",
+        actorUuid,
+        rollType: "concentration",
+        target: configuredTarget,
+        deferFinalization: true
+      });
+      if (!claim?.active || !claim.rollKey) continue;
+      this.#gates.set(claim.rollKey, {
+        claim,
+        actor,
+        actorUuid,
+        target: configuredTarget,
+        createdAt: Date.now()
+      });
+    }
+  }
+
+  static #captureConcentrationSavingThrow(rolls, data) {
+    if (!this.enabled()) return;
+    const fallbackActor = data?.subject?.actor ?? data?.subject ?? null;
 
     for (const roll of Array.isArray(rolls) ? rolls : [rolls]) {
       if (!roll || this.#handledRolls.has(roll) || !Number.isFinite(Number(roll.total))) continue;
+      const preResolution = SharedRollResolutionQueueService.getResolution({ roll });
+      const gate = preResolution?.rollKey ? this.#gates.get(preResolution.rollKey) : null;
+      if (!gate) continue; // Ordinary Saving Throw, not a Concentration roll.
+
+      const actor = gate.actor ?? fallbackActor;
+      if (!actor?.endConcentration || !this.#hasConcentration(actor)) continue;
       this.#handledRolls.add(roll);
 
       const originalTotal = Number(roll.total);
-      const target = Number.isFinite(Number(roll.options?.target)) ? Number(roll.options.target) : null;
+      const target = Number.isFinite(Number(roll.options?.target))
+        ? Number(roll.options.target)
+        : gate.target;
       const initialSuccess = target == null ? null : originalTotal >= target;
-      const actorUuid = actor.uuid ?? `Actor.${actor.id}`;
       const pending = SharedRollResolutionQueueService.markPending({
         roll,
-        actorUuid,
-        rollType: "concentration",
-        originalTotal,
-        currentTotal: originalTotal,
-        target,
-        succeeded: initialSuccess
-      });
-
-      this.#pending.set(pending.rollKey, {
-        actor,
-        actorUuid,
-        roll,
-        originalTotal,
-        target,
-        createdAt: Date.now()
-      });
-
-      // The barrier is deliberately inert. Its only job is to keep the batch
-      // open for a short discovery window so async Character/Item providers
-      // that were triggered by the same native roll can enqueue before the
-      // queue publishes its final snapshot. Providers that enqueue while an
-      // earlier prompt is open are picked up by the queue's next pass.
-      void SharedRollResolutionQueueService.enqueue({
-        roll,
-        rollKey: pending.rollKey,
-        phase: "lifecycle",
-        priority: BARRIER_PRIORITY,
-        providerId: `${MODULE_ID}:${RULE_ID}:barrier`,
-        actorUuid,
+        rollKey: gate.claim.rollKey,
+        actorUuid: gate.actorUuid,
         rollType: "concentration",
         originalTotal,
         currentTotal: originalTotal,
         target,
         succeeded: initialSuccess,
-        execute: async () => {
-          await new Promise(resolve => setTimeout(resolve, PROVIDER_DISCOVERY_GRACE_MS));
-          return { stop: false };
-        }
-      }).catch(error => {
-        console.warn(`${MODULE_ID} | Concentration queue barrier failed.`, error);
+        deferFinalization: true
       });
+
+      this.#pending.set(pending.rollKey, {
+        actor,
+        actorUuid: gate.actorUuid,
+        roll,
+        originalTotal,
+        target,
+        createdAt: Date.now()
+      });
+    }
+  }
+
+  static #requestConcentrationFinalization(rolls, data) {
+    if (!this.enabled()) return;
+    // Defensive fallback if a system/module changed hook ordering.
+    this.#captureConcentrationSavingThrow(rolls, data);
+
+    for (const roll of Array.isArray(rolls) ? rolls : [rolls]) {
+      if (!roll) continue;
+      const resolution = SharedRollResolutionQueueService.getResolution({ roll });
+      const rollKey = resolution?.rollKey;
+      if (!rollKey) continue;
+      const pending = this.#pending.get(rollKey);
+      const gate = this.#gates.get(rollKey);
+      if (!pending && !gate) continue;
+
+      const originalTotal = Number.isFinite(Number(pending?.originalTotal))
+        ? Number(pending.originalTotal)
+        : Number(roll.total ?? 0);
+      const target = Number.isFinite(Number(roll.options?.target))
+        ? Number(roll.options.target)
+        : (pending?.target ?? gate?.target ?? null);
+      const currentTotal = Number.isFinite(Number(resolution?.currentTotal))
+        ? Number(resolution.currentTotal)
+        : originalTotal;
+
+      SharedRollResolutionQueueService.requestFinalization({
+        roll,
+        rollKey,
+        actorUuid: pending?.actorUuid ?? gate?.actorUuid ?? null,
+        rollType: "concentration",
+        originalTotal,
+        currentTotal,
+        target,
+        succeeded: target == null ? null : currentTotal >= target
+      });
+
+      // Release only Character Builder's lifecycle gate. Character/Item
+      // discovery claims remain authoritative and keep the roll open until
+      // those runtimes explicitly release them.
+      gate?.claim?.release?.();
+      this.#gates.delete(rollKey);
     }
   }
 
@@ -266,6 +336,7 @@ export class EffectLifecycleService {
     const pending = this.#pending.get(payload.rollKey);
     if (!pending) return;
     this.#pending.delete(payload.rollKey);
+    this.#gates.delete(payload.rollKey);
 
     const actor = pending.actor;
     if (!actor?.endConcentration || !this.#hasConcentration(actor)) return;
@@ -280,10 +351,11 @@ export class EffectLifecycleService {
 
     if (!failed) {
       this.#recordAudit(actor, {
-        action: "Concentration maintained after final post-roll resolution",
+        action: "Concentration maintained after final shared-queue resolution",
         originalTotal: pending.originalTotal,
         finalTotal: currentTotal,
-        target
+        target,
+        rollKey: payload.rollKey
       });
       return;
     }

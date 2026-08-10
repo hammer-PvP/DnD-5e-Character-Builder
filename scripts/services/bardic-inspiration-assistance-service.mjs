@@ -87,28 +87,27 @@ export class BardicInspirationAssistanceService {
     const actor = data?.subject?.actor ?? data?.subject ?? null;
     if (!actor || !this.#isResponsibleClient(actor) || !this.enabled()) return;
 
-    // Resolve availability before publishing anything into the shared queue.
-    // This keeps Character Builder completely out of rolls for actors that do
-    // not currently have the native Bardic Inspiration effect.
-    const inspiration = await this.#findNativeInspiration(actor);
-    if (!inspiration) return;
+    const actorUuid = actor.uuid ?? `Actor.${actor.id}`;
+    const rollType = this.#structuredRollType(kind);
+    const candidates = [];
 
-    const candidates = (Array.isArray(rolls) ? rolls : [rolls]).filter(roll => {
-      if (!roll || this.#handledRolls.has(roll)) return false;
+    // Protocol v3 rule: asynchronous eligibility discovery must claim each
+    // candidate synchronously, before the first await. This is especially
+    // important for Concentration, whose lifecycle may request finalization
+    // immediately after D&D5e finishes the native roll hook chain.
+    for (const roll of Array.isArray(rolls) ? rolls : [rolls]) {
+      if (!roll || this.#handledRolls.has(roll)) continue;
+      if (roll?.options?.dnd5eCharacterBuilderRulesAssistance?.[RULE_ID]) continue;
+      if (!Number.isFinite(Number(roll.total))) continue;
       this.#handledRolls.add(roll);
-      if (roll?.options?.dnd5eCharacterBuilderRulesAssistance?.[RULE_ID]) return false;
-      return Number.isFinite(Number(roll.total));
-    });
-    if (!candidates.length) return;
 
-    return Promise.all(candidates.map(roll => {
-      const actorUuid = actor.uuid ?? `Actor.${actor.id}`;
-      const rollType = this.#structuredRollType(kind);
       const originalTotal = Number(roll.total ?? 0);
       const target = Number.isFinite(Number(roll.options?.target)) ? Number(roll.options.target) : null;
       const nativeSuccess = this.#nativeOutcome(kind, roll, target, originalTotal);
-      const pending = SharedRollResolutionQueueService.markPending({
+      const claim = SharedRollResolutionQueueService.claim({
         roll,
+        providerId: `${MODULE_ID}:${RULE_ID}:discovery`,
+        reason: "bardic-inspiration-eligibility",
         actorUuid,
         rollType,
         originalTotal,
@@ -116,57 +115,95 @@ export class BardicInspirationAssistanceService {
         target,
         succeeded: nativeSuccess
       });
+      candidates.push({ roll, originalTotal, target, nativeSuccess, claim });
+    }
+    if (!candidates.length) return;
 
-      return SharedRollResolutionQueueService.enqueue({
-        roll,
-        rollKey: pending.rollKey,
-        phase: "character",
-        providerId: `${MODULE_ID}:${RULE_ID}`,
-        actorUuid,
-        rollType,
-        originalTotal,
-        currentTotal: originalTotal,
-        target,
-        succeeded: nativeSuccess,
-        execute: async context => {
-          try {
-            await this.#handleEligibleRoll(kind, actor, roll, data);
-          } catch (error) {
-            this.#reportError(error);
+    let inspiration = null;
+    try {
+      inspiration = await this.#findNativeInspiration(actor);
+    } catch (error) {
+      for (const candidate of candidates) candidate.claim?.release?.();
+      throw error;
+    }
+
+    if (!inspiration) {
+      for (const candidate of candidates) candidate.claim?.release?.();
+      return;
+    }
+
+    const tasks = candidates.map(candidate => {
+      const { roll, originalTotal, target, nativeSuccess, claim } = candidate;
+      let queued = null;
+      try {
+        const pending = SharedRollResolutionQueueService.markPending({
+          roll,
+          rollKey: claim?.rollKey ?? null,
+          actorUuid,
+          rollType,
+          originalTotal,
+          currentTotal: originalTotal,
+          target,
+          succeeded: nativeSuccess
+        });
+
+        queued = SharedRollResolutionQueueService.enqueue({
+          roll,
+          rollKey: pending.rollKey,
+          phase: "character",
+          providerId: `${MODULE_ID}:${RULE_ID}`,
+          actorUuid,
+          rollType,
+          originalTotal,
+          currentTotal: originalTotal,
+          target,
+          succeeded: nativeSuccess,
+          execute: async context => {
+            try {
+              await this.#handleEligibleRoll(kind, actor, roll, data);
+            } catch (error) {
+              this.#reportError(error);
+            }
+
+            const metadata = roll?.options?.dnd5eCharacterBuilderRulesAssistance?.[RULE_ID] ?? null;
+            const resolvedOriginal = Number.isFinite(Number(metadata?.originalTotal))
+              ? Number(metadata.originalTotal)
+              : Number(context.originalTotal ?? originalTotal);
+            const currentTotal = Number.isFinite(Number(metadata?.finalTotal))
+              ? Number(metadata.finalTotal)
+              : Number(context.currentTotal ?? resolvedOriginal);
+            const succeeded = typeof metadata?.success === "boolean"
+              ? metadata.success
+              : (typeof context.succeeded === "boolean" ? context.succeeded : nativeSuccess);
+            const adjustments = metadata?.used === true && Number.isFinite(Number(metadata.bonus))
+              ? [{ source: "Bardic Inspiration", bonus: Number(metadata.bonus) }]
+              : [];
+
+            return {
+              offered: metadata?.offered === true,
+              used: metadata?.used === true,
+              consumed: metadata?.consumed === true,
+              bonus: Number(metadata?.bonus ?? 0),
+              currentTotal,
+              succeeded,
+              adjustments,
+              finalized: false,
+              stop: false
+            };
           }
+        });
 
-          const metadata = roll?.options?.dnd5eCharacterBuilderRulesAssistance?.[RULE_ID] ?? null;
-          const resolvedOriginal = Number.isFinite(Number(metadata?.originalTotal))
-            ? Number(metadata.originalTotal)
-            : Number(context.originalTotal ?? originalTotal);
-          const currentTotal = Number.isFinite(Number(metadata?.finalTotal))
-            ? Number(metadata.finalTotal)
-            : Number(context.currentTotal ?? resolvedOriginal);
-          const succeeded = typeof metadata?.success === "boolean"
-            ? metadata.success
-            : (typeof context.succeeded === "boolean" ? context.succeeded : nativeSuccess);
-          const adjustments = metadata?.used === true && Number.isFinite(Number(metadata.bonus))
-            ? [{ source: "Bardic Inspiration", bonus: Number(metadata.bonus) }]
-            : [];
+        // The queued provider itself now keeps the batch alive. The discovery
+        // claim has done its job and must be released before awaiting the UI.
+        claim?.release?.();
+        return queued;
+      } catch (error) {
+        claim?.release?.();
+        throw error;
+      }
+    });
 
-          // Do not finalize the shared queue inside the Character phase. Item
-          // providers and lifecycle finalizers must still be able to act on the
-          // same roll. The queue finalizes only after every ordered provider has
-          // completed.
-          return {
-            offered: metadata?.offered === true,
-            used: metadata?.used === true,
-            consumed: metadata?.consumed === true,
-            bonus: Number(metadata?.bonus ?? 0),
-            currentTotal,
-            succeeded,
-            adjustments,
-            finalized: false,
-            stop: false
-          };
-        }
-      });
-    }));
+    return Promise.all(tasks);
   }
 
   static async #handleEligibleRoll(kind, actor, roll, _data) {

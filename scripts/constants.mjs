@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.9j";
-export const MODULE_BUILD = "community-beta-099j-finalized-roll-handoff-hex-tray";
+export const MODULE_VERSION = "0.9.9k";
+export const MODULE_BUILD = "community-beta-099k-roll-queue-v3-concentration-hex-bridge";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
