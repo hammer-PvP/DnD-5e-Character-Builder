@@ -88,6 +88,13 @@ export class AdvancementService {
       showVisualizer: false
     });
 
+    // D&D5e 5.3.3 currently auto-applies the first configured Size even when
+    // a Size Advancement exposes multiple legal choices (for example Small or
+    // Medium). Character Builder keeps automatic application for deterministic
+    // steps, but forces only multi-option Size Advancements back through the
+    // native interactive flow so the player must make the actual species choice.
+    this.#preserveInteractiveMultiSizeAdvancements(manager, data);
+
     if (!manager.steps.length) {
       await draft.createEmbeddedDocuments("Item", [data]);
       await finish();
@@ -283,6 +290,48 @@ export class AdvancementService {
     });
   }
 
+
+  static #preserveInteractiveMultiSizeAdvancements(manager, itemData) {
+    const configured = itemData?.system?.advancement ?? {};
+    const interactiveSizeIds = new Set();
+
+    for (const [key, advancement] of Object.entries(configured)) {
+      if (String(advancement?.type ?? "") !== "Size") continue;
+      if (this.#choiceCollectionSize(advancement?.configuration?.sizes) <= 1) continue;
+      interactiveSizeIds.add(String(advancement?._id ?? key));
+    }
+    if (!interactiveSizeIds.size) return 0;
+
+    let patched = 0;
+    for (const step of manager?.steps ?? []) {
+      const flow = step?.flow;
+      const advancement = flow?.advancement;
+      const advancementId = String(advancement?.id ?? advancement?._id ?? "");
+      if (!interactiveSizeIds.has(advancementId)) continue;
+
+      const originalAutomaticValue = typeof flow.getAutomaticApplicationValue === "function"
+        ? flow.getAutomaticApplicationValue.bind(flow)
+        : null;
+
+      flow.getAutomaticApplicationValue = async (...args) => {
+        // Re-check the live DataModel because D&D5e can normalize arrays into
+        // Sets while constructing the AdvancementManager. Multiple choices
+        // must never be silently collapsed to the first configured size.
+        if (this.#choiceCollectionSize(advancement?.configuration?.sizes) > 1) return false;
+        return originalAutomaticValue ? originalAutomaticValue(...args) : false;
+      };
+      patched += 1;
+    }
+
+    return patched;
+  }
+
+  static #choiceCollectionSize(value) {
+    if (typeof value?.size === "number") return value.size;
+    if (Array.isArray(value)) return value.length;
+    if (value && typeof value === "object") return Object.values(value).filter(Boolean).length;
+    return 0;
+  }
 
   static async #redirectAdvancementReferences(actor, redirects) {
     const updates = [];

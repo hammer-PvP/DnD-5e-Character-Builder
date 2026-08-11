@@ -4,6 +4,7 @@ import { PlayerSheetIntegrityService } from "./player-sheet-integrity-service.mj
 const ADVANCEMENT_CLOSE_TARGET = "dnd5e.applications.advancement.AdvancementManager.prototype._onClose";
 const ACTOR_SHEET_ADD_TARGET = "dnd5e.applications.actor.BaseActorSheet.prototype._addDocument";
 const ACTOR_SHEET_DROP_TARGET = "dnd5e.applications.actor.BaseActorSheet.prototype._onDropCreateItems";
+const ACTOR_DIRECTORY_CONTEXT_TARGET = "foundry.applications.sidebar.tabs.ActorDirectory.prototype._getEntryContextOptions";
 const ACTIVITY_REFUND_TARGETS = Object.freeze([
   "AttackActivity", "CastActivity", "CheckActivity", "DamageActivity", "EnchantActivity",
   "ForwardActivity", "HealActivity", "OrderActivity", "SaveActivity", "SummonActivity",
@@ -91,6 +92,46 @@ export class LibWrapperService {
         },
         "WRAPPER"
       );
+      api.register(
+        MODULE_ID,
+        ACTOR_DIRECTORY_CONTEXT_TARGET,
+        function (wrapped, ...args) {
+          const options = wrapped(...args);
+          if (!Array.isArray(options) || !game.user?.isGM) return options;
+          if (options.some(option => String(option?.classes ?? "").split(/\s+/).includes("cb-validate-character-context"))) {
+            return options;
+          }
+          options.push({
+            label: "Validate Character",
+            icon: "fa-solid fa-stethoscope",
+            classes: "cb-validate-character-context",
+            visible: target => {
+              const actor = LibWrapperService.#actorFromDirectoryTarget(target);
+              return Boolean(actor && actor.type === "character"
+                && !actor.getFlag(MODULE_ID, "isDraft")
+                && !actor.getFlag(MODULE_ID, "isLevelUpDraft"));
+            },
+            onClick: (_event, target) => {
+              const actor = LibWrapperService.#actorFromDirectoryTarget(target);
+              if (!actor) {
+                ui.notifications.warn("Character Builder could not resolve that Actor directory entry.");
+                return;
+              }
+              const launch = game.modules.get(MODULE_ID)?.api?.validateCharacter;
+              if (typeof launch !== "function") {
+                ui.notifications.error("Character Validation is not available yet. Reload the world and try again.");
+                return;
+              }
+              void Promise.resolve(launch(actor)).catch(error => {
+                console.error(`${MODULE_ID} | Character Validation could not start.`, error);
+                ui.notifications.error(error.message, { permanent: true });
+              });
+            }
+          });
+          return options;
+        },
+        "WRAPPER"
+      );
       for (const target of ACTIVITY_REFUND_TARGETS) {
         try {
           api.register(
@@ -141,6 +182,18 @@ export class LibWrapperService {
       current.delete(callback);
       if (!current.size) this.#advancementCloseObservers.delete(manager);
     };
+  }
+
+  static #actorFromDirectoryTarget(target) {
+    const element = target instanceof HTMLElement ? target : target?.[0] ?? null;
+    if (!element) return null;
+    const entry = element.closest?.("[data-entry-id], [data-document-id], [data-actor-id], [data-entity-id]") ?? element;
+    const id = entry.dataset?.entryId
+      ?? entry.dataset?.documentId
+      ?? entry.dataset?.actorId
+      ?? entry.dataset?.entityId
+      ?? null;
+    return id ? game.actors?.get?.(id) ?? null : null;
   }
 
   static #notifyAdvancementClosed(manager, error) {

@@ -2,6 +2,7 @@ import { MODULE_BUILD, MODULE_ID, MODULE_VERSION, defaultSettings } from "./cons
 import { CharacterBuilderSettingsApp } from "./apps/settings-app.mjs";
 import { CharacterBuilderApp } from "./apps/character-builder-app.mjs";
 import { CharacterBuilderToolApp } from "./apps/character-builder-tool-app.mjs";
+import { CharacterValidationApp } from "./apps/character-validation-app.mjs";
 import { LevelUpApp } from "./apps/level-up-app.mjs";
 import { LevelUpService } from "./services/level-up-service.mjs";
 import { LevelUpDraftManager } from "./services/level-up-draft-manager.mjs";
@@ -123,6 +124,7 @@ Hooks.once("init", async () => {
       createEffect: (actor, effectData, lifecycle = {}) => RulesAssistanceService.createManagedEffect(actor, effectData, lifecycle)
     }),
     openTool: () => game.user.isGM ? new CharacterBuilderToolApp().render({ force: true }) : null,
+    validateCharacter: actor => game.user.isGM ? CharacterValidationApp.launch(actor) : null,
     openTutorial: () => SplashTutorialService.openNow()
   };
   game.modules.get(MODULE_ID).api = api;
@@ -207,6 +209,30 @@ Hooks.on("renderApplicationV2", (app, element) => {
 });
 
 Hooks.on("renderActorDirectory", (app, html) => injectActorDirectoryTool(app, html));
+
+Hooks.on("getActorDirectoryEntryContext", (_application, options) => {
+  if (!game.user.isGM || !Array.isArray(options)) return;
+  if (options.some(option => option?.classes?.includes?.("cb-validate-character-context"))) return;
+  options.push({
+    label: "Validate Character",
+    icon: "fa-solid fa-stethoscope",
+    classes: "cb-validate-character-context",
+    visible: target => {
+      const actor = actorFromDirectoryTarget(target);
+      return Boolean(actor && actor.type === "character"
+        && !actor.getFlag(MODULE_ID, "isDraft")
+        && !actor.getFlag(MODULE_ID, "isLevelUpDraft"));
+    },
+    onClick: (_event, target) => {
+      const actor = actorFromDirectoryTarget(target);
+      if (!actor) return ui.notifications.warn("Character Builder could not resolve that Actor directory entry.");
+      void CharacterValidationApp.launch(actor).catch(error => {
+        console.error(`${MODULE_ID} | Character Validation could not start.`, error);
+        ui.notifications.error(error.message, { permanent: true });
+      });
+    }
+  });
+});
 
 // Retain a small compatibility fallback for any legacy Actor sheet selected by the world.
 Hooks.on("renderActorSheet", (app, html) => {
@@ -656,6 +682,18 @@ function injectAdvancementChoiceAnnotations(actor, root) {
     const destination = row.querySelector(".item-name, .name, .item-summary") ?? row;
     destination.append(group);
   }
+}
+
+function actorFromDirectoryTarget(target) {
+  const element = target instanceof HTMLElement ? target : target?.[0] ?? null;
+  if (!element) return null;
+  const entry = element.closest?.("[data-entry-id], [data-document-id], [data-actor-id], [data-entity-id]") ?? element;
+  const id = entry.dataset?.entryId
+    ?? entry.dataset?.documentId
+    ?? entry.dataset?.actorId
+    ?? entry.dataset?.entityId
+    ?? null;
+  return id ? game.actors.get(id) ?? null : null;
 }
 
 function isActorDirectoryApp(app) {

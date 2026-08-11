@@ -14,6 +14,85 @@ export class AdvancementChoiceAnnotationService {
     return foundry.utils.deepClone(item?.getFlag(MODULE_ID, this.FLAG) ?? []);
   }
 
+  /**
+   * Build the badge that should represent one already-resolved Advancement on
+   * a live Actor. Character Validation uses this to audit CB presentation
+   * metadata without guessing or replaying the underlying choice.
+   */
+  static expectedAdvancementBadge(actor, {
+    sourceItemId,
+    advancementId,
+    context = "validation",
+    transactionId = null,
+    characterLevel = null,
+    classIdentifier = null,
+    classLevel = null
+  } = {}) {
+    const sourceItem = actor?.items?.get?.(sourceItemId);
+    if (!sourceItem || !advancementId) return null;
+    const advancement = sourceItem.toObject().system?.advancement?.[advancementId];
+    if (!advancement) return null;
+    const base = this.#buildBadge(advancementId, advancement, actor);
+    if (!base) return null;
+    const target = this.#resolvePresentationItem(sourceItem, base, actor);
+    if (!target) return null;
+
+    const resolvedClassIdentifier = classIdentifier ?? this.#classIdentifierForItem(actor, sourceItem);
+    const resolvedClassLevel = Number(classLevel ?? this.#classLevelForItem(actor, sourceItem) ?? advancement.level ?? 0);
+    const resolvedCharacterLevel = Number(characterLevel ?? this.#actorLevel(actor));
+    return {
+      targetItemId: target.id,
+      badge: {
+        ...base,
+        context,
+        transactionId: transactionId ?? `validation:${sourceItem.id}:${advancementId}`,
+        characterLevel: resolvedCharacterLevel,
+        classIdentifier: resolvedClassIdentifier,
+        classLevel: resolvedClassLevel,
+        sourceItemId: sourceItem.id,
+        targetItemId: target.id
+      }
+    };
+  }
+
+  /**
+   * Reconcile only the Character Builder badge for an Advancement whose native
+   * state is already complete. The mechanical choice remains untouched.
+   */
+  static async reconcileAdvancementBadge(actor, options = {}) {
+    const expected = this.expectedAdvancementBadge(actor, options);
+    if (!expected) return { changed: false, reason: "no-presentation-target" };
+    const target = actor.items.get(expected.targetItemId);
+    if (!target) return { changed: false, reason: "missing-target" };
+
+    const incoming = expected.badge;
+    const current = this.getBadges(target);
+    // Runtime Weapon Mastery maintenance already owns a stable blue badge. A
+    // Validator pass must not add a second cosmetic badge merely because the
+    // native Trait Advancement uses a different advancementId. Treat an
+    // equivalent same-source mastery badge as satisfying presentation state.
+    if (this.#hasEquivalentMaintenanceBadge(current, incoming, target.id)) {
+      return { changed: false, targetItemId: target.id, badge: incoming, reason: "equivalent-maintenance-badge" };
+    }
+    const retained = current.filter(badge => !(
+      String(badge?.sourceItemId ?? "") === String(incoming.sourceItemId ?? "")
+      && String(badge?.advancementId ?? "") === String(incoming.advancementId ?? "")
+      && String(badge?.targetItemId ?? target.id) === String(target.id)
+    ));
+    const next = [...retained, incoming].sort((a, b) =>
+      Number(a.characterLevel ?? 0) - Number(b.characterLevel ?? 0)
+      || String(a.label ?? "").localeCompare(String(b.label ?? ""), game.i18n.lang)
+    );
+    if (this.#stableString(current) === this.#stableString(next)) {
+      return { changed: false, targetItemId: target.id, badge: incoming };
+    }
+    await target.update({ [`flags.${MODULE_ID}.${this.FLAG}`]: next }, {
+      characterBuilderAdvancementAnnotations: true,
+      characterBuilderValidationRepair: true
+    });
+    return { changed: true, targetItemId: target.id, badge: incoming };
+  }
+
   static async clear(actor) {
     if (!actor?.items) return [];
     const updates = actor.items
@@ -535,6 +614,45 @@ export class AdvancementChoiceAnnotationService {
       targetClassLevel: 1,
       targetCharacterLevel: 1
     };
+  }
+
+  static #hasEquivalentMaintenanceBadge(current, incoming, targetItemId) {
+    if (String(incoming?.category ?? "").toLowerCase() !== "weapon mastery") return false;
+    const expected = this.#normalizedMasteryBadgeValues(incoming?.values ?? []);
+    if (!expected.length) return false;
+    return (current ?? []).some(badge => {
+      if (String(badge?.sourceItemId ?? "") !== String(incoming?.sourceItemId ?? "")) return false;
+      if (String(badge?.targetItemId ?? targetItemId) !== String(targetItemId)) return false;
+      if (String(badge?.category ?? "").toLowerCase() !== "weapon mastery") return false;
+      const values = this.#normalizedMasteryBadgeValues(badge?.values ?? []);
+      return this.#stableString(values) === this.#stableString(expected);
+    });
+  }
+
+  static #normalizedMasteryBadgeValues(values) {
+    return [...new Set((values ?? []).map(value => String(value ?? "").split(" — ")[0].trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, game.i18n.lang));
+  }
+
+  static #classIdentifierForItem(actor, item) {
+    if (!item) return null;
+    if (item.type === "class") return item.system?.identifier ?? null;
+    if (item.type === "subclass") return item.system?.classIdentifier ?? item.system?.class?.identifier ?? item.system?.class ?? null;
+    const origin = String(item.getFlag?.("dnd5e", "advancementRoot") ?? item.getFlag?.("dnd5e", "advancementOrigin") ?? "");
+    const root = actor?.items?.get?.(origin.split(".")[0]);
+    if (root && root.id !== item.id) return this.#classIdentifierForItem(actor, root);
+    return null;
+  }
+
+  static #classLevelForItem(actor, item) {
+    const identifier = this.#classIdentifierForItem(actor, item);
+    if (!identifier) return null;
+    return Number(actor?.items?.find?.(candidate => candidate.type === "class" && candidate.system?.identifier === identifier)?.system?.levels ?? 0);
+  }
+
+  static #actorLevel(actor) {
+    return (actor?.items ?? []).filter(item => item.type === "class")
+      .reduce((sum, item) => sum + Number(item.system?.levels ?? 0), 0);
   }
 
   static #bracketLabel(category, values) {

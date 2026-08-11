@@ -26,6 +26,7 @@ export class RestSessionService {
       createdBy: game.user.id,
       status: "pending",
       nativeRestCompleted: false,
+      longRestLifecycleApplied: false,
       keeperChangesApplied: false,
       activeActionId: null,
       operations: {},

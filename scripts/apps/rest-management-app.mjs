@@ -7,6 +7,7 @@ import { ProtectedTransactionDialogService } from "../services/protected-transac
 import { ModalStackService } from "../services/modal-stack-service.mjs";
 import { ShortRestHomebrewService } from "../services/short-rest-homebrew-service.mjs";
 import { RestAccessService } from "../services/rest-access-service.mjs";
+import { LongRestLifecycleService } from "../services/long-rest-lifecycle-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -131,6 +132,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     const actions = await RuntimeFeatureService.actions(actor, type, registry, session);
     if (!actions.length) {
       if (session.nativeRestCompleted) {
+        session = await this.#applyPostNativeLongRestLifecycle(actor, type, session);
         session = await this.#applyAutomaticRestLifecycle(actor, type, session);
         const homebrewResult = type === "short"
           ? await ShortRestHomebrewService.apply(actor, { session })
@@ -156,6 +158,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
         return result;
       }
       session = await RestSessionService.markNativeRestCompleted(actor, result);
+      session = await this.#applyPostNativeLongRestLifecycle(actor, type, session);
       session = await this.#applyAutomaticRestLifecycle(actor, type, session);
       const homebrewResult = type === "short"
         ? await ShortRestHomebrewService.apply(actor, { session })
@@ -171,6 +174,19 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     this.#instances.set(key, app);
     await app.render({ force: true });
     return app;
+  }
+
+  static async #applyPostNativeLongRestLifecycle(actor, restType, session) {
+    if (restType !== "long" || !session?.nativeRestCompleted || session.longRestLifecycleApplied) return session;
+    const result = await LongRestLifecycleService.apply(actor, { reason: "character-keeper-long-rest" });
+    return RestSessionService.update(actor, {
+      longRestLifecycleApplied: true,
+      longRestLifecycleAppliedAt: Date.now(),
+      longRestLifecycleResult: {
+        concentrationsEnded: Number(result?.concentrationsEnded ?? 0),
+        effectsRemoved: (result?.effectsRemoved ?? []).map(row => ({ id: row.id, name: row.name }))
+      }
+    });
   }
 
   static async #applyAutomaticRestLifecycle(actor, restType, session) {
@@ -493,6 +509,8 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
         }
         this.session = await RestSessionService.markNativeRestCompleted(this.actor, result);
       }
+
+      this.session = await RestManagementApp.#applyPostNativeLongRestLifecycle(this.actor, this.restType, this.session);
 
       const operations = Object.values(this.session.operations ?? {});
       const lifecycleRequired = RuntimeFeatureService.restLifecycleRequired(this.actor, this.restType);

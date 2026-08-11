@@ -176,7 +176,18 @@ For limited-list casters, a normally selected spell that becomes Always Prepared
 
 The merge is intentionally conservative. It requires the same canonical spell source and mechanically equivalent base Activities/effects. Non-mechanical metadata such as embedded-document timestamps is ignored. A native ItemGrant may contribute a use pool and free-cast forwarding Activities only when those additions are explicitly declared by that same ItemGrant; arbitrary spell modifications are still rejected. Spells from Items, different classes, casting abilities, or casting methods remain separate. Reconciliation is limited to the active Draft transaction and does not migrate existing Actors.
 
+## Character Validation
+
+Game Masters can right-click a Player Character in the Actor Directory and choose **Validate Character**. The tool always creates a revised copy first (`<Name> - Revisado`, then numbered revisions) and never modifies the original Actor.
+
+The Validator treats Character Builder data as read-only evidence: it may consult source snapshots, progression rules, choice badges, history, provenance, and canonical enabled sources, but it does not edit Character Builder settings, compendiums, registries, templates, or runtime rules. Repairs are limited to the revised Actor and are classified as deterministic restore, metadata/state reconciliation, guided native choice replay, or review-only when provenance is ambiguous.
+
+Current validation includes structural Activity/Active Effect links, missing deterministic Advancement Items, stale copied Actor references, dependent Advancement completion, class/subclass grants, Weapon Mastery, Fighting Style, spell access/repertoire and grant ownership, normal prepared-count reconciliation for supported full-list class models, malformed empty Spell placeholders, and source-accounted Traits such as skills, Expertise, saves, languages, tools, weapon/armor training, damage resistances/immunities/vulnerabilities, and condition immunities. Equipment, money, ammunition, current HP, spent spell slots, and spent resource amounts are intentionally outside scope.
+
 ## Character Keeper and Rest Management
+
+After a successful native **Long Rest**, Character Keeper ends any remaining native concentration and performs a conservative transient-effect cleanup. Finite-duration/runtime effects are removed, while indefinite passive/source-derived effects and persistent conditions/custom effects are preserved unless their own data explicitly says they expire on a Long Rest.
+
 
 Character Keeper opens before a Short or Long Rest only when the Actor has an optional supported action for that rest.
 

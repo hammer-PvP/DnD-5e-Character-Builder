@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.9p
+
+### Character Validator mainline, Species Size choice, and Long Rest lifecycle
+
+- Promoted the GM-only clone-first **Validate Character** workflow from internal validation builds into the main branch. Validation reads Character Builder history/source metadata and canonical D&D5e content but repairs only the revised Actor copy; it does not modify module settings, registries, compendiums, templates, creation rules, Level Up rules, or other Character Builder infrastructure.
+- Added source-driven entitlement projection for structural links, deterministic grants, dependent Advancements, spell access/repertoire, prepared-list counts where the canonical class scale exposes them, spell ownership/provenance, Weapon Mastery, Fighting Style, Traits/proficiencies, legacy-origin review, and conservative duplicate/orphan handling. Unsupported or ambiguous state is reported for review rather than guessed.
+- Reworked Trait reconciliation to reserve entitlements by **proficiency rank**. A skill can legitimately satisfy rank-1 proficiency and rank-2 Expertise at the same time; existing legal Actor state is reconciled before any new choice is offered. Character Builder choice badges are accepted as strong evidence for lost native ledgers.
+- Fixed Trait token support for native `dr:*`, `di:*`, `dv:*`, and `ci:*` families, preventing false missing-resistance reports such as Tiefling `dr:fire`. Unknown Trait families are now non-destructive review findings instead of repair-time exceptions.
+- Fixed specific weapon proficiency token decoding (`weapon:mar:handcrossbow` now maps to `handcrossbow`, never broad `mar`) and prevented validation from duplicating an equivalent existing Weapon Mastery maintenance badge.
+- Tightened empty Spell placeholder detection so an accidental `New Spell` remains removable even if Foundry stamped only weak generic metadata such as `system.sourceItem = class:rogue`; non-empty/custom spells remain protected for GM review.
+- Added a functional Close action to Character Validation and retained re-scan-after-repair behavior.
+- Fixed Species Size handling generically: any native Size Advancement with multiple configured choices is forced through the interactive D&D5e choice flow, while single-size Species remain automatic. This is data-driven and not tied to Tiefling.
+- Added conservative post-Long-Rest lifecycle maintenance. After the native Long Rest completes, Character Builder ends native concentration through `Actor.endConcentration()` and removes only Actor-level effects that are provably transient (finite duration, Character Builder duration lifecycle, explicit Long-Rest expiry, or orphaned concentration dependencies). Indefinite passive/source effects and persistent conditions/custom effects are preserved.
+- Validation scope continues to exclude equipment, currency, ammunition, current HP, spent spell slots, and currently consumed resource amounts. HP validation, if added later, is limited to maximum/total plausibility.
+
 ## 0.9.9o
 
 ### Hex direct native-effect choice hotfix
