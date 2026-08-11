@@ -2,6 +2,16 @@
 
 ## 0.9.9p
 
+### P1 internal stabilization — protected player sheets
+
+- Hardened **Player Character Sheet Integrity** without changing the module semantic version. Protected players now use the Actor sheet as a gameplay interface rather than a character editor.
+- Forced protected Actor and embedded Item sheets into structural read-only rendering while retaining native gameplay controls for **Use / Cast**, **Prepare / Unprepare**, **Equip / Unequip**, **Attune / Unattune**, favorites, description expansion, and same-Actor manual drag sorting.
+- Removed the native sheet edit-mode slider and native add/edit/delete/duplicate paths for protected players. Embedded Item sheets opened in view mode cannot be switched into edit mode.
+- Blocked manual changes to spell-slot pips, Actor resource counters, currency, Item quantities, Item uses, Activity uses, recharge/charge controls, Heroic Inspiration, and direct Active Effect editing. Native D&D5e Activity consumption/recovery remains untouched.
+- Blocked every external native Item drag/drop into the Actor sheet, including inventory/equipment/loot/spells/features. Same-Actor move/sort remains allowed. No global Item-create hook was added, so Item Piles and other programmatic/API inventory transfers remain compatible by design.
+- Removed structural Item/Activity/ActiveEffect context-menu actions for protected players while preserving gameplay-state actions such as prepare, equip, attune, favorite, and break concentration.
+- Removed the libWrapper wrappers around D&D5e `Activity.refund()`. Protected-player `Refund Resource` chat buttons are now hidden and capture-blocked at the chat-card UI layer, eliminating the package-identity libWrapper error while keeping GM refund behavior native.
+
 ### Character Validator mainline, Species Size choice, and Long Rest lifecycle
 
 - Promoted the GM-only clone-first **Validate Character** workflow from internal validation builds into the main branch. Validation reads Character Builder history/source metadata and canonical D&D5e content but repairs only the revised Actor copy; it does not modify module settings, registries, compendiums, templates, creation rules, Level Up rules, or other Character Builder infrastructure.

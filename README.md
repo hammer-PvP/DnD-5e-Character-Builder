@@ -211,11 +211,11 @@ The player still starts the rest from their own native D&D5e button. Character B
 
 ### Optional Player Character Sheet Integrity
 
-The GM may enable **Player Character Sheet Integrity** when characters are expected to gain progression and recover expendable resources only through the rules, the GM, or Character Builder. It is disabled by default.
+The GM may enable **Player Character Sheet Integrity** to make a protected Player Character sheet an operational gameplay surface instead of a character editor. It is disabled by default.
 
-With the setting enabled, a non-GM owner can still attack, cast, use features, spend spell slots/uses/resources, and complete legitimate native rest or feature recovery. The native sheet is prevented from being used to refill those reserves manually, self-grant Heroic Inspiration, or create/drop structural Class, Subclass, Species/Race, Background, Feat/Feature, or Spell documents. Ordinary inventory Items remain available. Chat-card **Refund Resource** is GM-only.
+Protected players can still **Use / Cast** Items and Activities, **Prepare / Unprepare** eligible spells, **Equip / Unequip**, **Attune / Unattune**, favorite entries, expand descriptions, break their own concentration through the native D&D5e control, and manually reorder Items/spells already on the same Actor. Native D&D5e consumption, rest recovery, and Item Piles/API inventory transfers remain available.
 
-The integrity layer guards native Actor-sheet interaction rather than rejecting every positive Actor update. This is deliberate: D&D5e rests, feature recovery, Character Builder transactions, and other legitimate runtime operations must remain able to restore resources.
+Direct editing is GM-only: edit mode, embedded Item editing, add/delete/duplicate, external Item drag/drop, currency, spell-slot/resource pips, Item quantity, Item/Activity uses, recharge/charge controls, Heroic Inspiration toggling, Active Effect editing, and chat-card **Refund Resource** are blocked. The guard is intentionally UI-path based rather than a global Document-update/create/delete restriction, so legitimate D&D5e gameplay automation, Character Builder/Level Up transactions, GM actions, and programmatic integrations are not intercepted.
 
 ### Optional Half Long-Rest Recovery on Short Rest
 

@@ -206,6 +206,7 @@ Hooks.on("createActor", async (actor, _options, userId) => {
 Hooks.on("renderApplicationV2", (app, element) => {
   if (isActorDirectoryApp(app)) injectActorDirectoryTool(app, element);
   if (isCharacterActorSheet(app)) renderCharacterActorSheetControls(app, element);
+  PlayerSheetIntegrityService.protectEmbeddedItemSheet(app, element);
 });
 
 Hooks.on("renderActorDirectory", (app, html) => injectActorDirectoryTool(app, html));
@@ -242,6 +243,11 @@ Hooks.on("renderActorSheet", (app, html) => {
   const root = html instanceof HTMLElement ? html : html?.[0] ?? app.element;
   if (!root) return;
   renderCharacterActorSheetControls(app, root);
+});
+
+Hooks.on("renderItemSheet", (app, html) => {
+  const root = html instanceof HTMLElement ? html : html?.[0] ?? app.element;
+  PlayerSheetIntegrityService.protectEmbeddedItemSheet(app, root);
 });
 
 Hooks.on("getHeaderControlsApplicationV2", (app, controls) => {
@@ -379,7 +385,7 @@ function renderCharacterActorSheetControls(app, element) {
   replaceNativeClassEntryControls(actor, root);
   injectScribeSpellButton(actor, root);
   configureManagedRestButtons(actor, root);
-  PlayerSheetIntegrityService.protectSheet(actor, root);
+  PlayerSheetIntegrityService.protectSheet(actor, root, app);
   injectCantripAugmentAnnotations(actor, root);
   injectInvocationTargetAnnotations(actor, root);
   injectAdvancementChoiceAnnotations(actor, root);
