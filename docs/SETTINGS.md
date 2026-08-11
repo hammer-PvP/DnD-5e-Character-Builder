@@ -189,13 +189,16 @@ At least one method must remain enabled.
 
 - **Scope:** World, GM-only.
 - **Default:** **Off**.
-- **Disabled:** Character Builder does not restrict ordinary native resource editing/refunds or structural Actor-sheet creation beyond the module's existing class-progression protections.
-- **Enabled — player may:** use attacks, spells, features, Activities, and inventory normally; spend spell/Pact slots, Actor resources, Item uses, and Activity uses; complete legitimate D&D5e recovery; use Character Builder-authorized progression/maintenance flows.
-- **Enabled — player may not:** refill spell/Pact slots from native slot controls; increase Actor/Item/Activity uses manually; self-grant Heroic Inspiration; use chat-card **Refund Resource**; create or drag Class, Subclass, Species/Race, Background, Feat/Feature, or Spell documents through the native Actor sheet.
-- **Inventory:** Ordinary physical/inventory Items are not blocked by this setting.
+- **Disabled:** Character Builder does not add the protected-player sheet restrictions described below; the module's pre-existing class-progression protections remain independent.
+- **Enabled — player may:** use/cast attacks, spells, features, Activities, consumables, potions, and scrolls normally; let D&D5e consume quantities/uses/slots through those workflows; prepare or unprepare eligible spells; equip or unequip; attune or unattune; favorite entries; expand descriptions; break concentration through the native control; and manually reorder/move Items already on the same Actor.
+- **Enabled — player may not:** enter Actor or embedded-Item edit mode; directly edit Item data; add, delete, duplicate, identify, or recharge content from the sheet; drag/copy external Items from the sidebar/Compendium onto the Actor; manually alter currency, Item quantity, spell/Pact slots, Actor resources, Item uses, Activity uses, Heroic Inspiration, or Active Effects; or use chat-card **Refund Resource**.
+- **Inventory integrations:** The restriction is intentionally applied to native/manual sheet UI paths, not globally to `Actor.createEmbeddedDocuments`, Item update/delete APIs, or D&D5e Activity consumption. Item Piles and other programmatic/API-based loot, trade, vendor, and transfer workflows remain compatible by design.
+- **Internal organization:** A same-Actor drag with D&D5e's native `move` behavior is allowed so players can sort spells/items and organize inventory without creating new content.
 - **GM:** GM interaction remains unrestricted.
-- **Implementation boundary:** The guard is attached to native Actor-sheet controls/drop/create paths and Activity refund. It does not reject every resource-increasing document update, because doing so would break rests and legitimate feature/runtime recovery.
-- **Conflict risk:** If another module replaces the native Actor-sheet creation/drop or Activity refund methods, libWrapper coordinates wrapper order where possible. Test that module's custom UI separately.
+- **Character Builder:** Character Builder, Level Up, Character Keeper, and authorized module transactions remain unrestricted.
+- **Refund implementation:** Refund protection is handled at the chat-card UI/event layer. Character Builder does not wrap D&D5e `Activity.refund()`, avoiding libWrapper package-identity conflicts.
+- **Implementation boundary:** The guard does not globally reject every Actor/Item update because legitimate D&D5e consumption/recovery and external gameplay integrations also update those documents from the player's client.
+
 
 ## Character Keeper — Optional Homebrew Rest Recovery
 
