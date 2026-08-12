@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.9q
+
+### Public stabilization release — Validator startup and protected player sheets
+
+- Fixed Character Validation startup so the revised Actor copy is created and the Validator window opens immediately before the expensive audit begins. The first render no longer depends on `CharacterValidationService.scan()` completing successfully.
+- Added an explicit **Scanning character...** state to the Validator shell. A failed audit now leaves the window open with the error visible and a **Retry Scan** action instead of silently producing only the revised Actor.
+- The Validator launch now awaits the initial ApplicationV2 render, so first-render failures propagate through the existing launch error handler instead of becoming detached Promise rejections.
+- Carries forward the protected-player sheet stabilization completed during the 0.9.9p P1 internal build: gameplay actions remain usable while structural Item editing/deletion, manual resource/quantity changes, external Actor-sheet drops, and player chat refunds remain blocked.
+- No Character Builder creation, Level Up, roll-resolution, concentration, source-target rider, or Validator entitlement rules were changed for this startup fix.
+
 ## 0.9.9p
 
 ### P1 internal stabilization — protected player sheets

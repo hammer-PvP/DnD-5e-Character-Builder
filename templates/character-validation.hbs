@@ -31,33 +31,53 @@
         </div>
       </section>
 
-      <div class="cb-validation-metrics">
-        <article><strong>{{scan.issueCount}}</strong><span>Issues Found</span></article>
-        <article><strong>{{scan.safeCount}}</strong><span>Safe Repairs</span></article>
-        <article><strong>{{scan.guidedCount}}</strong><span>Guided Repairs</span></article>
-        <article><strong>{{scan.warningCount}}</strong><span>Review Warnings</span></article>
-      </div>
-
-      <section class="cb-validation-panel">
-        <h3><i class="fa-solid fa-shield-halved"></i> Validation coverage</h3>
-        <div class="cb-validation-coverage">
-          {{#each scan.coverage}}
-          <div class="cb-validation-coverage-row {{status}}">
-            <span>{{label}}</span>
-            {{#if (dnd5eCharacterBuilderEq status "checked")}}<strong><i class="fa-solid fa-circle-check"></i> Checked</strong>{{/if}}
-            {{#if (dnd5eCharacterBuilderEq status "audit")}}<strong><i class="fa-solid fa-magnifying-glass"></i> Audit</strong>{{/if}}
-            {{#if (dnd5eCharacterBuilderEq status "planned")}}<strong><i class="fa-regular fa-clock"></i> Planned</strong>{{/if}}
+      {{#if isScanning}}
+        <section class="cb-validation-panel">
+          <h3><i class="fa-solid fa-spinner fa-spin"></i> Scanning character...</h3>
+          <p>The revised copy is ready. Character Builder is auditing its structure, progression, spell entitlements, traits, and provenance now.</p>
+          <p class="notes">You can close this window without affecting the untouched original Actor.</p>
+        </section>
+      {{else}}
+        {{#if scanFailed}}
+          <section class="cb-validation-panel">
+            <h3><i class="fa-solid fa-triangle-exclamation"></i> Validation scan could not complete</h3>
+            <p>The revised Actor was created successfully, but one of the validation checks failed before the audit could finish.</p>
+            <p class="notes"><strong>Error:</strong> {{scanError}}</p>
+          </section>
+        {{else}}
+          <div class="cb-validation-metrics">
+            <article><strong>{{scan.issueCount}}</strong><span>Issues Found</span></article>
+            <article><strong>{{scan.safeCount}}</strong><span>Safe Repairs</span></article>
+            <article><strong>{{scan.guidedCount}}</strong><span>Guided Repairs</span></article>
+            <article><strong>{{scan.warningCount}}</strong><span>Review Warnings</span></article>
           </div>
-          {{/each}}
-        </div>
-        <p class="notes">Equipment, currency, ammunition, spent spell slots, current HP, and currently spent resource amounts are outside validation scope. 2014-content usage is not itself an error. A clean scan means every check listed as Checked passed; planned checks are not claimed as validated yet.</p>
-      </section>
+
+          <section class="cb-validation-panel">
+            <h3><i class="fa-solid fa-shield-halved"></i> Validation coverage</h3>
+            <div class="cb-validation-coverage">
+              {{#each scan.coverage}}
+              <div class="cb-validation-coverage-row {{status}}">
+                <span>{{label}}</span>
+                {{#if (dnd5eCharacterBuilderEq status "checked")}}<strong><i class="fa-solid fa-circle-check"></i> Checked</strong>{{/if}}
+                {{#if (dnd5eCharacterBuilderEq status "audit")}}<strong><i class="fa-solid fa-magnifying-glass"></i> Audit</strong>{{/if}}
+                {{#if (dnd5eCharacterBuilderEq status "planned")}}<strong><i class="fa-regular fa-clock"></i> Planned</strong>{{/if}}
+              </div>
+              {{/each}}
+            </div>
+            <p class="notes">Equipment, currency, ammunition, spent spell slots, current HP, and currently spent resource amounts are outside validation scope. 2014-content usage is not itself an error. A clean scan means every check listed as Checked passed; planned checks are not claimed as validated yet.</p>
+          </section>
+        {{/if}}
+      {{/if}}
 
       <div class="cb-validation-actions">
         <button type="button" data-action="close"><i class="fa-solid fa-xmark"></i> Close</button>
         <button type="button" data-action="open-source"><i class="fa-solid fa-user"></i> Open Original</button>
         <button type="button" data-action="open-revision"><i class="fa-solid fa-copy"></i> Open Revised Copy</button>
-        <button type="button" class="gold-button" data-action="start"><i class="fa-solid fa-arrow-right"></i> Start Review</button>
+        {{#if scanFailed}}
+          <button type="button" class="gold-button" data-action="retry-scan"><i class="fa-solid fa-rotate-right"></i> Retry Scan</button>
+        {{else}}
+          <button type="button" class="gold-button" data-action="start" {{#unless scanReady}}disabled{{/unless}}><i class="fa-solid fa-arrow-right"></i> Start Review</button>
+        {{/if}}
       </div>
     {{/if}}
 
