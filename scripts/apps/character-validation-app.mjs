@@ -9,6 +9,9 @@ export class CharacterValidationApp extends HandlebarsApplicationMixin(Applicati
     this.sourceActor = sourceActor;
     this.actor = revisionActor;
     this.scan = null;
+    this.scanState = "pending";
+    this.scanError = null;
+    this._initialScanPromise = null;
     this.step = "overview";
     this.index = 0;
     this.results = new Map();
@@ -38,14 +41,21 @@ export class CharacterValidationApp extends HandlebarsApplicationMixin(Applicati
     }
     const revisionActor = await CharacterValidationService.createRevision(sourceActor);
     const app = new CharacterValidationApp(sourceActor, revisionActor);
-    app.render({ force: true });
+    await app.render({ force: true });
     ui.notifications.info(`Created ${revisionActor.name}. The original Actor will not be modified.`);
     return app;
   }
 
   async _prepareContext() {
-    this.scan ??= await CharacterValidationService.scan(this.actor);
-    const issues = this.scan.issues ?? [];
+    const scan = this.scan ?? {
+      issues: [],
+      issueCount: 0,
+      safeCount: 0,
+      guidedCount: 0,
+      warningCount: 0,
+      coverage: []
+    };
+    const issues = scan.issues ?? [];
     const currentIssue = this.step === "issues" ? issues[this.index] ?? null : null;
     const currentResult = currentIssue ? this.results.get(currentIssue.id) ?? null : null;
     const completed = [...this.results.values()];
@@ -62,7 +72,12 @@ export class CharacterValidationApp extends HandlebarsApplicationMixin(Applicati
       isIssues: this.step === "issues",
       isReview: this.step === "review",
       isComplete: this.step === "complete",
-      scan: this.scan,
+      scan,
+      scanState: this.scanState,
+      isScanning: this.scanState === "pending" || this.scanState === "scanning",
+      scanFailed: this.scanState === "error",
+      scanReady: this.scanState === "ready",
+      scanError: this.scanError,
       currentIssue,
       currentResult,
       currentProcessed: Boolean(currentResult),
@@ -81,6 +96,27 @@ export class CharacterValidationApp extends HandlebarsApplicationMixin(Applicati
     for (const element of this.element.querySelectorAll("[data-action]")) {
       element.addEventListener("click", event => this.#onAction(event));
     }
+    if (this.scanState === "pending" && !this._initialScanPromise) {
+      this._initialScanPromise = this.#runInitialScan();
+    }
+  }
+
+  async #runInitialScan() {
+    this.scanState = "scanning";
+    this.scanError = null;
+    try {
+      const scan = await CharacterValidationService.scan(this.actor);
+      this.scan = scan;
+      this.scanState = "ready";
+    } catch (error) {
+      console.error(`${MODULE_ID} | Character Validation initial scan failed.`, error);
+      this.scan = null;
+      this.scanState = "error";
+      this.scanError = error?.message || String(error);
+    } finally {
+      this._initialScanPromise = null;
+      if (this.element?.isConnected) await this.render({ force: true });
+    }
   }
 
   async #onAction(event) {
@@ -91,9 +127,17 @@ export class CharacterValidationApp extends HandlebarsApplicationMixin(Applicati
     try {
       switch (action) {
         case "start":
+          if (this.scanState !== "ready") return;
           this.step = (this.scan?.issues?.length ?? 0) ? "issues" : "review";
           this.index = 0;
           await this.render({ force: true });
+          break;
+        case "retry-scan":
+          if (!this._initialScanPromise) {
+            this.scanState = "pending";
+            this.scanError = null;
+            await this.render({ force: true });
+          }
           break;
         case "repair":
           await this.#repairCurrent();
