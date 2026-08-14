@@ -178,6 +178,7 @@ Hooks.once("ready", async () => {
   }
 
   await RulesAssistanceService.ready();
+  await PlayerSheetIntegrityService.ready();
   await SplashTutorialService.initializeForCurrentUser();
 });
 

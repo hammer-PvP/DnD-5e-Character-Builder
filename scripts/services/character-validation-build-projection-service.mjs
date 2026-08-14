@@ -50,7 +50,6 @@ export class CharacterValidationBuildProjectionService {
       "class-spell-access-missing",
       "class-spell-choice-incomplete",
       "class-spell-access-unlinked",
-      "class-prepared-count-mismatch",
       "granted-spell-unlinked",
       "granted-spell-ownership-incomplete",
       "trait-grant-missing",
@@ -70,8 +69,6 @@ export class CharacterValidationBuildProjectionService {
       case "class-spell-choice-incomplete":
       case "class-spell-access-unlinked":
         return this.#resolveSpellChoice(actor, issue);
-      case "class-prepared-count-mismatch":
-        return this.#resolvePreparedList(actor, issue);
       case "granted-spell-unlinked":
         return this.#resolveGrantedSpellLink(actor, issue);
       case "granted-spell-ownership-incomplete":
@@ -234,14 +231,7 @@ export class CharacterValidationBuildProjectionService {
       }
 
       if (model === "fullList") {
-        const accessIssues = this.#fullListSpellIssues(actor, context, classLeveled);
-        issues.push(...accessIssues);
-        // Preparation is a separate entitlement from access. Do not ask the GM
-        // to repair the prepared subset until deterministic class-list access is
-        // complete, otherwise the candidate set itself is still incomplete.
-        if (!accessIssues.length && context.maxPrepared > 0) {
-          issues.push(...this.#fullListPreparedIssues(context, classLeveled));
-        }
+        issues.push(...this.#fullListSpellIssues(actor, context, classLeveled));
       } else if (model === "limited") {
         const slots = this.#scaleChoiceSlots(sourceClass, classLevel, { identifier: "max-prepared", title: "max prepared" });
         issues.push(...this.#choiceSpellIssues(actor, context, classLeveled, leveledPool, slots, "leveled"));
@@ -332,37 +322,6 @@ export class CharacterValidationBuildProjectionService {
       }
     }
     return issues;
-  }
-
-  static #fullListPreparedIssues(context, classLeveled) {
-    const target = Math.max(0, Number(context.maxPrepared ?? 0));
-    if (!target) return [];
-    const legal = classLeveled.filter(spell => context.leveledPool.some(option => option.identifier === spell.system?.identifier));
-    const prepared = legal.filter(spell => Number(spell.system?.prepared ?? 0) === 1);
-    if (prepared.length === target) return [];
-    return [{
-      id: `class-prepared-count:${context.cls.id}`,
-      kind: "class-prepared-count-mismatch",
-      severity: "error",
-      repairable: true,
-      repairMode: "guided",
-      repairLabel: "Choose Prepared Spells",
-      title: `${context.cls.name} — Prepared Spell Count ${prepared.length < target ? "Incomplete" : "Exceeds Entitlement"}`,
-      summary: `${context.cls.name} level ${context.classLevel} allows ${target} normal prepared spell${target === 1 ? "" : "s"}, but ${prepared.length} ${prepared.length === 1 ? "is" : "are"} currently prepared.`,
-      details: "Always Prepared feature/subclass/species grants are excluded from this count. Choose the exact legal normal class-spell subset that should remain prepared on the revised copy; the Validator will not restore a historical prepared list blindly.",
-      data: {
-        classItemId: context.cls.id,
-        classIdentifier: context.identifier,
-        target,
-        current: prepared.length,
-        spells: legal.map(spell => ({
-          id: spell.id,
-          name: spell.name,
-          level: Number(spell.system?.level ?? 0),
-          prepared: Number(spell.system?.prepared ?? 0) === 1
-        })).sort((a, b) => a.level - b.level || a.name.localeCompare(b.name, game.i18n.lang))
-      }
-    }];
   }
 
   static #choiceSpellIssues(actor, context, classSpells, legalPool, slots, category, { allowExcess = false } = {}) {
@@ -948,55 +907,6 @@ export class CharacterValidationBuildProjectionService {
     });
     if (!created) throw new Error(`D&D5e did not restore ${source.name}.`);
     return { status: "repaired", issueId: issue.id, title: issue.title, message: `Restored ${created.name} to ${cls.name}'s deterministic class spell access.` };
-  }
-
-  static async #resolvePreparedList(actor, issue) {
-    const cls = actor.items.get(issue.data?.classItemId);
-    if (!cls) throw new Error("The class that owns this prepared-spell entitlement no longer exists.");
-    const target = Math.max(0, Number(issue.data?.target ?? 0));
-    const rows = (issue.data?.spells ?? []).filter(row => actor.items.get(row.id));
-    if (!target || rows.length < target) throw new Error("The legal prepared-spell candidate set is incomplete; repair class spell access first.");
-
-    let selected = null;
-    const DialogV2 = foundry.applications?.api?.DialogV2;
-    if (!DialogV2?.wait) throw new Error("Foundry DialogV2 is unavailable for prepared-spell reconciliation.");
-    while (selected === null) {
-      const checkboxes = rows.map(row => `<label class="checkbox"><input type="checkbox" name="spell" value="${foundry.utils.escapeHTML(row.id)}" ${row.prepared ? "checked" : ""}> ${foundry.utils.escapeHTML(row.name)}${row.level ? ` (Level ${row.level})` : ""}</label>`).join("");
-      const content = `<form class="standard-form"><p>Select exactly <strong>${target}</strong> normal ${foundry.utils.escapeHTML(cls.name)} spell${target === 1 ? "" : "s"} to be prepared. Always Prepared grants are not listed here.</p><div class="form-group stacked">${checkboxes}</div></form>`;
-      const result = await DialogV2.wait({
-        window: { title: `${cls.name} — Prepared Spells`, modal: true },
-        content,
-        buttons: [
-          {
-            action: "apply", label: "Apply Prepared List", icon: "fa-solid fa-check", default: true,
-            callback: (_event, button) => [...button.form.querySelectorAll('input[name="spell"]:checked')].map(input => input.value)
-          },
-          { action: "cancel", label: "Cancel", icon: "fa-solid fa-xmark", callback: () => null }
-        ],
-        close: () => null
-      });
-      if (result === null) {
-        return { status: "skipped", issueId: issue.id, title: issue.title, message: `${issue.title} remains unresolved because prepared-spell reconciliation was cancelled.` };
-      }
-      if (result.length !== target) {
-        ui.notifications.warn(`${cls.name}: select exactly ${target} normal prepared spell${target === 1 ? "" : "s"}.`);
-        continue;
-      }
-      selected = new Set(result);
-    }
-
-    const updates = rows.map(row => ({ _id: row.id, "system.prepared": selected.has(row.id) ? 1 : 0 }));
-    await actor.updateEmbeddedDocuments("Item", updates, {
-      characterBuilderValidationRepair: true,
-      characterBuilderValidationBuildProjection: true
-    });
-    return {
-      status: "repaired",
-      issueId: issue.id,
-      title: issue.title,
-      message: `Reconciled ${cls.name}'s normal prepared list to exactly ${target} spell${target === 1 ? "" : "s"}.`,
-      guided: true
-    };
   }
 
   static async #resolveSpellChoice(actor, issue) {

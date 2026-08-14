@@ -1,0 +1,47 @@
+<section class="cb-player-sheet-integrity-config">
+  <header class="cb-app-header cb-player-sheet-integrity-header">
+    <i class="fa-solid fa-shield-halved"></i>
+    <div>
+      <h1>Configure Sheet Integrity</h1>
+      <p>Choose which groups of character-sheet changes are restricted for players in this world.</p>
+    </div>
+  </header>
+
+  {{#unless masterEnabled}}
+  <div class="cb-player-sheet-integrity-master-warning">
+    <i class="fa-solid fa-circle-pause"></i>
+    Player Character Sheet Integrity is currently disabled. These choices will be used when the master switch is enabled.
+  </div>
+  {{/unless}}
+
+  <div class="cb-player-sheet-integrity-summary" data-integrity-rule-summary>
+    <strong>{{enabledCount}}</strong> of <strong>{{totalCount}}</strong> integrity protections enabled.
+  </div>
+
+  <div class="cb-player-sheet-integrity-list">
+    {{#each rules}}
+    <article class="cb-player-sheet-integrity-row" data-integrity-rule-key="{{key}}">
+      <label class="cb-player-sheet-integrity-toggle">
+        <input type="checkbox" {{checked enabled}}>
+        <span>
+          <strong>{{label}}</strong>
+          <small>{{description}}</small>
+        </span>
+      </label>
+    </article>
+    {{/each}}
+  </div>
+
+  <div class="cb-player-sheet-integrity-note">
+    <i class="fa-solid fa-circle-info"></i>
+    <span>These controls protect only direct player-sheet actions. GM changes, Character Builder transactions, native consumption and recovery, and authorized programmatic integrations remain available unless a rule explicitly says otherwise.</span>
+  </div>
+
+  <footer class="cb-footer cb-player-sheet-integrity-footer">
+    <button type="button" data-action="cancel"><i class="fa-solid fa-arrow-left"></i> Back</button>
+    <button type="button" data-action="restore-recommended"><i class="fa-solid fa-rotate-left"></i> Restore Recommended</button>
+    <button type="button" class="gold-button" data-action="save" {{#if busy}}disabled{{/if}}>
+      <i class="fa-solid fa-floppy-disk"></i> Save Integrity Rules
+    </button>
+  </footer>
+</section>

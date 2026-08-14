@@ -1,4 +1,5 @@
 import { MODULE_ID } from "../constants.mjs";
+import { PlayerSheetIntegritySettingsService } from "./player-sheet-integrity-settings-service.mjs";
 
 /**
  * Keeps class progression on live Player Character Actors inside Character
@@ -15,6 +16,18 @@ export class ClassProgressionGuard {
     const type = data?.type;
     if (type === "class" || type === "subclass") return true;
     return type === "feat" && data?.system?.type?.value === "class";
+  }
+
+
+  /**
+   * The historical class-progression guard remains the default invariant. A GM
+   * can explicitly relax it only by enabling Player Sheet Integrity and then
+   * disabling the Character Content & Progression package. Master-off worlds
+   * keep the pre-0.9.9s behavior unchanged.
+   */
+  static allowsDirectProgression() {
+    return PlayerSheetIntegritySettingsService.masterEnabled()
+      && !PlayerSheetIntegritySettingsService.configuredRuleEnabled("characterContentProgression");
   }
 
   static isAuthorized(options = {}) {
@@ -35,7 +48,7 @@ export class ClassProgressionGuard {
   static blockDirectCreate(item, _data, options = {}) {
     const actor = item?.parent;
     if (!this.isProtectedActor(actor) || !this.isClassProgressionItem(item)) return;
-    if (game.user?.isGM || this.isAuthorized(options)) return;
+    if (game.user?.isGM || this.isAuthorized(options) || this.allowsDirectProgression()) return;
 
     // Native sheet and drag/drop creation keeps the source Item ID. Limit this
     // guard to those interactive paths (and native Advancement completion) so
@@ -47,7 +60,7 @@ export class ClassProgressionGuard {
 
   static blockNativeAdvancement(manager, _updates, toCreate = []) {
     const actor = manager?.actor;
-    if (!this.isProtectedActor(actor) || game.user?.isGM || this.isAuthorized(manager?.options ?? {})) return;
+    if (!this.isProtectedActor(actor) || game.user?.isGM || this.isAuthorized(manager?.options ?? {}) || this.allowsDirectProgression()) return;
     if (!toCreate.some(data => this.isClassProgressionItem(data))) return;
     ui.notifications.warn("Class and subclass content must be added through Character Builder.");
     return false;

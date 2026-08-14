@@ -178,9 +178,18 @@
         </div>
 
         <hr>
-        <div class="cb-settings-toggle">
-          <label><input type="checkbox" name="playerSheetIntegrity" {{checked settings.playerSheetIntegrity}}> Player Character Sheet Integrity</label>
-          <p class="hint"><strong>Optional; disabled by default.</strong> Protected players can use/cast, prepare, equip, attune, and reorder existing content, but direct character/Item editing, add/delete/duplicate, external Item drops, manual currency/quantity/uses/resource/spell-slot changes, Active Effect editing, and chat refunds are GM-only. Native D&amp;D5e consumption/recovery, Character Builder/Level Up, and programmatic inventory systems such as Item Piles remain available.</p>
+        <div class="cb-player-sheet-integrity-setting">
+          <div>
+            <label class="cb-player-sheet-integrity-master-toggle">
+              <input type="checkbox" name="playerSheetIntegrity" {{checked settings.playerSheetIntegrity}}>
+              <strong>Player Character Sheet Integrity</strong>
+            </label>
+            <p class="hint"><strong>Optional; disabled by default.</strong> Restrict selected groups of direct player-sheet changes while preserving normal gameplay use. Configure each protection package individually.</p>
+            <p class="cb-player-sheet-integrity-count" data-player-sheet-integrity-summary>{{playerSheetIntegrityEnabledCount}} of {{playerSheetIntegrityRuleCount}} integrity protections enabled.</p>
+          </div>
+          <button type="button" data-action="configure-sheet-integrity">
+            <i class="fa-solid fa-shield-halved"></i> Configure Integrity Rules
+          </button>
         </div>
 
         <hr>

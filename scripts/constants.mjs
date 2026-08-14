@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.9r";
-export const MODULE_BUILD = "community-beta-099r-advancement-and-validator-stabilization";
+export const MODULE_VERSION = "0.9.9s";
+export const MODULE_BUILD = "community-beta-099s-granular-player-sheet-integrity";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -157,6 +157,44 @@ export function defaultRulesAssistanceRules() {
   return Object.fromEntries(RULES_ASSISTANCE_DEFINITIONS.map(rule => [rule.key, true]));
 }
 
+export const PLAYER_SHEET_INTEGRITY_DEFINITIONS = Object.freeze([
+  Object.freeze({
+    key: "characterDataProficiencies",
+    label: "Character Data & Proficiencies",
+    description: "Prevent players from manually changing the character name, portrait, biography, abilities, skills, saving throw proficiencies, languages, traits, senses, movement, and other structural Actor data. Normal HP and other gameplay-state use remain available."
+  }),
+  Object.freeze({
+    key: "inventoryItemEditing",
+    label: "Inventory & Item Editing",
+    description: "Prevent players from manually adding, removing, duplicating, editing, or changing quantities and uses of weapons, equipment, consumables, containers, loot, and tools. Normal use, consumption, equip, attune, favorites, and sorting remain available."
+  }),
+  Object.freeze({
+    key: "characterContentProgression",
+    label: "Character Content & Progression",
+    description: "Prevent players from manually adding, removing, duplicating, or editing spells, feats, species, backgrounds, class features, Active Effects, and unauthorized native Advancement changes. Normal casting and feature use remain available."
+  }),
+  Object.freeze({
+    key: "resourcesSpellSlots",
+    label: "Resources & Spell Slots",
+    description: "Prevent players from manually changing spell slots, Actor resources, Heroic Inspiration, and chat-card resource refunds. Normal consumption, rests, and automated recovery remain available."
+  }),
+  Object.freeze({
+    key: "currency",
+    label: "Currency",
+    description: "Prevent players from manually editing currency amounts on the character or in containers. Native Currency Manager conversion and transfers, Item Piles, and authorized automated transactions remain available."
+  }),
+  Object.freeze({
+    key: "preparedSpellLimit",
+    label: "Prepared Spell Limit",
+    description: "Enforce each eligible class's normal prepared-spell limit. Players may prepare and unprepare legal spells, but cannot prepare more than the class allows. Always Prepared and feature-granted spells do not count against this limit."
+  })
+]);
+
+export function defaultPlayerSheetIntegrityRules() {
+  return Object.fromEntries(PLAYER_SHEET_INTEGRITY_DEFINITIONS.map(rule => [rule.key, true]));
+}
+
+
 export const CURRENCY_CP = Object.freeze({
   pp: 1000,
   gp: 100,
@@ -245,6 +283,9 @@ export function defaultSettings() {
     shortRestHomebrewCooldownMinutes: 5,
     gmManagedRestAccess: false,
     playerSheetIntegrity: false,
+    playerSheetIntegrityConfig: {
+      rules: defaultPlayerSheetIntegrityRules()
+    },
     assistWithDiceAutomation: false,
     rulesAssistance: {
       rules: defaultRulesAssistanceRules()

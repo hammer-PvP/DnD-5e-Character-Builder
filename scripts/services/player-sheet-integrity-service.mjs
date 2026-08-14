@@ -1,14 +1,24 @@
-import { MODULE_ID, defaultSettings } from "../constants.mjs";
+import { MODULE_ID } from "../constants.mjs";
 import { ClassProgressionGuard } from "./class-progression-guard.mjs";
+import { PlayerSheetIntegritySettingsService } from "./player-sheet-integrity-settings-service.mjs";
+import { PreparedSpellLimitService } from "./prepared-spell-limit-service.mjs";
 
 const REFUND_ACTION = "refundResource";
+const RULES = Object.freeze({
+  CHARACTER_DATA: "characterDataProficiencies",
+  INVENTORY: "inventoryItemEditing",
+  CONTENT: "characterContentProgression",
+  RESOURCES: "resourcesSpellSlots",
+  CURRENCY: "currency",
+  PREPARED: "preparedSpellLimit"
+});
+
 const SAFE_INVENTORY_ACTIONS = new Set([
   "activity-use", "attune", "equip", "prepare", "toggleExpand", "toggleFavorite", "use", "view"
 ]);
-const BLOCKED_SHEET_ACTIONS = new Set([
-  "addDocument", "changeMode", "create", "delete", "deleteDocument", "duplicate", "edit",
-  "editDescription", "editDocument", "editImage", "identify", "recharge", "showConfiguration", "toggleCharge",
-  "toggleEditInline"
+const BLOCKED_ITEM_ACTIONS = new Set([
+  "addDocument", "create", "delete", "deleteDocument", "duplicate", "edit", "editDescription", "editDocument", "editImage",
+  "identify", "recharge", "showConfiguration", "toggleCharge", "toggleEditInline"
 ]);
 const BLOCKED_EFFECT_ACTIONS = new Set([
   "create", "delete", "duplicate", "edit", "toggle", "toggleCondition"
@@ -34,20 +44,16 @@ const BLOCKED_EFFECT_CONTEXT_NAMES = new Set([
   "DND5E.ContextMenuActionEnable",
   "DND5E.ContextMenuActionDisable"
 ]);
+const CONTENT_ITEM_TYPES = new Set(["spell", "feat", "class", "subclass", "race", "background"]);
+const INVENTORY_ITEM_TYPES = new Set(["weapon", "equipment", "consumable", "container", "loot", "tool", "backpack"]);
 
 /**
  * Player-facing sheet integrity layer.
  *
- * The protected sheet is an operational interface, not an editor. Players may
- * use Activities and may change the small set of gameplay states intentionally
- * exposed by D&D5e (prepare, equip, attune, favorites, and manual sort), while
- * structural edits, stock/resource edits, native sheet creation/deletion, and
- * chat-card refunds stay GM-only.
- *
- * This service deliberately blocks native/manual UI paths instead of global
- * Document update/create/delete hooks. D&D5e Activity consumption, rests,
- * Item Piles/API transfers, Character Builder transactions, and other
- * programmatic gameplay integrations therefore remain able to update the Actor.
+ * The master switch enables a small set of deliberately coarse protection
+ * packages. Each package guards only direct player-sheet UI paths. Native D&D5e
+ * consumption/recovery, GM actions, Character Builder transactions, Item Piles,
+ * and other authorized programmatic integrations are not globally intercepted.
  */
 export class PlayerSheetIntegrityService {
   static #initialized = false;
@@ -57,32 +63,34 @@ export class PlayerSheetIntegrityService {
     if (this.#initialized) return;
     this.#initialized = true;
 
-    // Render protected Actor and embedded-Item sheet parts in PLAY/read-only
-    // structural mode while retaining owner gameplay controls such as prepare,
-    // equip, attune, use, and drag sorting.
+    // Preserve the strongest legacy read-only rendering only when every package
+    // affected by D&D5e's global `locked` state is enabled. If the GM disables
+    // one package, the sheet remains editable and targeted guards enforce the
+    // still-enabled packages without hiding the newly-permitted controls.
     Hooks.on("dnd5e.prepareSheetContext", (sheet, _partId, context) => {
       const actor = this.#actorForSheet(sheet);
-      if (!this.protects(actor)) return;
+      if (!this.protects(actor) || !this.#useGlobalStructuralLock()) return;
       context.editable = false;
       context.locked = true;
       const document = sheet?.document ?? sheet?.actor ?? sheet?.item;
       if (document?.system) context.source = document.system;
     });
 
-    // Context menus are generated outside the Actor-sheet template, so remove
-    // structural/resource mutation actions at source rather than relying only
-    // on DOM hiding.
     Hooks.on("dnd5e.getItemContextOptions", (item, options) => {
       if (!this.protects(item?.actor) || !Array.isArray(options)) return;
+      const rule = this.#itemProtectionRule(item);
+      if (!rule || !this.ruleEnabled(rule)) return;
       this.#removeContextOptions(options, BLOCKED_ITEM_CONTEXT_NAMES);
     });
     Hooks.on("dnd5e.getItemActivityContext", (activity, _target, options) => {
       if (!this.protects(activity?.actor) || !Array.isArray(options)) return;
+      const rule = this.#itemProtectionRule(activity?.item);
+      if (!rule || !this.ruleEnabled(rule)) return;
       this.#removeContextOptions(options, BLOCKED_ACTIVITY_CONTEXT_NAMES);
     });
     Hooks.on("dnd5e.getActiveEffectContextOptions", (effect, options) => {
       const actor = effect?.target ?? (effect?.parent instanceof Actor ? effect.parent : effect?.parent?.actor);
-      if (!this.protects(actor) || !Array.isArray(options)) return;
+      if (!this.ruleProtects(actor, RULES.CONTENT) || !Array.isArray(options)) return;
       this.#removeContextOptions(options, BLOCKED_EFFECT_CONTEXT_NAMES);
     });
 
@@ -90,13 +98,34 @@ export class PlayerSheetIntegrityService {
     Hooks.on("renderChatMessage", (message, html) => this.#protectChat(message, html));
   }
 
-  static enabled() {
-    const settings = foundry.utils.mergeObject(
-      defaultSettings(),
-      game.settings.get(MODULE_ID, "settings") ?? {},
-      { inplace: false }
-    );
-    return settings.playerSheetIntegrity === true;
+  static async ready() {
+    if (!game.user?.isGM) return { migrated: false, preparedSpellsChanged: 0 };
+    const raw = foundry.utils.deepClone(game.settings.get(MODULE_ID, "settings") ?? {});
+    if (raw.playerSheetIntegrity !== true || PlayerSheetIntegritySettingsService.hasStoredRule(RULES.PREPARED, raw)) {
+      return { migrated: false, preparedSpellsChanged: 0 };
+    }
+
+    // One-time migration for worlds that already had the former all-or-nothing
+    // protection enabled. Persist the recommended package defaults, then bring
+    // any pre-existing prepared-list excess into the newly active limit.
+    const resolved = PlayerSheetIntegritySettingsService.settings(raw);
+    const settings = foundry.utils.deepClone(raw);
+    settings.playerSheetIntegrityConfig = foundry.utils.deepClone(resolved.playerSheetIntegrityConfig);
+    await game.settings.set(MODULE_ID, "settings", settings);
+    const result = await PreparedSpellLimitService.reconcileWorld();
+    const changed = Number(result?.changed ?? 0);
+    if (changed) {
+      ui.notifications.info(`${changed} excess prepared spell${changed === 1 ? " was" : "s were"} automatically unprepared while migrating Player Character Sheet Integrity.`);
+    }
+    return { migrated: true, preparedSpellsChanged: changed };
+  }
+
+  static enabled(candidate = null) {
+    return PlayerSheetIntegritySettingsService.masterEnabled(candidate);
+  }
+
+  static ruleEnabled(ruleKey, candidate = null) {
+    return PlayerSheetIntegritySettingsService.ruleEnabled(ruleKey, candidate);
   }
 
   static protects(actor) {
@@ -106,19 +135,40 @@ export class PlayerSheetIntegrityService {
       && actor?.isOwner;
   }
 
+  static ruleProtects(actor, ruleKey) {
+    return this.protects(actor) && this.ruleEnabled(ruleKey);
+  }
+
+  /**
+   * Called after world settings are saved. Activating Prepared Spell Limit is
+   * the only package that performs an immediate reconciliation. All other
+   * packages change UI permissions only.
+   */
+  static async onSettingsChanged(previousStored = {}, nextSettings = null) {
+    const hadPreviousPreparedRule = PlayerSheetIntegritySettingsService.hasStoredRule(RULES.PREPARED, previousStored);
+    const previousActive = previousStored?.playerSheetIntegrity === true
+      && hadPreviousPreparedRule
+      && previousStored?.playerSheetIntegrityConfig?.rules?.[RULES.PREPARED] !== false;
+    const nextActive = PlayerSheetIntegritySettingsService.ruleEnabled(RULES.PREPARED, nextSettings);
+    if (previousActive || !nextActive) return { preparedSpellsChanged: 0 };
+
+    const result = await PreparedSpellLimitService.reconcileWorld();
+    return { preparedSpellsChanged: Number(result?.changed ?? 0), preparedSpellResult: result };
+  }
+
   /** Protect a live Actor sheet after each render. */
   static protectSheet(actor, root, app = null) {
     if (!root || !this.protects(actor)) return;
-    this.#forcePlayMode(app);
-    this.#applySheetDomProtection(root);
+    if (this.#useGlobalStructuralLock()) this.#forcePlayMode(app);
+    this.#applySheetDomProtection(actor, root);
 
     if (root.dataset?.cbPlayerSheetIntegrity === "true") return;
     root.dataset.cbPlayerSheetIntegrity = "true";
 
     root.addEventListener("click", event => this.#onSheetClick(event, actor), { capture: true });
     root.addEventListener("change", event => this.#onSheetChange(event, actor), { capture: true });
-    root.addEventListener("inventory", event => this.#onInventoryAction(event), { capture: true });
-    root.addEventListener("effect", event => this.#onEffectAction(event), { capture: true });
+    root.addEventListener("inventory", event => this.#onInventoryAction(event, actor), { capture: true });
+    root.addEventListener("effect", event => this.#onEffectAction(event, actor), { capture: true });
   }
 
   /** Protect an embedded Item sheet belonging to a protected live Actor. */
@@ -127,26 +177,34 @@ export class PlayerSheetIntegrityService {
     const actor = item?.actor ?? item?.parent;
     if (!root || item?.documentName !== "Item" || !this.protects(actor)) return;
 
-    this.#forcePlayMode(app);
-    this.#applyEmbeddedItemDomProtection(root);
+    const itemRule = this.#itemProtectionRule(item);
+    const itemRuleProtected = itemRule && this.ruleEnabled(itemRule);
+    const hasIndependentCurrency = item?.system?.currency && !this.ruleEnabled(RULES.CURRENCY);
+    if (itemRuleProtected && !hasIndependentCurrency) this.#forcePlayMode(app);
+    this.#applyEmbeddedItemDomProtection(item, root);
+
     if (root.dataset?.cbPlayerItemIntegrity === "true") return;
     root.dataset.cbPlayerItemIntegrity = "true";
-
-    root.addEventListener("click", event => this.#onEmbeddedItemSheetClick(event), { capture: true });
-    root.addEventListener("change", event => this.#onEmbeddedItemSheetChange(event), { capture: true });
+    root.addEventListener("click", event => this.#onEmbeddedItemSheetClick(event, item), { capture: true });
+    root.addEventListener("change", event => this.#onEmbeddedItemSheetChange(event, item), { capture: true });
   }
 
   /** Called by libWrapper around D&D5e's native Actor-sheet create action. */
   static mayAddDocumentFromNativeSheet(sheet) {
     const actor = sheet?.actor ?? sheet?.inventorySource;
     if (!this.protects(actor)) return true;
-    this.#warn("Adding content directly to this character sheet is GM-only. Use approved gameplay sources such as Item Piles for inventory transfers.");
+    const tab = String(sheet?.tabGroups?.primary ?? "");
+    const rule = tab === "inventory" ? RULES.INVENTORY : ["features", "spells", "effects"].includes(tab) ? RULES.CONTENT : null;
+    if (!rule || !this.ruleEnabled(rule)) return true;
+    this.#warn(rule === RULES.INVENTORY
+      ? "Adding inventory content directly to this character sheet is GM-only. Approved gameplay transfers such as Item Piles remain available."
+      : "Adding character content directly to this sheet is GM-only while Character Content & Progression protection is enabled.");
     return false;
   }
 
   /**
-   * Decide whether a single D&D5e Actor-sheet Item drop is an allowed internal
-   * move/sort. External drops are blocked before D&D5e can create/copy the Item.
+   * Allow same-Actor sorting. External drops are filtered by the protection
+   * package that owns the dropped Item type.
    */
   static mayHandleNativeItemDrop(sheet, event, item) {
     const actor = sheet?.actor ?? sheet?.inventorySource;
@@ -154,192 +212,316 @@ export class PlayerSheetIntegrityService {
     const behavior = event?._behavior;
     const sameActor = actor?.uuid && item?.parent?.uuid === actor.uuid;
     if (behavior === "move" && sameActor) return true;
-    this.#warn("Dragging Items onto this character sheet is GM-only. Inventory received through approved gameplay systems remains supported.");
+    const rule = this.#itemProtectionRule(item);
+    if (!rule || !this.ruleEnabled(rule)) return true;
+    this.#warn(rule === RULES.INVENTORY
+      ? "Dragging inventory Items onto this character sheet is GM-only. Approved gameplay transfers such as Item Piles remain available."
+      : "Dragging spells, feats, or other character content onto this sheet is GM-only while Character Content & Progression protection is enabled.");
     return false;
   }
 
-  /**
-   * Filter D&D5e's native Actor-sheet create-from-drop path. This path is only
-   * for creating/copying Items; same-Actor sorting is handled earlier by D&D5e
-   * and never reaches this method.
-   */
+  /** Filter only the external drop rows owned by an enabled package. */
   static filterNativeDropItems(sheet, items = []) {
     const actor = sheet?.actor ?? sheet?.inventorySource;
-    if (!this.protects(actor)) return items;
-    if (!items.length) return items;
-    this.#warn("Dragging Items onto this character sheet is GM-only. Inventory received through approved gameplay systems remains supported.");
-    return [];
+    if (!this.protects(actor) || !items.length) return items;
+    const allowed = [];
+    let blockedInventory = false;
+    let blockedContent = false;
+    for (const item of items) {
+      const rule = this.#itemProtectionRule(item);
+      if (!rule || !this.ruleEnabled(rule)) {
+        allowed.push(item);
+        continue;
+      }
+      if (rule === RULES.INVENTORY) blockedInventory = true;
+      else blockedContent = true;
+    }
+    if (blockedInventory || blockedContent) {
+      const label = blockedInventory && blockedContent ? "inventory and character content"
+        : blockedInventory ? "inventory Items" : "character content";
+      this.#warn(`Dragging ${label} onto this character sheet is restricted by Player Character Sheet Integrity.`);
+    }
+    return allowed;
   }
 
   static blockNativeAdvancement(manager, updates = {}, toCreate = [], toUpdate = [], toDelete = []) {
     const actor = manager?.actor;
-    if (!this.protects(actor) || ClassProgressionGuard.isAuthorized(manager?.options ?? {})) return;
+    if (!this.ruleProtects(actor, RULES.CONTENT) || ClassProgressionGuard.isAuthorized(manager?.options ?? {})) return;
     const hasChanges = !foundry.utils.isEmpty(updates ?? {}) || toCreate.length || toUpdate.length || toDelete.length;
     if (!hasChanges) return;
-    this.#warn("Character progression is managed by Character Builder. Ask the GM to make this change.");
+    this.#warn("Direct native Advancement changes are GM-only while Character Content & Progression protection is enabled.");
     return false;
   }
 
-  static #onInventoryAction(event) {
+  static #onInventoryAction(event, actor) {
     const action = String(event.detail ?? "");
-    if (!action || SAFE_INVENTORY_ACTIONS.has(action)) return;
-    if (!BLOCKED_SHEET_ACTIONS.has(action)) return;
+    if (!action) return;
+
+    if (action === "prepare" && this.ruleEnabled(RULES.PREPARED)) {
+      const item = this.#itemFromEvent(actor, event);
+      if (item?.type === "spell" && Number(item.system?.prepared ?? 0) === 0) {
+        const decision = PreparedSpellLimitService.mayPrepare(actor, item);
+        if (!decision.allowed) {
+          this.#stop(event);
+          this.#warn(decision.message);
+          return;
+        }
+      }
+    }
+
+    if (SAFE_INVENTORY_ACTIONS.has(action)) return;
+    if (!BLOCKED_ITEM_ACTIONS.has(action)) return;
+    const item = this.#itemFromEvent(actor, event);
+    const rule = this.#itemProtectionRule(item);
+    if (!rule || !this.ruleEnabled(rule)) return;
     this.#stop(event);
-    this.#warn("Direct Item editing is GM-only. You can still use, prepare, equip, attune, and organize your existing Items.");
+    this.#warn(this.#itemBlockedMessage(rule));
   }
 
-  static #onEffectAction(event) {
+  static #onEffectAction(event, actor) {
     const action = String(event.detail ?? "");
-    if (!BLOCKED_EFFECT_ACTIONS.has(action)) return;
+    if (!this.ruleEnabled(RULES.CONTENT) || !BLOCKED_EFFECT_ACTIONS.has(action)) return;
     this.#stop(event);
-    this.#warn("Direct Active Effect editing is GM-only for this character.");
+    this.#warn("Direct Active Effect editing is GM-only while Character Content & Progression protection is enabled.");
   }
 
   static #onSheetClick(event, actor) {
+    const directProficiencyControl = event.target?.closest?.(".proficiency-toggle, .trait-selector");
+    if (directProficiencyControl && this.ruleEnabled(RULES.CHARACTER_DATA)) {
+      this.#stop(event);
+      this.#warn("Character data and proficiencies are GM-only while this protection is enabled.");
+      return;
+    }
+
     const actionElement = event.target?.closest?.("[data-action]");
-    const action = actionElement?.dataset?.action;
+    const action = String(actionElement?.dataset?.action ?? "");
+    if (!action) return;
 
-    if (BLOCKED_SHEET_ACTIONS.has(action)) {
+    const item = this.#itemFromActionElement(actor, actionElement);
+    if (item && BLOCKED_ITEM_ACTIONS.has(action)) {
+      const rule = this.#itemProtectionRule(item);
+      if (rule && this.ruleEnabled(rule)) {
+        this.#stop(event);
+        this.#warn(this.#itemBlockedMessage(rule));
+        return;
+      }
+    }
+
+    if (action === "changeMode" && this.#useGlobalStructuralLock()) {
       this.#stop(event);
-      this.#warn(this.#blockedActionMessage(action));
+      this.#warn("Direct sheet editing is disabled by the configured integrity protections.");
       return;
     }
 
-    // Heroic Inspiration is character state, not a manual player-managed
-    // counter. Legitimate features/GM workflows can still update it through the
-    // document API because this guard exists only on the sheet UI path.
-    if (action === "toggleInspiration") {
+    if (["editDescription", "editImage", "toggleEditInline", "setSpellcastingAbility", "senses", "tool", "flags", "type", "configure"].includes(action)
+      && this.ruleEnabled(RULES.CHARACTER_DATA)) {
       this.#stop(event);
-      this.#warn("Heroic Inspiration changes are handled by the GM or game features.");
+      this.#warn("Character data and proficiencies are GM-only while this protection is enabled.");
       return;
     }
 
-    // Spell slots and Actor resource pips are display-only for protected
-    // players. Native Activity.consume() and rest recovery bypass this UI guard.
-    if (action === "togglePip") {
-      const button = actionElement;
-      const prop = button?.dataset?.prop ?? button?.closest?.("[data-prop]")?.dataset?.prop;
+    if (action === "showConfiguration") {
+      const rule = this.#configurationProtectionRule(actionElement);
+      if (rule && this.ruleEnabled(rule)) {
+        this.#stop(event);
+        this.#warn(rule === RULES.RESOURCES
+          ? "Spell-slot and resource configuration is GM-only while Resources & Spell Slots protection is enabled."
+          : "Character data and proficiency configuration is GM-only while Character Data & Proficiencies protection is enabled.");
+        return;
+      }
+    }
+
+    if (action === "toggleInspiration" && this.ruleEnabled(RULES.RESOURCES)) {
+      this.#stop(event);
+      this.#warn("Heroic Inspiration changes are handled by the GM or game features while Resources & Spell Slots protection is enabled.");
+      return;
+    }
+
+    if (action === "togglePip" && this.ruleEnabled(RULES.RESOURCES)) {
+      const prop = actionElement?.dataset?.prop ?? actionElement?.closest?.("[data-prop]")?.dataset?.prop;
       if (!this.#managedActorResourcePath(prop)) return;
       this.#stop(event);
       this.#warn("Resource counters are read-only. Use the spell or feature normally; only the GM may edit counters directly.");
       return;
     }
 
-    // +/- controls on Item quantity/uses are manual stock edits.
-    if ((action === "increase" || action === "decrease") && actionElement?.closest?.("[data-item-id]")) {
+    if ((action === "increase" || action === "decrease") && item) {
       const property = String(actionElement.dataset?.property ?? "");
       if (property === "system.quantity" || property.includes("uses")) {
-        this.#stop(event);
-        this.#warn("Item quantity and uses are read-only. Consume Items normally or ask the GM to change the stock.");
+        const rule = this.#itemProtectionRule(item);
+        if (rule && this.ruleEnabled(rule)) {
+          this.#stop(event);
+          this.#warn(this.#itemBlockedMessage(rule));
+        }
       }
     }
   }
 
   static #onSheetChange(event, actor) {
     const input = event.target;
-    if (!(input instanceof HTMLInputElement)) return;
-
+    if (!(input instanceof HTMLInputElement || input instanceof HTMLSelectElement || input instanceof HTMLTextAreaElement)) return;
     const name = String(input.name ?? input.dataset?.name ?? "");
+    const item = this.#itemFromControl(actor, input);
 
-    if (this.#managedActorResourcePath(name)) {
-      this.#restoreActorInput(input, actor, name);
+    // Container currency is governed only by the Currency package, independent
+    // of whether the rest of that inventory Item is structurally locked.
+    if (item && /^system\.currency\.[^.]+$/.test(name)) {
+      if (!this.ruleEnabled(RULES.CURRENCY)) return;
+      this.#restoreDocumentControl(input, item, name);
+      this.#stop(event);
+      this.#warn("Currency amounts in containers are read-only. Use the native Currency Manager or an approved gameplay transfer.");
+      return;
+    }
+
+    if (!item && this.ruleEnabled(RULES.RESOURCES) && this.#managedActorResourcePath(name)) {
+      this.#restoreDocumentControl(input, actor, name);
       this.#stop(event);
       this.#warn("Resource counters are read-only. Use the spell or feature normally; only the GM may edit counters directly.");
       return;
     }
 
-    if (/^system\.currency\.[^.]+$/.test(name)) {
-      this.#restoreActorInput(input, actor, name);
+    if (!item && this.ruleEnabled(RULES.CURRENCY) && /^system\.currency\.[^.]+$/.test(name)) {
+      this.#restoreDocumentControl(input, actor, name);
       this.#stop(event);
-      this.#warn("Currency is read-only on the player sheet. Use the GM or an approved gameplay system such as Item Piles.");
+      this.#warn("Currency amounts are read-only. Use the native Currency Manager, the GM, or an approved gameplay system such as Item Piles.");
       return;
     }
 
-    const itemId = input.closest?.("[data-item-id]")?.dataset?.itemId;
-    const item = actor.items?.get?.(itemId);
-    const dataName = String(input.dataset?.name ?? "");
-    if (dataName === "system.quantity") {
-      if (item) input.value = String(item.system?.quantity ?? 0);
-      this.#stop(event);
-      this.#warn("Item quantity is read-only. Consume the Item normally or ask the GM to change the stock.");
+    if (item) {
+      const rule = this.#itemProtectionRule(item);
+      if (rule && this.ruleEnabled(rule)) {
+        const path = String(input.dataset?.name ?? input.name ?? "");
+        this.#restoreItemControl(input, item, path);
+        this.#stop(event);
+        this.#warn(this.#itemBlockedMessage(rule));
+      }
       return;
     }
 
-    if (dataName === "system.uses.value") {
-      const current = Number(item?.system?.uses?.value);
-      if (Number.isFinite(current)) input.value = String(current);
+    if (this.ruleEnabled(RULES.CONTENT) && this.#progressionActorPath(name)) {
+      this.#restoreDocumentControl(input, actor, name);
       this.#stop(event);
-      this.#warn("Item uses are read-only. Use the Item normally; only the GM may edit the counter directly.");
+      this.#warn("Character progression fields are GM-only while Character Content & Progression protection is enabled.");
       return;
     }
 
-    if (dataName === "uses.value") {
-      const row = input.closest?.("[data-activity-id]");
-      const activityId = row?.dataset?.activityId;
-      const activity = item?.system?.activities?.get?.(activityId);
-      const current = Number(activity?.uses?.value);
-      if (Number.isFinite(current)) input.value = String(current);
+    if (this.ruleEnabled(RULES.CHARACTER_DATA) && this.#characterDataPath(name)) {
+      this.#restoreDocumentControl(input, actor, name);
       this.#stop(event);
-      this.#warn("Activity uses are read-only. Use the Activity normally; only the GM may edit the counter directly.");
+      this.#warn("Character data and proficiencies are GM-only while this protection is enabled.");
     }
   }
 
-  static #onEmbeddedItemSheetClick(event) {
-    const action = event.target?.closest?.("[data-action]")?.dataset?.action;
-    // Embedded Item sheets are view-only for protected players. `showDocument`
-    // and ordinary navigation/expansion remain available; edit/configuration
-    // paths and the sheet mode switch do not.
-    if (!BLOCKED_SHEET_ACTIONS.has(action) && action !== "deleteDocument") return;
+  static #onEmbeddedItemSheetClick(event, item) {
+    const actionElement = event.target?.closest?.("[data-action]");
+    const action = String(actionElement?.dataset?.action ?? "");
+    const rule = this.#itemProtectionRule(item);
+    if (!rule || !this.ruleEnabled(rule)) return;
+    const hasIndependentCurrency = item?.system?.currency && !this.ruleEnabled(RULES.CURRENCY);
+    if (action === "changeMode" && hasIndependentCurrency) return;
+    if (!BLOCKED_ITEM_ACTIONS.has(action) && action !== "changeMode" && action !== "deleteDocument"
+      && action !== "addDocument" && action !== "toggleEditInline") return;
     this.#stop(event);
-    this.#warn("Direct Item editing is GM-only. Use the Item from your character sheet instead.");
+    this.#warn(this.#itemBlockedMessage(rule));
   }
 
-  static #onEmbeddedItemSheetChange(event) {
+  static #onEmbeddedItemSheetChange(event, item) {
     const target = event.target;
     if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement)) return;
-    if (target.closest?.("[data-application-part]")?.querySelector?.("item-list-controls")?.contains?.(target)) return;
-    this.#stop(event);
-    this.#warn("Direct Item editing is GM-only. Use the Item from your character sheet instead.");
-  }
+    const name = String(target.name ?? target.dataset?.name ?? "");
 
-  static #applySheetDomProtection(root) {
-    // PLAY mode only: remove the edit-mode toggle and any native create button.
-    root.querySelectorAll(".mode-slider, .create-child, [data-action='addDocument']").forEach(el => el.remove());
-
-    // Defensive cleanup for partial/legacy renders. Modern templates should
-    // already omit these because dnd5e.prepareSheetContext forces editable=false.
-    root.querySelectorAll([
-      "[data-action='editDocument']", "[data-action='deleteDocument']",
-      ".item-action[data-action='edit']", ".item-action[data-action='delete']",
-      ".item-action[data-action='duplicate']"
-    ].join(",")).forEach(el => el.remove());
-
-    // Read-only manual stock/resource inputs. They remain visually readable;
-    // programmatic D&D5e/API changes are unaffected and will refresh on render.
-    for (const input of root.querySelectorAll("input")) {
-      const name = String(input.name ?? input.dataset?.name ?? "");
-      if (this.#managedActorResourcePath(name)
-        || /^system\.currency\.[^.]+$/.test(name)
-        || name === "system.quantity"
-        || name === "system.uses.value"
-        || name === "uses.value") {
-        input.readOnly = true;
-        input.setAttribute("aria-readonly", "true");
-      }
+    if (/^system\.currency\.[^.]+$/.test(name)) {
+      if (!this.ruleEnabled(RULES.CURRENCY)) return;
+      this.#restoreDocumentControl(target, item, name);
+      this.#stop(event);
+      this.#warn("Currency amounts in containers are read-only. Use the native Currency Manager or an approved gameplay transfer.");
+      return;
     }
 
-    root.querySelectorAll(".adjustment-button[data-property='system.quantity']").forEach(el => {
-      el.hidden = true;
-      el.setAttribute("aria-hidden", "true");
-    });
-
-    this.#ensureCurrencyManagerButtons(root);
+    const rule = this.#itemProtectionRule(item);
+    if (!rule || !this.ruleEnabled(rule)) return;
+    if (target.closest?.("[data-application-part]")?.querySelector?.("item-list-controls")?.contains?.(target)) return;
+    this.#restoreItemControl(target, item, name);
+    this.#stop(event);
+    this.#warn(this.#itemBlockedMessage(rule));
   }
 
-  static #applyEmbeddedItemDomProtection(root) {
-    root.querySelectorAll(".mode-slider, .create-child, [data-action='addDocument'], [data-action='deleteDocument']")
-      .forEach(el => el.remove());
-    this.#ensureCurrencyManagerButtons(root);
+  static #applySheetDomProtection(actor, root) {
+    const globalLock = this.#useGlobalStructuralLock();
+    if (globalLock) {
+      root.querySelectorAll(".mode-slider, .create-child, [data-action='addDocument']").forEach(el => el.remove());
+    }
+
+    if (this.ruleEnabled(RULES.CHARACTER_DATA)) {
+      root.querySelectorAll("[data-action='editImage'], [data-action='editDescription']").forEach(el => el.remove());
+    }
+
+    // Hide structural item controls only on rows owned by an enabled package.
+    for (const row of root.querySelectorAll("[data-item-id]")) {
+      const item = actor.items?.get?.(row.dataset.itemId);
+      const rule = this.#itemProtectionRule(item);
+      if (!rule || !this.ruleEnabled(rule)) continue;
+      row.querySelectorAll([
+        "[data-action='editDocument']", "[data-action='deleteDocument']",
+        ".item-action[data-action='edit']", ".item-action[data-action='delete']",
+        ".item-action[data-action='duplicate']"
+      ].join(",")).forEach(el => el.remove());
+    }
+
+    if (this.ruleEnabled(RULES.CONTENT)) {
+      root.querySelectorAll("[data-effect-id] [data-action='edit'], [data-effect-id] [data-action='delete'], [data-effect-id] [data-action='duplicate']")
+        .forEach(el => el.remove());
+    }
+
+    for (const control of root.querySelectorAll("input, select, textarea")) {
+      const name = String(control.name ?? control.dataset?.name ?? "");
+      const item = this.#itemFromControl(actor, control);
+      if (item) {
+        if (/^system\.currency\.[^.]+$/.test(name)) {
+          if (this.ruleEnabled(RULES.CURRENCY)) this.#setControlReadOnly(control);
+          continue;
+        }
+        const rule = this.#itemProtectionRule(item);
+        if (rule && this.ruleEnabled(rule)) this.#setControlReadOnly(control);
+        continue;
+      }
+      if (this.ruleEnabled(RULES.RESOURCES) && this.#managedActorResourcePath(name)) this.#setControlReadOnly(control);
+      else if (this.ruleEnabled(RULES.CURRENCY) && /^system\.currency\.[^.]+$/.test(name)) this.#setControlReadOnly(control);
+      else if (this.ruleEnabled(RULES.CONTENT) && this.#progressionActorPath(name)) this.#setControlReadOnly(control);
+      else if (this.ruleEnabled(RULES.CHARACTER_DATA) && this.#characterDataPath(name)) this.#setControlReadOnly(control);
+    }
+
+    for (const button of root.querySelectorAll(".adjustment-button[data-property='system.quantity'], .adjustment-button[data-property*='uses']")) {
+      const item = this.#itemFromActionElement(actor, button);
+      const rule = this.#itemProtectionRule(item);
+      if (!rule || !this.ruleEnabled(rule)) continue;
+      button.hidden = true;
+      button.setAttribute("aria-hidden", "true");
+    }
+
+    if (this.ruleEnabled(RULES.CURRENCY)) this.#ensureCurrencyManagerButtons(root);
+  }
+
+  static #applyEmbeddedItemDomProtection(item, root) {
+    const rule = this.#itemProtectionRule(item);
+    const itemLocked = rule && this.ruleEnabled(rule);
+    const hasIndependentCurrency = item?.system?.currency && !this.ruleEnabled(RULES.CURRENCY);
+    if (itemLocked) {
+      const selector = hasIndependentCurrency
+        ? ".create-child, [data-action='addDocument'], [data-action='deleteDocument']"
+        : ".mode-slider, .create-child, [data-action='addDocument'], [data-action='deleteDocument']";
+      root.querySelectorAll(selector).forEach(el => el.remove());
+    }
+
+    for (const control of root.querySelectorAll("input, select, textarea")) {
+      const name = String(control.name ?? control.dataset?.name ?? "");
+      if (/^system\.currency\.[^.]+$/.test(name)) {
+        if (this.ruleEnabled(RULES.CURRENCY)) this.#setControlReadOnly(control);
+        continue;
+      }
+      if (itemLocked) this.#setControlReadOnly(control);
+    }
+    if (this.ruleEnabled(RULES.CURRENCY)) this.#ensureCurrencyManagerButtons(root);
   }
 
   static #ensureCurrencyManagerButtons(root) {
@@ -356,7 +538,7 @@ export class PlayerSheetIntegrityService {
   }
 
   static #protectChat(message, element) {
-    if (!this.enabled() || game.user?.isGM) return;
+    if (!this.enabled() || game.user?.isGM || !this.ruleEnabled(RULES.RESOURCES)) return;
     const actor = this.#messageActor(message);
     if (!this.protects(actor)) return;
     const root = element?.querySelectorAll ? element : element?.[0];
@@ -374,8 +556,76 @@ export class PlayerSheetIntegrityService {
       const button = event.target?.closest?.(`[data-action="${REFUND_ACTION}"]`);
       if (!button) return;
       this.#stop(event);
-      this.#warn("Resource refunds are GM-only for this character.");
+      this.#warn("Resource refunds are GM-only while Resources & Spell Slots protection is enabled.");
     }, { capture: true });
+  }
+
+  static #useGlobalStructuralLock(candidate = null) {
+    return [RULES.CHARACTER_DATA, RULES.INVENTORY, RULES.CONTENT, RULES.RESOURCES, RULES.CURRENCY]
+      .every(rule => this.ruleEnabled(rule, candidate));
+  }
+
+  static #itemProtectionRule(item) {
+    const type = String(item?.type ?? item?.document?.type ?? item?._source?.type ?? "").trim();
+    if (!type) return null;
+    if (CONTENT_ITEM_TYPES.has(type)) return RULES.CONTENT;
+    if (INVENTORY_ITEM_TYPES.has(type)) return RULES.INVENTORY;
+    // Unknown embedded Item types are treated as character content rather than
+    // silently falling through an enabled protection package.
+    return RULES.CONTENT;
+  }
+
+  static #itemBlockedMessage(rule) {
+    return rule === RULES.INVENTORY
+      ? "Direct inventory Item editing is GM-only while Inventory & Item Editing protection is enabled. Normal use, consumption, equip, attune, favorites, and sorting remain available."
+      : "Direct spell, feat, feature, and character-content editing is GM-only while Character Content & Progression protection is enabled. Normal casting and feature use remain available.";
+  }
+
+  static #configurationProtectionRule(element) {
+    if (element?.dataset?.trait) return RULES.CHARACTER_DATA;
+    const config = String(element?.dataset?.config ?? "");
+    if (["spellSlots", "hitDice"].includes(config)) return RULES.RESOURCES;
+    if (["ability", "armorClass", "creatureType", "initiative", "movement", "senses", "skill", "tool", "skills",
+      "source", "hitPoints", "death", "concentration"].includes(config)) return RULES.CHARACTER_DATA;
+    // Unknown Actor configuration panels are structural by default. This keeps
+    // the Character Data package fail-closed as D&D5e adds new configuration
+    // actions without forcing the entire sheet back into global locked mode.
+    return config ? RULES.CHARACTER_DATA : null;
+  }
+
+  static #characterDataPath(path) {
+    path = String(path ?? "");
+    if (!path) return false;
+    if (path === "name" || path === "img") return true;
+    if (/^system\.(abilities|skills|tools|traits|bonuses|bastion)(\.|$)/.test(path)) return true;
+    if (/^system\.details\.(?!xp(?:\.|$))/.test(path)) return true;
+    return /^system\.attributes\.(ac|init|movement|senses|attunement|concentration|loyalty|spellcasting)(\.|$)/.test(path);
+  }
+
+  static #progressionActorPath(path) {
+    path = String(path ?? "");
+    return /^system\.details\.xp(\.|$)/.test(path);
+  }
+
+  static #managedActorResourcePath(path) {
+    path = String(path ?? "");
+    return /^system\.spells\.[^.]+\.value$/.test(path)
+      || /^system\.resources\.[^.]+\.value$/.test(path)
+      || /^system\.resources\.[^.]+\.spent$/.test(path);
+  }
+
+  static #itemFromEvent(actor, event) {
+    return this.#itemFromActionElement(actor, event?.target);
+  }
+
+  static #itemFromActionElement(actor, element) {
+    const itemId = element?.closest?.("[data-item-id]")?.dataset?.itemId;
+    return itemId ? actor?.items?.get?.(itemId) ?? null : null;
+  }
+
+  static #itemFromControl(actor, control) {
+    const itemId = control?.closest?.("[data-item-id]")?.dataset?.itemId;
+    return itemId ? actor?.items?.get?.(itemId) ?? null : null;
   }
 
   static #forcePlayMode(app) {
@@ -408,23 +658,48 @@ export class PlayerSheetIntegrityService {
     }
   }
 
-  static #restoreActorInput(input, actor, path) {
-    const current = foundry.utils.getProperty(actor, path);
-    if (current !== undefined && current !== null) input.value = String(current);
+  static #restoreItemControl(control, item, path) {
+    if (!control || !item || !path) return;
+    if (path === "uses.value") {
+      const activityId = control.closest?.("[data-activity-id]")?.dataset?.activityId;
+      const activity = activityId ? item.system?.activities?.get?.(activityId) : null;
+      const current = activity?.uses?.value;
+      if (current !== undefined && current !== null) control.value = String(current);
+      return;
+    }
+    this.#restoreDocumentControl(control, item, path);
   }
 
-  static #managedActorResourcePath(path) {
-    path = String(path ?? "");
-    return /^system\.spells\.[^.]+\.value$/.test(path)
-      || /^system\.resources\.[^.]+\.value$/.test(path)
-      || /^system\.resources\.[^.]+\.spent$/.test(path);
+  static #restoreDocumentControl(control, document, path) {
+    if (!path || !document) return;
+    const current = foundry.utils.getProperty(document, path);
+    if (current === undefined || current === null) return;
+    if (control instanceof HTMLInputElement && ["checkbox", "radio"].includes(control.type)) {
+      control.checked = Boolean(current);
+      return;
+    }
+    if (Array.isArray(current)) return;
+    control.value = String(current);
   }
 
-  static #blockedActionMessage(action) {
-    if (action === "delete" || action === "deleteDocument") return "Deleting character content is GM-only.";
-    if (action === "edit" || action === "editDocument" || action === "changeMode") return "Direct character and Item editing is GM-only.";
-    if (action === "recharge" || action === "toggleCharge") return "Manual resource changes are GM-only. Use the Item or feature normally.";
-    return "This character-sheet change is GM-only.";
+  static #setControlReadOnly(control) {
+    control.setAttribute("aria-readonly", "true");
+    if (control instanceof HTMLInputElement && !["checkbox", "radio", "file", "button", "submit"].includes(control.type)) {
+      control.readOnly = true;
+      return;
+    }
+    if (control instanceof HTMLTextAreaElement) {
+      control.readOnly = true;
+      return;
+    }
+    if (control instanceof HTMLSelectElement || control instanceof HTMLInputElement) {
+      // `inert` blocks pointer/keyboard interaction without removing the field
+      // from form submission the way `disabled` would. The capture/change
+      // guards remain the authoritative fallback.
+      control.setAttribute("inert", "");
+      control.setAttribute("aria-disabled", "true");
+      control.tabIndex = -1;
+    }
   }
 
   static #stop(event) {

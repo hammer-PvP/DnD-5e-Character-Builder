@@ -8,6 +8,9 @@ import { ModalStackService } from "../services/modal-stack-service.mjs";
 import { RulesAssistanceService } from "../services/rules-assistance-service.mjs";
 import { RulesAssistanceSettingsService } from "../services/rules-assistance-settings-service.mjs";
 import { RulesAssistanceConfigApp } from "./rules-assistance-config-app.mjs";
+import { PlayerSheetIntegrityService } from "../services/player-sheet-integrity-service.mjs";
+import { PlayerSheetIntegritySettingsService } from "../services/player-sheet-integrity-settings-service.mjs";
+import { PlayerSheetIntegrityConfigApp } from "./player-sheet-integrity-config-app.mjs";
 import { RestAccessService } from "../services/rest-access-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
@@ -50,6 +53,7 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     }
     const enabledSources = settings.sources.filter(row => row.enabled && row.installed !== false);
     const rulesAssistanceSummary = RulesAssistanceSettingsService.summary(settings);
+    const playerSheetIntegritySummary = PlayerSheetIntegritySettingsService.summary(settings);
     return {
       isGM: game.user.isGM,
       tutorialSuppressed: SplashTutorialService.isSuppressed(),
@@ -62,6 +66,8 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       availableSourceCount: settings.sources.length,
       rulesAssistanceEnabledCount: rulesAssistanceSummary.enabledCount,
       rulesAssistanceRuleCount: rulesAssistanceSummary.totalCount,
+      playerSheetIntegrityEnabledCount: playerSheetIntegritySummary.enabledCount,
+      playerSheetIntegrityRuleCount: playerSheetIntegritySummary.totalCount,
       enabledSourceLabels: enabledSources
         .sort((a, b) => Number(a.priority) - Number(b.priority))
         .slice(0, 4)
@@ -104,6 +110,14 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       ModalStackService.renderChild(this, assistanceApp, { force: true }, {
         label: "Configure Assistance Rules",
         message: "Save or close Configure Assistance Rules to return to Character Builder Settings."
+      });
+    });
+    root.querySelector('[data-action="configure-sheet-integrity"]')?.addEventListener("click", event => {
+      event.preventDefault();
+      const integrityApp = new PlayerSheetIntegrityConfigApp(this);
+      ModalStackService.renderChild(this, integrityApp, { force: true }, {
+        label: "Configure Sheet Integrity",
+        message: "Save or close Configure Sheet Integrity to return to Character Builder Settings."
       });
     });
     root.querySelectorAll('[name^="hpMethod."]').forEach(input => {
@@ -197,6 +211,7 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       shortRestHomebrewCooldownMinutes,
       gmManagedRestAccess: form.querySelector('[name="gmManagedRestAccess"]')?.checked ?? false,
       playerSheetIntegrity: form.querySelector('[name="playerSheetIntegrity"]')?.checked ?? false,
+      playerSheetIntegrityConfig: foundry.utils.deepClone(storedWorldSettings.playerSheetIntegrityConfig ?? defaultSettings().playerSheetIntegrityConfig),
       assistWithDiceAutomation: form.querySelector('[name="assistWithDiceAutomation"]')?.checked ?? false,
       rulesAssistance: foundry.utils.deepClone(storedWorldSettings.rulesAssistance ?? defaultSettings().rulesAssistance),
       hitPointAdvancement: {
@@ -243,9 +258,14 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     }
 
     await SplashTutorialService.setSuppressed(tutorialSuppressed);
-    const previousRulesMode = String((game.settings.get(MODULE_ID, "settings") ?? {}).rulesMode ?? "modern2024");
+    const previousStoredRaw = foundry.utils.deepClone(game.settings.get(MODULE_ID, "settings") ?? {});
+    const previousRulesMode = String(previousStoredRaw.rulesMode ?? "modern2024");
     const previousManagedRestAccess = storedWorldSettings.gmManagedRestAccess === true;
     await game.settings.set(MODULE_ID, "settings", settings);
+    const integrityReconciliation = await PlayerSheetIntegrityService.onSettingsChanged(previousStoredRaw, settings);
+    if (integrityReconciliation?.preparedSpellsChanged) {
+      ui.notifications.info(`${integrityReconciliation.preparedSpellsChanged} excess prepared spell${integrityReconciliation.preparedSpellsChanged === 1 ? " was" : "s were"} automatically unprepared by the newly enabled Prepared Spell Limit.`);
+    }
     if (previousManagedRestAccess && settings.gmManagedRestAccess !== true) {
       try { await RestAccessService.clearAllGrants(); }
       catch (error) { console.warn(`${MODULE_ID} | Could not clear managed rest grants after disabling the setting.`, error); }
@@ -265,6 +285,12 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     const summary = RulesAssistanceSettingsService.summary(settings);
     const element = this.element?.querySelector?.("[data-rules-assistance-summary]");
     if (element) element.textContent = `${summary.enabledCount} of ${summary.totalCount} assistance rules enabled.`;
+  }
+
+  refreshPlayerSheetIntegritySummary(settings = null) {
+    const summary = PlayerSheetIntegritySettingsService.summary(settings);
+    const element = this.element?.querySelector?.("[data-player-sheet-integrity-summary]");
+    if (element) element.textContent = `${summary.enabledCount} of ${summary.totalCount} integrity protections enabled.`;
   }
 
 

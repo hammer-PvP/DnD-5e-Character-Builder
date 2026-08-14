@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.9s
+
+- Reworked **Player Character Sheet Integrity** from an all-or-nothing lock into six GM-configurable protection packages while preserving the existing master switch and recommended protected behavior for upgraded worlds.
+- Added **Configure Integrity Rules** with concise English descriptions for Character Data & Proficiencies, Inventory & Item Editing, Character Content & Progression, Resources & Spell Slots, Currency, and Prepared Spell Limit.
+- Added targeted sheet guards so a GM may relax one package without silently disabling the others. Direct UI protections remain separate from native D&D5e consumption/recovery, Character Builder transactions, GM changes, Item Piles, and other authorized programmatic integrations.
+- Added **Prepared Spell Limit** enforcement for daily-preparation classes. Players may prepare/unprepare normally but cannot exceed the canonical class limit; attempts beyond the limit show a warning. Always Prepared and feature-granted spells are excluded.
+- When Prepared Spell Limit becomes active, excess ordinary prepared spells are automatically unprepared from highest spell level downward, removing bottom-most entries first within the same level.
+- Removed ordinary daily prepared-count mismatch from Character Validation. Prepared-state overages are now sheet-state integrity, while structural spell grants, Always Prepared state, limited-list repertoire, Wizard spellbook entitlements, spell access, and provenance remain Validator responsibilities.
+- Kept the 0.9.9r Native Advancement Readiness Gate and Advancement Completeness Gate unchanged.
+
 ## 0.9.9r
 
 - Fixed Character Validator startup reliability: Actor embedded Items are materialized before `flatMap`, and the initial scan is scheduled only after the first Validation window frame is rendered. Scan failures now remain recoverable inside the open window.

@@ -189,15 +189,21 @@ At least one method must remain enabled.
 
 - **Scope:** World, GM-only.
 - **Default:** **Off**.
-- **Disabled:** Character Builder does not add the protected-player sheet restrictions described below; the module's pre-existing class-progression protections remain independent.
-- **Enabled — player may:** use/cast attacks, spells, features, Activities, consumables, potions, and scrolls normally; let D&D5e consume quantities/uses/slots through those workflows; prepare or unprepare eligible spells; equip or unequip; attune or unattune; favorite entries; expand descriptions; break concentration through the native control; and manually reorder/move Items already on the same Actor.
-- **Enabled — player may not:** enter Actor or embedded-Item edit mode; directly edit Item data; add, delete, duplicate, identify, or recharge content from the sheet; drag/copy external Items from the sidebar/Compendium onto the Actor; manually alter currency, Item quantity, spell/Pact slots, Actor resources, Item uses, Activity uses, Heroic Inspiration, or Active Effects; or use chat-card **Refund Resource**.
+- **Master switch:** Enables or disables the entire integrity layer without erasing the individual package choices.
+- **Configure Integrity Rules:** Opens a separate GM configuration window with six broad checkboxes. Every checkbox includes a short description of exactly what it protects and what normal gameplay remains available.
+- **Recommended defaults:** All six packages are enabled. Existing worlds upgrading from the former all-or-nothing integrity setting inherit those recommended package values while retaining the previous master-switch state.
+- **Character Data & Proficiencies:** Restricts manual Actor data such as name, portrait, biography, abilities, skills, saving throw proficiencies, languages, traits, senses, movement, and similar structural fields. Normal HP/gameplay state is not converted into a progression audit.
+- **Inventory & Item Editing:** Restricts direct add/remove/duplicate/edit, external drops, and manual quantity/uses changes for weapons, equipment, consumables, containers, loot, and tools. Normal use/consumption, equip, attune, favorites, same-Actor sorting, and authorized programmatic inventory transfers remain available.
+- **Character Content & Progression:** Restricts direct spell/feat/species/background/class-feature editing, Active Effect changes, external character-content drops, and unauthorized native Advancement changes. Normal casting and feature use remain available. When the GM explicitly disables this package while the master switch is enabled, Character Builder's direct class/subclass progression guard is relaxed for that intentionally permissive configuration.
+- **Resources & Spell Slots:** Restricts manual spell-slot pips, Actor resources, Heroic Inspiration, and chat-card **Refund Resource**. Normal Activity consumption, rest recovery, and automated resource changes remain available.
+- **Currency:** Restricts manual currency values on the Actor and containers. The native D&D5e Currency Manager remains available for Convert/Transfer, and Item Piles/API transactions remain supported.
+- **Prepared Spell Limit:** Players may prepare/unprepare ordinary eligible spells, but cannot exceed the class's canonical normal preparation limit. Always Prepared and feature-granted spells are excluded from the count.
+- **Prepared-limit activation:** When this package becomes active, any existing excess normal prepared spells on player-owned protected Actors are automatically unprepared from highest spell level to lowest. Within the same level, bottom-most entries are removed first. The GM is never asked to choose those excess spells one-by-one.
+- **Prepared-limit warning:** A player attempting to prepare beyond the limit receives a normal Foundry warning such as `Paladin prepared spell limit reached (6/6). Unprepare another spell before preparing this one.` Despreparing is always allowed.
+- **Character Validator boundary:** Ordinary daily prepared-count mismatch is no longer a Character Validation issue. The Validator still checks structural spell grants, Always Prepared state, full-list access, limited-list repertoire ownership, Wizard spellbook entitlements, and spell provenance.
 - **Inventory integrations:** The restriction is intentionally applied to native/manual sheet UI paths, not globally to `Actor.createEmbeddedDocuments`, Item update/delete APIs, or D&D5e Activity consumption. Item Piles and other programmatic/API-based loot, trade, vendor, and transfer workflows remain compatible by design.
-- **Internal organization:** A same-Actor drag with D&D5e's native `move` behavior is allowed so players can sort spells/items and organize inventory without creating new content.
 - **GM:** GM interaction remains unrestricted.
 - **Character Builder:** Character Builder, Level Up, Character Keeper, and authorized module transactions remain unrestricted.
-- **Refund implementation:** Refund protection is handled at the chat-card UI/event layer. Character Builder does not wrap D&D5e `Activity.refund()`, avoiding libWrapper package-identity conflicts.
-- **Implementation boundary:** The guard does not globally reject every Actor/Item update because legitimate D&D5e consumption/recovery and external gameplay integrations also update those documents from the player's client.
 
 
 ## Character Keeper — Optional Homebrew Rest Recovery
