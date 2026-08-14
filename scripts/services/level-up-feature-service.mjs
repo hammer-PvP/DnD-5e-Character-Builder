@@ -3,6 +3,7 @@ import { LevelUpDraftManager } from "./level-up-draft-manager.mjs";
 import { SourceRegistry } from "./source-registry.mjs";
 import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
+import { AdditionalCantripEntitlementService } from "./additional-cantrip-entitlement-service.mjs";
 
 const LAND_SPELLS = Object.freeze({
   arid: {
@@ -197,36 +198,53 @@ export class LevelUpFeatureService {
       }
     }
 
-    if (identifier === "druid") {
-      const magician = this.primalOrderMagicianFeature(draft);
-      const magicianNeedsCantrip = magician && !this.#hasExactFeatureSpellOwner(draft, {
-        category: "primal-order-magician",
-        classItemId: cls.id,
-        featureItemId: magician.id
-      });
-      if (magician && ((oldClassLevel < 1 && newClassLevel >= 1) || magicianNeedsCantrip)) {
-        const pool = (await this.#classSpellPool("druid", registry))
-          .filter(option => Number(option.system?.level ?? 0) === 0);
+    // Additive class-cantrip features are independent entitlements. The raw
+    // class ScaleValue remains the normal class progression; every selected
+    // feature that adds to cantrips-known receives its own feature-owned
+    // acquisition instead of reducing the normal class choice count.
+    const additionalCantripGrants = AdditionalCantripEntitlementService.grants(draft, cls);
+    if (additionalCantripGrants.length) {
+      const existingCantripIdentifiers = new Set(draft.items
+        .filter(item => item.type === "spell" && Number(item.system?.level ?? -1) === 0)
+        .map(item => String(item.system?.identifier ?? "")).filter(Boolean));
+      const pool = (await this.#classSpellPool(identifier, registry))
+        .filter(option => Number(option.system?.level ?? 0) === 0
+          && !existingCantripIdentifiers.has(String(option.identifier ?? "")));
+      const sourceActor = game.actors?.get?.(state.sourceActorId ?? draft.getFlag?.(MODULE_ID, "sourceActorId")) ?? null;
+      for (const grant of additionalCantripGrants) {
+        const ownedCantrips = this.#exactFeatureSpellOwners(draft, {
+          category: grant.category,
+          classItemId: cls.id,
+          featureItemId: grant.featureItemId
+        });
+        const missingCount = Math.max(0, Number(grant.count ?? 0) - ownedCantrips.length);
+        if (!missingCount) continue;
+        const existedBefore = Boolean(sourceActor?.items?.get?.(grant.featureItemId));
+        const repair = existedBefore && oldClassLevel >= 1;
+        const sectionId = `additional-cantrip-${grant.featureItemId ?? grant.key}`;
         spellSections.push(this.#spellSection({
-          id: "primal-order-magician",
-          title: magicianNeedsCantrip && oldClassLevel >= 1
-            ? "Repair Missing Primal Order: Magician Cantrip"
-            : "Primal Order: Magician",
-          note: magicianNeedsCantrip && oldClassLevel >= 1
-            ? "This Actor owns Primal Order: Magician but has no exact Magician-owned cantrip. Choose one Druid cantrip to repair that missing acquisition without changing other spell ownership."
-            : "Choose one additional Druid cantrip granted by Primal Order: Magician. This does not consume a normal Druid cantrip choice.",
-          count: 1,
+          id: sectionId,
+          title: repair ? `Repair Missing ${grant.featureName} Cantrip` : grant.featureName,
+          note: repair
+            ? `This Actor owns ${grant.featureName} but is missing ${missingCount} feature-owned additional ${cls.name} cantrip acquisition${missingCount === 1 ? "" : "s"}. Choose only the missing cantrip${missingCount === 1 ? "" : "s"} without changing normal class cantrips.`
+            : `Choose ${missingCount === 1 ? "one" : missingCount} additional ${cls.name} cantrip${missingCount === 1 ? "" : "s"} granted by ${grant.featureName}. This does not consume a normal ${cls.name} cantrip choice.`,
+          count: missingCount,
           pool,
-          selected: saved.spells?.["primal-order-magician"] ?? [],
-          featureItemId: magician.id,
-          category: "primal-order-magician",
+          selected: saved.spells?.[sectionId] ?? [],
+          featureItemId: grant.featureItemId,
+          category: grant.category,
           prepared: SpellPreparationPolicyService.ALWAYS_PREPARED,
           alwaysPrepared: true,
-          sourceItem: "class:druid",
-          repair: magicianNeedsCantrip && oldClassLevel >= 1
+          sourceItem: `class:${identifier}`,
+          accessModel: "additional-cantrip",
+          additionalClassCantrip: true,
+          classOwned: true,
+          repair
         }, registry));
       }
+    }
 
+    if (identifier === "druid") {
       wildShape = await this.#wildShapeContext(draft, cls, registry, {
         oldClassLevel, newClassLevel,
         selected: saved.wildShapeForms ?? []
@@ -309,15 +327,18 @@ export class LevelUpFeatureService {
     const createdItemIds = [];
     let deleted = 0;
 
+    const additionalClassCantripSelections = new Set();
     for (const section of context.spellSections) {
       const values = [...new Set(formData.getAll(`levelUp.featureSpell.${section.id}`).map(String))];
       this.#validateExact(values, section.count, section.options, section.title);
-      if (section.category === "primal-order-magician") {
-        const normalDruidCantrips = new Set(formData.getAll("levelUp.cantrips").map(String));
-        const duplicate = values.find(identifier => normalDruidCantrips.has(identifier));
+      if (section.additionalClassCantrip) {
+        const normalClassCantrips = new Set(formData.getAll("levelUp.cantrips").map(String));
+        const duplicate = values.find(identifier => normalClassCantrips.has(identifier)
+          || additionalClassCantripSelections.has(identifier));
         if (duplicate) {
-          throw new Error("Primal Order: Magician must grant a different acquisition from the normal Druid cantrip selected during this Level Up.");
+          throw new Error(`${section.title} must grant a different cantrip from the character's other ${cls.name} cantrip choices.`);
         }
+        for (const identifier of values) additionalClassCantripSelections.add(identifier);
       }
       featureChoices.spells[section.id] = values;
       for (const identifier of values) {
@@ -824,6 +845,13 @@ export class LevelUpFeatureService {
       data.flags[MODULE_ID] ??= {};
       data.flags[MODULE_ID].featureGrantedSpell = true;
       data.flags[MODULE_ID].featureSpellOwners = [owner];
+      if (section.additionalClassCantrip) {
+        data.flags[MODULE_ID].classSpellAccess = true;
+        data.flags[MODULE_ID].classIdentifier = cls.system?.identifier;
+        data.flags[MODULE_ID].classItemId = cls.id;
+        data.flags[MODULE_ID].accessModel = section.accessModel ?? "additional-cantrip";
+        data.flags[MODULE_ID].category = section.category;
+      }
       data.flags[MODULE_ID].levelUpSpell = {
         transactionId: state.transactionId,
         classIdentifier: cls.system?.identifier,
@@ -928,7 +956,7 @@ export class LevelUpFeatureService {
     const classOwnedCategories = new Set([
       "spell-mastery", "signature-spell", "mystic-arcanum", "primal-order-magician"
     ]);
-    const subclassItemId = classOwnedCategories.has(section.category)
+    const subclassItemId = section.classOwned || classOwnedCategories.has(section.category)
       ? null
       : this.subclassCaster(cls.actor, cls.system?.identifier)?.subclass?.id ?? null;
     return {
@@ -1055,8 +1083,8 @@ export class LevelUpFeatureService {
     };
   }
 
-  static #hasExactFeatureSpellOwner(draft, { category, classItemId, featureItemId }) {
-    return draft.items.some(item => item.type === "spell"
+  static #exactFeatureSpellOwners(draft, { category, classItemId, featureItemId }) {
+    return draft.items.filter(item => item.type === "spell"
       && (item.getFlag(MODULE_ID, "featureSpellOwners") ?? []).some(owner =>
         owner.category === category
         && owner.classItemId === classItemId

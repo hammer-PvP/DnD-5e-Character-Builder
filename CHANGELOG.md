@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.9t
+
+- Replaced the Druid-specific Primal Order cantrip compensation with a **global additive cantrip entitlement model**. Raw class `Cantrips Known` ScaleValues remain the base entitlement, while selected features that add to `system.scale.<class>.cantrips-known` receive their own feature-owned cantrip acquisitions. This covers Primal Order: Magician and equivalent class options such as Cleric Divine Order: Thaumaturge without reducing normal class choices.
+- Applied the additive cantrip model consistently to Character Creation, Level Up, and Character Validation. Druid 1 with Magician now projects two normal Druid cantrips plus one additional Magician cantrip.
+- Hardened Character Validation spell reconciliation so one Spell document can satisfy normal class access, a native Advancement grant, Always Prepared state, and feature/provenance ownership at the same time. This prevents the Validator from restoring a second class copy merely because the canonical copy also carries a grant origin.
+- Collapsed native spell grants that are mechanically correct but missing only Character Builder ownership metadata into one feature-level metadata warning/reconciliation instead of one structural error per spell.
+- Extended the Native Advancement guard from **ready-to-render** to **ready + mandatory-choice complete** for determinable native choices. `Next`/`Complete` remain blocked for unresolved ItemChoice, Trait, multi-size, and Subclass steps while Previous/Restart stay available after loading. No option is auto-selected.
+- Added optional **Temporary Transformation Actor Cleanup** automation. After a player completes the native D&D5e Revert/Cancel Transformation lifecycle, the active GM removes only temporary Actor documents proven by D&D5e transformation flags to belong to that chain. Original character Actors and source-form Actors are never inferred or deleted by name/type/folder.
+- Preserved the live-validated granular Player Sheet Integrity and Prepared Spell Limit behavior; no new sheet-integrity architecture was introduced in this patch.
+
 ## 0.9.9s
 
 - Reworked **Player Character Sheet Integrity** from an all-or-nothing lock into six GM-configurable protection packages while preserving the existing master switch and recommended protected behavior for upgraded worlds.

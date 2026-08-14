@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.9s";
-export const MODULE_BUILD = "community-beta-099s-granular-player-sheet-integrity";
+export const MODULE_VERSION = "0.9.9t";
+export const MODULE_BUILD = "community-beta-099t-additive-cantrips-advancement-validator-transform-cleanup";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -150,6 +150,13 @@ export const RULES_ASSISTANCE_DEFINITIONS = Object.freeze([
     label: "Concentration & Dependent Effects",
     description: "Keeps Concentration checks attached to the concentrating Actor, resolves them after post-roll bonuses, ends native concentration on final failure, and lets D&D5e remove only bound dependent effects.",
     tag: "Effect Lifecycle"
+  }),
+  Object.freeze({
+    key: "temporaryTransformationActorCleanup",
+    ruleId: "temporary-transformation-actor-cleanup",
+    label: "Temporary Transformation Actor Cleanup",
+    description: "After a player returns from a native D&D5e transformation, asks the active GM to remove only the temporary Actor documents proven to belong to that transformation chain. Original characters and source-form Actors are never removed.",
+    tag: "Maintenance"
   })
 ]);
 

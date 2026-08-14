@@ -12,6 +12,7 @@ import { RulesAssistanceSettingsService } from "./rules-assistance-settings-serv
 import { SourceTargetDamageRiderService } from "./source-target-damage-rider-service.mjs";
 import { CuttingWordsAssistanceService } from "./cutting-words-assistance-service.mjs";
 import { ResourceEventService } from "./resource-event-service.mjs";
+import { TransformationActorCleanupService } from "./transformation-actor-cleanup-service.mjs";
 
 const RULES = Object.freeze({
   GREAT_WEAPON_FIGHTING: "great-weapon-fighting",
@@ -47,6 +48,7 @@ export class RulesAssistanceService {
     SourceTargetDamageRiderService.initialize();
     CuttingWordsAssistanceService.initialize();
     ResourceEventService.initialize();
+    TransformationActorCleanupService.initialize();
 
     Hooks.on("dnd5e.preUseActivity", (activity, usageConfig, dialogConfig, messageConfig) =>
       this.#prepareCast(activity, usageConfig, dialogConfig, messageConfig)
@@ -71,6 +73,7 @@ export class RulesAssistanceService {
     await NativeContextualEffectService.ready();
     await NativeSaveGatedEffectService.ready();
     CuttingWordsAssistanceService.ready();
+    TransformationActorCleanupService.ready();
   }
 
   static enabled() {

@@ -2,6 +2,7 @@ import { MODULE_ID, SPELL_ACCESS_MODELS } from "../constants.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
 import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.mjs";
 import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
+import { AdditionalCantripEntitlementService } from "./additional-cantrip-entitlement-service.mjs";
 
 const BUILD_TRAIT_OWNER_TYPES = new Set(["class", "subclass", "race", "background", "feat"]);
 const ALWAYS_PREPARED = SpellPreparationPolicyService.ALWAYS_PREPARED;
@@ -52,6 +53,8 @@ export class CharacterValidationBuildProjectionService {
       "class-spell-access-unlinked",
       "granted-spell-unlinked",
       "granted-spell-ownership-incomplete",
+      "granted-spell-metadata-incomplete",
+      "additional-cantrip-entitlement-incomplete",
       "trait-grant-missing",
       "trait-choice-mechanical-missing",
       "trait-choice-ledger-incomplete",
@@ -73,6 +76,10 @@ export class CharacterValidationBuildProjectionService {
         return this.#resolveGrantedSpellLink(actor, issue);
       case "granted-spell-ownership-incomplete":
         return this.#repairGrantedSpellOwnership(actor, issue);
+      case "granted-spell-metadata-incomplete":
+        return this.#repairGrantedSpellMetadataBatch(actor, issue);
+      case "additional-cantrip-entitlement-incomplete":
+        return this.#resolveAdditionalCantripChoice(actor, issue);
       case "trait-grant-missing":
       case "trait-choice-mechanical-missing":
         return this.#restoreTraitMechanicalState(actor, issue);
@@ -181,9 +188,9 @@ export class CharacterValidationBuildProjectionService {
       }
 
       const maximumSpellLevel = this.#maximumSpellLevel(progression, classLevel);
-      const totalCantrips = this.#scaleValue(sourceClass, classLevel, { title: "cantrips known" });
-      const magicianAdjustment = identifier === "druid" && this.#hasFeature(actor, "magician") ? 1 : 0;
-      const cantripTarget = Math.max(0, totalCantrips - magicianAdjustment);
+      // The canonical ScaleValue is the base class entitlement. Additive
+      // feature grants are projected separately and never subtracted from it.
+      const cantripTarget = this.#scaleValue(sourceClass, classLevel, { title: "cantrips known" });
       const maxPrepared = this.#scaleValue(sourceClass, classLevel, { identifier: "max-prepared", title: "max prepared" });
       const leveledPool = pool.filter(option => {
         const level = Number(option.system?.level ?? -1);
@@ -241,9 +248,10 @@ export class CharacterValidationBuildProjectionService {
       }
 
       if (cantripTarget > 0) {
-        const cantripSlots = this.#scaleChoiceSlots(sourceClass, classLevel, { title: "cantrips known" }, magicianAdjustment);
+        const cantripSlots = this.#scaleChoiceSlots(sourceClass, classLevel, { title: "cantrips known" });
         issues.push(...this.#choiceSpellIssues(actor, context, classCantrips, cantripPool, cantripSlots, "cantrip"));
       }
+      issues.push(...this.#additionalCantripIssues(actor, context));
     }
 
     // Once all class deficits have been projected, surface only truly unowned
@@ -398,6 +406,54 @@ export class CharacterValidationBuildProjectionService {
     return issues;
   }
 
+  static #additionalCantripIssues(actor, context) {
+    const issues = [];
+    const grants = AdditionalCantripEntitlementService.grants(actor, context.cls);
+    if (!grants.length) return issues;
+    const existingIdentifiers = new Set(actor.items.filter(item => item.type === "spell")
+      .map(item => String(item.system?.identifier ?? "")).filter(Boolean));
+
+    for (const grant of grants) {
+      const owned = actor.items.filter(item => item.type === "spell"
+        && Number(item.system?.level ?? -1) === 0
+        && AdditionalCantripEntitlementService.hasOwner(item, grant));
+      const missing = Math.max(0, Number(grant.count ?? 0) - owned.length);
+      for (let slotIndex = 0; slotIndex < missing; slotIndex++) {
+        const orphanCandidates = actor.items.filter(item => item.type === "spell"
+          && Number(item.system?.level ?? -1) === 0
+          && this.#isUnownedSpell(item)
+          && context.cantripPool.some(option => String(option.identifier) === String(item.system?.identifier ?? "")));
+        const legalOptions = context.cantripPool.filter(option => !existingIdentifiers.has(String(option.identifier)));
+        issues.push({
+          id: `additional-cantrip:${context.cls.id}:${grant.featureItemId ?? grant.key}:${slotIndex}`,
+          kind: "additional-cantrip-entitlement-incomplete",
+          severity: "error",
+          repairable: true,
+          repairMode: "guided",
+          repairLabel: orphanCandidates.length ? "Link or Choose Additional Cantrip" : "Choose Additional Cantrip",
+          title: `${grant.featureName} — Additional Cantrip Missing`,
+          summary: `${grant.featureName} grants ${grant.count} additional ${context.cls.name} cantrip${grant.count === 1 ? "" : "s"}, but only ${owned.length} feature-owned acquisition${owned.length === 1 ? " is" : "s are"} recorded.`,
+          details: "This entitlement is additive to the class Cantrips Known ScaleValue. It never replaces or reduces a normal class cantrip choice.",
+          data: {
+            ...this.#spellIssueData(context, {
+              category: grant.category,
+              entitlementLevel: context.classLevel,
+              slotIndex,
+              orphanCandidates,
+              legalOptions,
+              deterministic: false
+            }),
+            featureItemId: grant.featureItemId,
+            featureName: grant.featureName,
+            featureCategory: grant.category,
+            additionalCantrip: true
+          }
+        });
+      }
+    }
+    return issues;
+  }
+
   static #assignSpellsToSlots(spells, slots, context, category, { replacementAware = false } = {}) {
     const result = slots.map(slot => ({ ...slot, spell: null }));
     const remaining = [...spells];
@@ -487,6 +543,7 @@ export class CharacterValidationBuildProjectionService {
 
   static async #scanGrantedSpellOwnership(actor, registry, graph) {
     const issues = [];
+    const metadataBatches = new Map();
     for (const node of graph?.nodes ?? []) {
       const { owner, source, sourceAdvancementId, sourceAdvancement, local } = node;
       if (!["ItemGrant", "ItemChoice"].includes(String(sourceAdvancement?.type ?? ""))) continue;
@@ -592,6 +649,28 @@ export class CharacterValidationBuildProjectionService {
         if (expectedAlways && Number(spell.system?.prepared ?? -1) !== ALWAYS_PREPARED) missing.push("Always Prepared");
         if (!missing.length) continue;
 
+        // Native D&D5e provenance (sourceItem + Advancement origin/root +
+        // prepared state) already proves the acquisition mechanically. Missing
+        // only Character Builder ownership metadata is one migration-quality
+        // finding per owning feature, not a separate structural error per spell.
+        if (missing.length === 1 && missing[0] === "featureSpellOwners") {
+          const key = `${owner.id}:${advancementId}`;
+          const batch = metadataBatches.get(key) ?? { owner, advancementId, entries: [] };
+          batch.entries.push({
+            spellId: spell.id,
+            ownerId: owner.id,
+            advancementId,
+            sourceAdvancementId,
+            sourceUuid: expected.uuid,
+            expectedOrigin,
+            expectedSourceItem,
+            expectedAlways,
+            entitlementLevel: Number(sourceAdvancement.level ?? 0)
+          });
+          metadataBatches.set(key, batch);
+          continue;
+        }
+
         issues.push({
           id: `granted-spell-ownership:${owner.id}:${advancementId}:${spell.id}`,
           kind: "granted-spell-ownership-incomplete",
@@ -615,6 +694,20 @@ export class CharacterValidationBuildProjectionService {
           }
         });
       }
+    }
+    for (const [key, batch] of metadataBatches) {
+      issues.push({
+        id: `granted-spell-metadata:${key}`,
+        kind: "granted-spell-metadata-incomplete",
+        severity: "warning",
+        repairable: true,
+        repairMode: "safe",
+        repairLabel: "Reconcile Spell Ownership Metadata",
+        title: `${batch.owner.name} — Spell Ownership Metadata Incomplete`,
+        summary: `${batch.entries.length} native spell acquisition${batch.entries.length === 1 ? " is" : "s are"} mechanically correct but missing Character Builder ownership metadata.`,
+        details: "The Validator can attach the missing ownership ledger to the existing spells without replacing them, changing their choices, or creating duplicate spell documents.",
+        data: { entries: batch.entries }
+      });
     }
     return issues;
   }
@@ -940,6 +1033,86 @@ export class CharacterValidationBuildProjectionService {
     });
     if (!created) throw new Error(`D&D5e did not add ${source.name}.`);
     return { status: "repaired", issueId: issue.id, title: issue.title, message: `Added ${created.name} for ${cls.name}'s missing spell entitlement.`, guided: true };
+  }
+
+  static async #resolveAdditionalCantripChoice(actor, issue) {
+    const cls = actor.items.get(issue.data?.classItemId);
+    const feature = actor.items.get(issue.data?.featureItemId);
+    if (!cls || !feature) throw new Error("The class or feature that owns this additional cantrip entitlement no longer exists.");
+    const choice = await this.#promptSpellResolution(issue);
+    if (!choice) return { status: "skipped", issueId: issue.id, title: issue.title, message: `${issue.title} remains unresolved because the spell choice dialog was cancelled.` };
+
+    let spell;
+    if (choice.mode === "existing") {
+      spell = actor.items.get(choice.id);
+      if (!spell) throw new Error("The selected existing cantrip no longer exists.");
+    } else {
+      const source = await fromUuid(choice.uuid);
+      if (!source || source.type !== "spell" || Number(source.system?.level ?? -1) !== 0) throw new Error("The selected canonical cantrip source is unavailable.");
+      const itemData = foundry.utils.deepClone(source.toObject());
+      delete itemData._id;
+      itemData.system ??= {};
+      itemData.system.ability = cls.system?.spellcasting?.ability ?? itemData.system.ability ?? "";
+      itemData.system.method = cls.system?.spellcasting?.progression === "pact" ? "pact" : "spell";
+      itemData.system.prepared = ALWAYS_PREPARED;
+      itemData.system.sourceItem = `class:${issue.data?.classIdentifier ?? cls.system?.identifier}`;
+      itemData.flags ??= {};
+      itemData.flags.dnd5e ??= {};
+      itemData.flags.dnd5e.sourceId = source.uuid;
+      [spell] = await actor.createEmbeddedDocuments("Item", [itemData], {
+        characterBuilderValidationRepair: true,
+        characterBuilderValidationBuildProjection: true
+      });
+      if (!spell) throw new Error(`D&D5e did not add ${source.name}.`);
+    }
+
+    const grant = {
+      category: issue.data?.featureCategory ?? issue.data?.category,
+      featureName: issue.data?.featureName ?? feature.name,
+      classIdentifier: issue.data?.classIdentifier ?? cls.system?.identifier,
+      classItemId: cls.id,
+      featureItemId: feature.id
+    };
+    const ownerRecord = AdditionalCantripEntitlementService.ownerRecord(grant, spell, {
+      acquiredAtClassLevel: Number(issue.data?.entitlementLevel ?? cls.system?.levels ?? 0),
+      alwaysPrepared: true,
+      validationReconciled: true
+    });
+    await FeatureSpellOwnershipService.addOwner(spell, ownerRecord, { prepared: ALWAYS_PREPARED });
+    await spell.update({
+      "system.ability": cls.system?.spellcasting?.ability ?? spell.system?.ability ?? "",
+      "system.method": cls.system?.spellcasting?.progression === "pact" ? "pact" : "spell",
+      "system.prepared": ALWAYS_PREPARED,
+      "system.sourceItem": `class:${issue.data?.classIdentifier ?? cls.system?.identifier}`,
+      [`flags.${MODULE_ID}.classSpellAccess`]: true,
+      [`flags.${MODULE_ID}.classIdentifier`]: issue.data?.classIdentifier ?? cls.system?.identifier,
+      [`flags.${MODULE_ID}.classItemId`]: cls.id,
+      [`flags.${MODULE_ID}.accessModel`]: "additional-cantrip",
+      [`flags.${MODULE_ID}.category`]: grant.category,
+      [`flags.${MODULE_ID}.featureGrantedSpell`]: true
+    }, { characterBuilderValidationRepair: true, characterBuilderValidationBuildProjection: true });
+    return { status: "repaired", issueId: issue.id, title: issue.title, message: `Linked ${spell.name} to ${feature.name}'s additional cantrip entitlement.`, guided: true };
+  }
+
+  static async #repairGrantedSpellMetadataBatch(actor, issue) {
+    const entries = issue.data?.entries ?? [];
+    let repaired = 0;
+    for (const entry of entries) {
+      const result = await this.#repairGrantedSpellOwnership(actor, {
+        id: `${issue.id}:${entry.spellId}`,
+        title: issue.title,
+        data: entry
+      });
+      if (result?.status === "repaired") repaired++;
+    }
+    return {
+      status: repaired ? "repaired" : "skipped",
+      issueId: issue.id,
+      title: issue.title,
+      message: repaired
+        ? `Reconciled ownership metadata for ${repaired} spell acquisition${repaired === 1 ? "" : "s"} without replacing any spell.`
+        : `${issue.title} did not require any remaining metadata changes.`
+    };
   }
 
   static async #resolveGrantedSpellLink(actor, issue) {
@@ -1325,20 +1498,32 @@ export class CharacterValidationBuildProjectionService {
 
   static #isNormalClassSpell(spell, cls, actor) {
     if (!spell || spell.type !== "spell") return false;
+    const access = spell.getFlag?.(MODULE_ID, "classSpellAccess");
+    const classMatches = spell.getFlag?.(MODULE_ID, "classItemId") === cls.id
+      || spell.getFlag?.(MODULE_ID, "classIdentifier") === cls.system?.identifier;
+    const category = String(spell.getFlag?.(MODULE_ID, "category") ?? "");
+
+    // A single physical Spell can legitimately satisfy both normal class access
+    // and a native grant/Always Prepared entitlement. Explicit normal-access
+    // metadata wins over auxiliary feature ownership/origin metadata. Feature-
+    // additive categories (for example primal-order-magician/thaumaturge) are
+    // deliberately excluded so they never consume a base class cantrip slot.
+    if (access && classMatches && this.#isNormalClassCategory(category)) return true;
+    const reconciliation = spell.getFlag?.(MODULE_ID, "alwaysPreparedReconciliation");
+    if (reconciliation?.normalAcquisition?.classIdentifier === cls.system?.identifier) return true;
+    const levelUp = spell.getFlag?.(MODULE_ID, "levelUpSpell");
+    if (levelUp?.classItemId === cls.id && !levelUp.featureItemId) return true;
+
     const featureOwners = spell.getFlag?.(MODULE_ID, "featureSpellOwners") ?? [];
     if (featureOwners.length || spell.getFlag?.(MODULE_ID, "featureGrantedSpell")) return false;
     const advancementOrigin = String(spell.getFlag?.("dnd5e", "advancementOrigin") ?? "");
     if (advancementOrigin) return false;
-
-    const access = spell.getFlag?.(MODULE_ID, "classSpellAccess");
-    if (access && (spell.getFlag?.(MODULE_ID, "classItemId") === cls.id
-      || spell.getFlag?.(MODULE_ID, "classIdentifier") === cls.system?.identifier)) return true;
-    const levelUp = spell.getFlag?.(MODULE_ID, "levelUpSpell");
-    if (levelUp?.classItemId === cls.id && !levelUp.featureItemId) return true;
-    const reconciliation = spell.getFlag?.(MODULE_ID, "alwaysPreparedReconciliation");
-    if (reconciliation?.normalAcquisition?.classIdentifier === cls.system?.identifier) return true;
     return String(spell.system?.sourceItem ?? "") === `class:${cls.system?.identifier}`
       && this.#spellClassIdentifier(spell, actor) === cls.system?.identifier;
+  }
+
+  static #isNormalClassCategory(category) {
+    return ["", "cantrip", "full-list", "limited", "leveled", "spellbook"].includes(String(category ?? ""));
   }
 
   static #isUnownedSpell(spell) {
@@ -1391,7 +1576,7 @@ export class CharacterValidationBuildProjectionService {
     return pool.find(row => String(row.identifier ?? "") === String(identifier ?? "")) ?? null;
   }
 
-  static #scaleChoiceSlots(sourceClass, classLevel, selector, subtractLevelOne = 0) {
+  static #scaleChoiceSlots(sourceClass, classLevel, selector) {
     const advancement = this.#findScaleAdvancement(sourceClass, selector);
     if (!advancement) return [];
     const points = Object.entries(advancement.configuration?.scale ?? {})
@@ -1402,8 +1587,7 @@ export class CharacterValidationBuildProjectionService {
     let previous = 0;
     let index = 0;
     for (const point of points) {
-      let delta = Math.max(0, point.value - previous);
-      if (point.level === 1 && subtractLevelOne) delta = Math.max(0, delta - subtractLevelOne);
+      const delta = Math.max(0, point.value - previous);
       for (let i = 0; i < delta; i++) slots.push({ level: point.level, index: index++ });
       previous = point.value;
     }

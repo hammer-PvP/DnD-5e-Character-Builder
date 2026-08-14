@@ -2,6 +2,7 @@ import { MODULE_ID, SPELL_ACCESS_MODELS } from "../constants.mjs";
 import { DraftManager } from "./draft-manager.mjs";
 import { PactOfTheTomeService } from "./pact-of-the-tome-service.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
+import { AdditionalCantripEntitlementService } from "./additional-cantrip-entitlement-service.mjs";
 
 /**
  * Populates native Spell Items during creation. Preparation, slots, casting,
@@ -32,10 +33,11 @@ export class SpellAccessService {
     const pool = await this.#classSpellPool(identifier, registry);
     const classLevel = Number(cls.system.levels ?? 1);
     const maximumSpellLevel = this.#maximumSpellLevel(progression, classLevel);
-    const totalCantripCount = this.#scaleValue(cls, classLevel, { title: "cantrips known" });
-    const magicianFeature = identifier === "druid" ? this.#magicianFeature(draft) : null;
-    const magicianCantripCount = magicianFeature ? 1 : 0;
-    const cantripCount = Math.max(0, totalCantripCount - magicianCantripCount);
+    // ScaleValue is the base class entitlement. Selected features that add to
+    // the derived cantrips-known scale are projected separately and never
+    // subtracted from the raw class progression.
+    const cantripCount = this.#scaleValue(cls, classLevel, { title: "cantrips known" });
+    const additionalCantripGrants = AdditionalCantripEntitlementService.grants(draft, cls);
     const maxPrepared = this.#scaleValue(cls, classLevel, { identifier: "max-prepared" });
     const spellCount = model === "spellbook" ? (classLevel === 1 ? 6 : 2)
       : model === "limited" ? maxPrepared : 0;
@@ -47,7 +49,7 @@ export class SpellAccessService {
     });
 
     const selectedCantrips = new Set(saved.classIdentifier === identifier ? saved.cantrips ?? [] : []);
-    const selectedMagicianCantrips = new Set(saved.classIdentifier === identifier ? saved.magicianCantrip ?? [] : []);
+    const savedAdditionalCantrips = saved.classIdentifier === identifier ? (saved.additionalCantrips ?? {}) : {};
     const selectedSpells = new Set(saved.classIdentifier === identifier ? saved.spells ?? [] : []);
     const decorate = (option, selected) => {
       const level = Number(option.system?.level ?? 0);
@@ -60,7 +62,19 @@ export class SpellAccessService {
     };
 
     const cantripOptions = cantrips.map(option => decorate(option, selectedCantrips));
-    const magicianCantripOptions = cantrips.map(option => decorate(option, selectedMagicianCantrips));
+    const additionalCantripSections = additionalCantripGrants.map(grant => {
+      const legacyMagician = grant.category === "primal-order-magician" ? (saved.magicianCantrip ?? []) : [];
+      const selected = new Set(savedAdditionalCantrips[grant.key] ?? legacyMagician);
+      const options = cantrips.map(option => decorate(option, selected));
+      return {
+        ...grant,
+        title: grant.featureName,
+        note: `Choose ${grant.count === 1 ? "one" : grant.count} additional ${cls.name} cantrip${grant.count === 1 ? "" : "s"} granted by ${grant.featureName}. This is stored as a separate feature-owned acquisition.`,
+        selectedCount: selected.size,
+        groups: registry.groupOptions(options),
+        filterTarget: `#cb-additional-cantrip-options-${grant.key}`
+      };
+    });
     const spellOptions = leveled.map(option => decorate(option, selectedSpells));
     const automaticSpells = model === "fullList" ? spellOptions : [];
     const pactOfTheTome = identifier === "warlock"
@@ -90,17 +104,15 @@ export class SpellAccessService {
       }[model] ?? model,
       maximumSpellLevel,
       cantripCount,
-      magicianCantripCount,
-      magicianFeatureItemId: magicianFeature?.id ?? null,
+      additionalCantripCount: additionalCantripGrants.reduce((sum, grant) => sum + grant.count, 0),
+      additionalCantripSections,
       spellCount,
       selectedCantripCount: selectedCantrips.size,
-      selectedMagicianCantripCount: selectedMagicianCantrips.size,
       selectedSpellCount: selectedSpells.size,
       needsCantripChoice: cantripCount > 0,
-      needsMagicianCantripChoice: magicianCantripCount > 0,
+      needsAdditionalCantripChoice: additionalCantripSections.length > 0,
       needsSpellChoice: ["limited", "spellbook"].includes(model) && spellCount > 0,
       cantripGroups: registry.groupOptions(cantripOptions),
-      magicianCantripGroups: registry.groupOptions(magicianCantripOptions),
       spellGroups: registry.groupOptions(spellOptions),
       automaticSpellGroups: registry.groupOptions(automaticSpells),
       automaticSpellCount: automaticSpells.length,
@@ -133,17 +145,19 @@ export class SpellAccessService {
 
     const context = await this.buildContext(draft, registry);
     const selectedCantrips = [...new Set(formData.getAll("spellAccess.cantrips").map(String))];
-    const selectedMagicianCantrips = [...new Set(formData.getAll("spellAccess.magicianCantrip").map(String))];
+    const selectedAdditionalCantrips = this.#additionalCantripSelections(formData, context.additionalCantripSections ?? []);
     const selectedSpells = [...new Set(formData.getAll("spellAccess.spells").map(String))];
     const selectedTomeCantrips = [...new Set(formData.getAll("spellAccess.pactOfTheTome.cantrips").map(String))];
     const selectedTomeRituals = [...new Set(formData.getAll("spellAccess.pactOfTheTome.rituals").map(String))];
 
     const validCantrips = new Map(context.cantripGroups.flatMap(group => group.items).map(option => [option.identifier, option]));
-    const validMagicianCantrips = new Map((context.magicianCantripGroups ?? []).flatMap(group => group.items).map(option => [option.identifier, option]));
     const validSpells = new Map(context.spellGroups.flatMap(group => group.items).map(option => [option.identifier, option]));
 
     this.#validateSelections(selectedCantrips, context.cantripCount, validCantrips, "cantrip");
-    this.#validateSelections(selectedMagicianCantrips, context.magicianCantripCount ?? 0, validMagicianCantrips, "Primal Order: Magician cantrip");
+    for (const section of context.additionalCantripSections ?? []) {
+      const valid = new Map((section.groups ?? []).flatMap(group => group.items).map(option => [option.identifier, option]));
+      this.#validateSelections(selectedAdditionalCantrips[section.key] ?? [], section.count, valid, `${section.featureName} cantrip`);
+    }
     if (context.needsSpellChoice) {
       this.#validateSelections(selectedSpells, context.spellCount, validSpells, "spell");
     }
@@ -154,13 +168,16 @@ export class SpellAccessService {
       prepared: SpellPreparationPolicyService.ALWAYS_PREPARED,
       category: "cantrip"
     });
-    for (const selected of selectedMagicianCantrips) documents.push({
-      option: validMagicianCantrips.get(selected),
-      prepared: SpellPreparationPolicyService.ALWAYS_PREPARED,
-      category: "primal-order-magician",
-      featureItemId: context.magicianFeatureItemId,
-      featureLabel: "Primal Order: Magician"
-    });
+    for (const section of context.additionalCantripSections ?? []) {
+      const valid = new Map((section.groups ?? []).flatMap(group => group.items).map(option => [option.identifier, option]));
+      for (const selected of selectedAdditionalCantrips[section.key] ?? []) documents.push({
+        option: valid.get(selected),
+        prepared: SpellPreparationPolicyService.ALWAYS_PREPARED,
+        category: section.category,
+        featureItemId: section.featureItemId,
+        featureLabel: section.featureName
+      });
+    }
 
     if (model === "fullList") {
       for (const option of validSpells.values()) documents.push({ option, prepared: 0, category: "full-list" });
@@ -295,7 +312,7 @@ export class SpellAccessService {
       spellAccess: {
         classIdentifier: identifier,
         cantrips: selectedCantrips,
-        magicianCantrip: selectedMagicianCantrips,
+        additionalCantrips: selectedAdditionalCantrips,
         spells: model === "fullList" ? [...validSpells.keys()] : selectedSpells,
         pactOfTheTomeCantrips: selectedTomeCantrips,
         pactOfTheTomeRituals: selectedTomeRituals
@@ -318,12 +335,12 @@ export class SpellAccessService {
     });
   }
 
-  static #magicianFeature(draft) {
-    return draft.items.find(item => item.type === "feat" && (
-      String(item.system?.identifier ?? "").toLowerCase() === "magician"
-      || String(item.name ?? "").trim().toLowerCase() === "magician"
-      || String(item.getFlag("dnd5e", "sourceId") ?? item._stats?.compendiumSource ?? "").endsWith(".Item.phbPrimalOrderMa")
-    )) ?? null;
+  static #additionalCantripSelections(formData, sections) {
+    const selected = {};
+    for (const section of sections ?? []) {
+      selected[section.key] = [...new Set(formData.getAll(section.fieldName).map(String))];
+    }
+    return selected;
   }
 
   static #modelFor(cls) {
@@ -427,10 +444,13 @@ export class SpellAccessService {
       modelLabel: "No Spellcasting",
       maximumSpellLevel: 0,
       cantripCount: 0,
+      additionalCantripCount: 0,
+      additionalCantripSections: [],
       spellCount: 0,
       selectedCantripCount: 0,
       selectedSpellCount: 0,
       needsCantripChoice: false,
+      needsAdditionalCantripChoice: false,
       needsSpellChoice: false,
       cantripGroups: [],
       spellGroups: [],

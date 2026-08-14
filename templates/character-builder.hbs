@@ -389,22 +389,23 @@
       {{/if}}
 
 
-      {{#if spellAccess.needsMagicianCantripChoice}}
-      <section class="cb-spell-section cb-feature-spell-section" data-spell-selection data-maximum="{{spellAccess.magicianCantripCount}}">
+      {{#if spellAccess.needsAdditionalCantripChoice}}
+      {{#each spellAccess.additionalCantripSections}}
+      <section class="cb-spell-section cb-feature-spell-section" data-spell-selection data-maximum="{{count}}">
         <div class="cb-inline-heading">
-          <div><h3>Primal Order: Magician</h3><p class="hint">Choose the extra Druid cantrip granted by Magician. This is stored as a separate feature-owned acquisition.</p></div>
-          <span data-selection-count>{{spellAccess.selectedMagicianCantripCount}} / {{spellAccess.magicianCantripCount}}</span>
+          <div><h3>{{title}}</h3><p class="hint">{{note}}</p></div>
+          <span data-selection-count>{{selectedCount}} / {{count}}</span>
         </div>
-        <input type="search" placeholder="Search Magician Cantrips" data-filter-target="#cb-magician-cantrip-options">
-        <div id="cb-magician-cantrip-options" class="cb-spell-groups">
-          {{#each spellAccess.magicianCantripGroups}}
+        <input type="search" placeholder="Search Additional Cantrips" data-filter-target="{{filterTarget}}">
+        <div id="cb-additional-cantrip-options-{{key}}" class="cb-spell-groups">
+          {{#each groups}}
           <section class="cb-source-group">
             <h4>{{label}}</h4>
             <div class="cb-spell-grid">
               {{#each items}}
               <article class="cb-spell-option {{#if disabled}}duplicate-disabled{{/if}}" data-search="{{search}}" data-spell-option title="{{disabledReason}}">
                 <label class="cb-spell-toggle" title="{{#if disabled}}{{disabledReason}}{{else}}Select {{name}}{{/if}}">
-                  <input type="checkbox" name="spellAccess.magicianCantrip" value="{{identifier}}" data-spell-identifier="{{identifier}}" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{checked selected}} {{#if disabled}}disabled{{/if}}>
+                  <input type="checkbox" name="{{../../fieldName}}" value="{{identifier}}" data-spell-identifier="{{identifier}}" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{checked selected}} {{#if disabled}}disabled{{/if}}>
                 </label>
                 <button type="button" class="cb-spell-details" data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}} details">
                   <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}}</small></span>
@@ -416,6 +417,7 @@
           {{/each}}
         </div>
       </section>
+      {{/each}}
       {{/if}}
 
       {{#if spellAccess.needsSpellChoice}}

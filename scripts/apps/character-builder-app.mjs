@@ -1865,7 +1865,14 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       spellAccess: {
         classIdentifier: cls.system.identifier,
         cantrips: [...new Set(form.getAll("spellAccess.cantrips").map(String))],
-        magicianCantrip: [...new Set(form.getAll("spellAccess.magicianCantrip").map(String))],
+        additionalCantrips: [...form.entries()].reduce((groups, [name, value]) => {
+          const prefix = "spellAccess.additionalCantrip.";
+          if (!String(name).startsWith(prefix)) return groups;
+          const key = String(name).slice(prefix.length);
+          groups[key] ??= [];
+          if (!groups[key].includes(String(value))) groups[key].push(String(value));
+          return groups;
+        }, {}),
         spells: [...new Set(form.getAll("spellAccess.spells").map(String))],
         pactOfTheTomeCantrips: [...new Set(form.getAll("spellAccess.pactOfTheTome.cantrips").map(String))],
         pactOfTheTomeRituals: [...new Set(form.getAll("spellAccess.pactOfTheTome.rituals").map(String))]

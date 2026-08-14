@@ -368,15 +368,29 @@ export class NativeAdvancementModalGuard {
 
       const managerElement = active.manager?.element;
       if (!(managerElement instanceof HTMLElement) || !managerElement.isConnected || !managerElement.contains(target)) return;
-      if (this.#isCurrentStepReady(active)) return;
+      const ready = this.#isCurrentStepReady(active);
+      const complete = ready && this.#isCurrentStepComplete(active);
+      const blocked = !ready || (["next", "complete"].includes(action) && !complete);
+      if (!blocked) return;
 
       event.preventDefault?.();
       event.stopImmediatePropagation?.();
       event.stopPropagation?.();
       this.#syncStepReadiness(active);
     };
+    const resync = event => {
+      const managerElement = active.manager?.element;
+      if (!(managerElement instanceof HTMLElement) || !managerElement.contains(event.target)) return;
+      queueMicrotask(() => this.#syncStepReadiness(active));
+    };
     document.addEventListener("click", capture, { capture: true });
-    active.removeReadinessCapture = () => document.removeEventListener("click", capture, { capture: true });
+    document.addEventListener("change", resync, { capture: true });
+    document.addEventListener("input", resync, { capture: true });
+    active.removeReadinessCapture = () => {
+      document.removeEventListener("click", capture, { capture: true });
+      document.removeEventListener("change", resync, { capture: true });
+      document.removeEventListener("input", resync, { capture: true });
+    };
 
     // Observe document insertion only until the native manager root exists.
     // After that a narrow observer follows only that manager's step lifecycle.
@@ -397,7 +411,7 @@ export class NativeAdvancementModalGuard {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ["disabled"]
+      attributeFilter: ["disabled", "checked", "value", "class"]
     });
     active.readinessObservedElement = managerElement;
     active.readinessDocumentObserver?.disconnect?.();
@@ -419,42 +433,55 @@ export class NativeAdvancementModalGuard {
     }
 
     const ready = this.#isCurrentStepReady(active);
+    const complete = ready && this.#isCurrentStepComplete(active);
     const buttons = [...managerElement.querySelectorAll("[data-action]")]
       .filter(button => ADVANCEMENT_NAV_ACTIONS.has(String(button.dataset?.action ?? "")));
 
-    if (ready) {
-      for (const button of buttons) {
-        if (button.dataset.cbAdvancementWaiting !== "true") continue;
+    for (const button of buttons) {
+      const action = String(button.dataset?.action ?? "");
+      const blockedForLoading = !ready;
+      const blockedForChoice = ready && !complete && ["next", "complete"].includes(action);
+      const blocked = blockedForLoading || blockedForChoice;
+      if (blocked) {
+        if (button.dataset.cbAdvancementWaiting !== "true") {
+          button.dataset.cbAdvancementWaiting = "true";
+          button.dataset.cbAdvancementWasDisabled = button.disabled ? "true" : "false";
+        }
+        button.disabled = true;
+        if (blockedForLoading) button.setAttribute("aria-busy", "true");
+        else button.removeAttribute("aria-busy");
+        button.dataset.cbAdvancementGuardReason = blockedForLoading ? "loading" : "incomplete";
+      } else if (button.dataset.cbAdvancementWaiting === "true") {
         const wasDisabled = button.dataset.cbAdvancementWasDisabled === "true";
         delete button.dataset.cbAdvancementWaiting;
         delete button.dataset.cbAdvancementWasDisabled;
+        delete button.dataset.cbAdvancementGuardReason;
         if (!wasDisabled) button.disabled = false;
         button.removeAttribute("aria-busy");
       }
-      managerElement.querySelector("[data-cb-advancement-loading-status]")?.remove();
-      if (active.readinessTimer) clearTimeout(active.readinessTimer);
-      active.readinessTimer = null;
-      active.readinessWarningShown = false;
+    }
+
+    if (!ready) {
+      this.#renderReadinessStatus(managerElement, active.readinessWarningShown ? "warning" : "loading");
+      if (!active.readinessTimer && stepKey) {
+        active.readinessTimer = setTimeout(() => {
+          active.readinessTimer = null;
+          if (!active || active.released || this.#active !== active || this.#isCurrentStepReady(active)) return;
+          active.readinessWarningShown = true;
+          this.#renderReadinessStatus(active.manager?.element, "warning");
+        }, ADVANCEMENT_LOADING_WARNING_MS);
+      }
       return;
     }
 
-    for (const button of buttons) {
-      if (button.dataset.cbAdvancementWaiting === "true") continue;
-      button.dataset.cbAdvancementWaiting = "true";
-      button.dataset.cbAdvancementWasDisabled = button.disabled ? "true" : "false";
-      button.disabled = true;
-      button.setAttribute("aria-busy", "true");
+    if (active.readinessTimer) clearTimeout(active.readinessTimer);
+    active.readinessTimer = null;
+    active.readinessWarningShown = false;
+    if (!complete) {
+      this.#renderReadinessStatus(managerElement, "incomplete");
+      return;
     }
-    this.#renderReadinessStatus(managerElement, active.readinessWarningShown);
-
-    if (!active.readinessTimer && stepKey) {
-      active.readinessTimer = setTimeout(() => {
-        active.readinessTimer = null;
-        if (!active || active.released || this.#active !== active || this.#isCurrentStepReady(active)) return;
-        active.readinessWarningShown = true;
-        this.#renderReadinessStatus(active.manager?.element, true);
-      }, ADVANCEMENT_LOADING_WARNING_MS);
-    }
+    managerElement.querySelector("[data-cb-advancement-loading-status]")?.remove();
   }
 
   static #isCurrentStepReady(active) {
@@ -468,6 +495,59 @@ export class NativeAdvancementModalGuard {
     return flowElement instanceof HTMLElement
       && flowElement.isConnected
       && managerElement.contains(flowElement);
+  }
+
+  static #isCurrentStepComplete(active) {
+    const flow = active?.manager?.step?.flow;
+    const advancement = flow?.advancement;
+    if (!flow || !advancement) return true;
+    const level = flow.level ?? active?.manager?.step?.level ?? 0;
+    const config = advancement.configuration ?? {};
+    const value = advancement.value ?? {};
+
+    // ItemChoiceAdvancement exposes an authoritative count API. Only the
+    // mandatory base count blocks navigation; optional replacement capacity is
+    // deliberately ignored here.
+    if (typeof advancement.getCounts === "function" && config.choices && !Array.isArray(config.choices)) {
+      const required = Number(config.choices?.[level]?.count ?? config.choices?.[String(level)]?.count ?? 0);
+      if (required > 0) {
+        const counts = advancement.getCounts(level);
+        return Number(counts?.current ?? 0) >= required;
+      }
+    }
+
+    // Trait Advancements store fixed grants and user choices together in
+    // value.chosen. When a choice pool exists, require every configured slot.
+    if (Array.isArray(config.choices) && config.choices.length && value.chosen !== undefined) {
+      const grants = this.#collectionSize(config.grants);
+      const required = grants + config.choices.reduce((sum, choice) => sum + Number(choice?.count ?? 0), 0);
+      if (required > 0) return this.#collectionSize(value.chosen) >= required;
+    }
+
+    // Multi-size Species Advancements must contain an explicit selection.
+    const sizeCount = this.#collectionSize(config.sizes);
+    if (sizeCount > 1 && value && typeof value === "object" && "size" in value) {
+      return Boolean(String(value.size ?? "").trim());
+    }
+
+    // Subclass flow has no numeric choice count, but the value document is the
+    // mandatory selection when that interactive flow is present.
+    const flowName = String(flow.constructor?.name ?? "").toLowerCase();
+    if (flowName.includes("subclass") && value && typeof value === "object" && "document" in value) {
+      return Boolean(value.document);
+    }
+
+    // Unknown Advancement types remain under native authority and the final
+    // Character Builder completeness gate. Never invent a requirement here.
+    return true;
+  }
+
+  static #collectionSize(value) {
+    if (value == null) return 0;
+    if (Number.isFinite(Number(value.size))) return Number(value.size);
+    if (Array.isArray(value)) return value.length;
+    if (typeof value === "object") return Object.keys(value).length;
+    return 0;
   }
 
   static #flowElement(flow) {
@@ -491,7 +571,7 @@ export class NativeAdvancementModalGuard {
     ].map(value => String(value ?? "")).join(":");
   }
 
-  static #renderReadinessStatus(managerElement, warning = false) {
+  static #renderReadinessStatus(managerElement, mode = "loading") {
     if (!(managerElement instanceof HTMLElement) || !managerElement.isConnected) return;
     const nav = managerElement.querySelector("nav");
     if (!nav) return;
@@ -503,12 +583,15 @@ export class NativeAdvancementModalGuard {
       status.className = "cb-advancement-loading-status";
       nav.before(status);
     }
-    const mode = warning ? "warning" : "loading";
     if (status.dataset.cbAdvancementLoadingMode === mode) return;
     status.dataset.cbAdvancementLoadingMode = mode;
-    status.innerHTML = warning
-      ? '<i class="fa-solid fa-triangle-exclamation" inert></i><span>Advancement is still loading. Keep waiting, or close and retry.</span>'
-      : '<i class="fa-solid fa-spinner fa-spin" inert></i><span>Loading Advancement options…</span>';
+    if (mode === "warning") {
+      status.innerHTML = '<i class="fa-solid fa-triangle-exclamation" inert></i><span>Advancement is still loading. Keep waiting, or close and retry.</span>';
+    } else if (mode === "incomplete") {
+      status.innerHTML = '<i class="fa-solid fa-circle-info" inert></i><span>Complete the required Advancement choice before continuing.</span>';
+    } else {
+      status.innerHTML = '<i class="fa-solid fa-spinner fa-spin" inert></i><span>Loading Advancement options…</span>';
+    }
   }
 
   static #clearReadinessVisuals(managerElement) {
@@ -518,6 +601,7 @@ export class NativeAdvancementModalGuard {
       const wasDisabled = button.dataset.cbAdvancementWasDisabled === "true";
       delete button.dataset.cbAdvancementWaiting;
       delete button.dataset.cbAdvancementWasDisabled;
+      delete button.dataset.cbAdvancementGuardReason;
       if (!wasDisabled) button.disabled = false;
       button.removeAttribute("aria-busy");
     }

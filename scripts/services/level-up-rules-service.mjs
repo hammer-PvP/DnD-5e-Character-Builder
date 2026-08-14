@@ -95,16 +95,9 @@ export class LevelUpRulesService {
     const newCantrips = subclassCaster
       ? 0
       : this.#scaleValue(cls, newClassLevel, { title: "cantrips known" });
-    let cantripCount = subclassCaster
+    const cantripCount = subclassCaster
       ? LevelUpFeatureService.subclassCasterCantripCount(subclassCaster, oldClassLevel, newClassLevel)
       : Math.max(0, newCantrips - oldCantrips);
-    // Primal Order: Magician contributes one additional Druid cantrip through
-    // its own exact feature-owned acquisition. Do not count it as one of the
-    // normal class cantrip choices when multiclassing into Druid.
-    if (identifier === "druid" && oldClassLevel < 1 && newClassLevel >= 1
-      && LevelUpFeatureService.hasPrimalOrderMagician(draft)) {
-      cantripCount = Math.max(0, cantripCount - 1);
-    }
     const cantripOptions = cantripPool
       .map(option => this.#decorateSpellOption(option, selectedCantripSet, new Set(), unavailableChoiceInfo));
 
