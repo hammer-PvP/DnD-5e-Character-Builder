@@ -12,6 +12,7 @@ export class CharacterValidationApp extends HandlebarsApplicationMixin(Applicati
     this.scanState = "pending";
     this.scanError = null;
     this._initialScanPromise = null;
+    this._scanScheduled = false;
     this.step = "overview";
     this.index = 0;
     this.results = new Map();
@@ -96,9 +97,19 @@ export class CharacterValidationApp extends HandlebarsApplicationMixin(Applicati
     for (const element of this.element.querySelectorAll("[data-action]")) {
       element.addEventListener("click", event => this.#onAction(event));
     }
-    if (this.scanState === "pending" && !this._initialScanPromise) {
-      this._initialScanPromise = this.#runInitialScan();
+    if (this.scanState === "pending" && !this._initialScanPromise && !this._scanScheduled) {
+      this.#scheduleInitialScan();
     }
+  }
+
+  #scheduleInitialScan() {
+    if (this._scanScheduled || this._initialScanPromise || this.scanState !== "pending") return;
+    this._scanScheduled = true;
+    requestAnimationFrame(() => {
+      this._scanScheduled = false;
+      if (!this.element?.isConnected || this.scanState !== "pending" || this._initialScanPromise) return;
+      this._initialScanPromise = this.#runInitialScan();
+    });
   }
 
   async #runInitialScan() {

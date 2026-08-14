@@ -19,6 +19,10 @@ const ALWAYS_PREPARED = SpellPreparationPolicyService.ALWAYS_PREPARED;
  * interpreted as reusable entitlement contracts.
  */
 export class CharacterValidationBuildProjectionService {
+  static async scanTraitCompletion(actor, graph) {
+    return this.#scanTraitEntitlements(actor, graph);
+  }
+
   static async scan(actor, registry, graph) {
     const issues = [];
     issues.push(...this.#scanMalformedSpells(actor));
@@ -907,6 +911,8 @@ export class CharacterValidationBuildProjectionService {
           level: this.#firstAdvancementLevel(entitlement.sourceAdvancement),
           requiredRank: entitlement.requiredRank,
           candidates: candidates.map(token => ({ token, label: this.#traitTokenLabel(token) })),
+          expected: entitlement.expected,
+          actual: proven,
           mode: entitlement.local ? "modify" : "add"
         }
       });
@@ -1711,7 +1717,7 @@ export class CharacterValidationBuildProjectionService {
 
   static #badgeChosenTokens(actor, owner, advancementId, pools, requiredRank = 1) {
     if (!advancementId || !pools?.length) return [];
-    const badges = actor.items.flatMap(item => item.getFlag?.(MODULE_ID, "advancementChoiceBadges") ?? []);
+    const badges = [...(actor.items ?? [])].flatMap(item => item.getFlag?.(MODULE_ID, "advancementChoiceBadges") ?? []);
     const matching = badges.filter(badge => String(badge?.sourceItemId ?? "") === String(owner.id)
       && String(badge?.advancementId ?? "") === String(advancementId));
     if (!matching.length) return [];

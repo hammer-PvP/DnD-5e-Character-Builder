@@ -5548,3 +5548,21 @@
 @media (min-width: 760px) {
   .cb-validation-metrics { grid-template-columns: repeat(4, 1fr); }
 }
+
+/* Native D&D5e Advancement readiness — shell navigation stays inert until the child flow is mounted. */
+.application.dnd5e.advancement.manager .cb-advancement-loading-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  font-size: 12px;
+  opacity: .72;
+}
+.application.dnd5e.advancement.manager [data-cb-advancement-waiting="true"] {
+  cursor: progress;
+  opacity: .55;
+}

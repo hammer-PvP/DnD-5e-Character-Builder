@@ -7,6 +7,20 @@ import { CharacterValidationBuildProjectionService } from "./character-validatio
 
 const PHYSICAL_ITEM_TYPES = new Set(["weapon", "equipment", "consumable", "tool", "container", "loot"]);
 const CANONICAL_OWNER_TYPES = new Set(["class", "subclass", "race", "background", "feat"]);
+const BLOCKING_ADVANCEMENT_COMPLETION_KINDS = new Set([
+  "advancement-choice-incomplete",
+  "subclass-entitlement-incomplete",
+  "weapon-mastery-incomplete",
+  "fighting-style-incomplete",
+  "trait-grant-missing",
+  "trait-choice-mechanical-missing",
+  "trait-choice-incomplete"
+]);
+const BLOCKING_TRAIT_COMPLETION_KINDS = new Set([
+  "trait-grant-missing",
+  "trait-choice-mechanical-missing",
+  "trait-choice-incomplete"
+]);
 
 /**
  * Rule-oriented progression audit used by Character Validation.
@@ -53,6 +67,27 @@ export class CharacterValidationProgressionService {
         { id: "asi-feat", label: "ASI / Feat Replay", status: "planned" }
       ]
     };
+  }
+
+  static async scanBlockingAdvancementCompletion(actor, registry) {
+    const graph = await this.#buildEntitlementGraph(actor, registry);
+    const sourceOwners = graph.owners;
+    const issues = [];
+
+    issues.push(...await this.#scanAdvancementCompletion(actor, registry, graph));
+    issues.push(...await this.#scanWeaponMastery(actor, registry, sourceOwners));
+    issues.push(...await this.#scanFightingStyles(actor, registry, sourceOwners));
+    issues.push(...this.#scanWarlockInvocationCount(actor, sourceOwners));
+
+    const traitIssues = await CharacterValidationBuildProjectionService.scanTraitCompletion(actor, graph);
+    issues.push(...traitIssues.filter(issue => BLOCKING_TRAIT_COMPLETION_KINDS.has(issue.kind)));
+
+    return issues.filter(issue => {
+      if (issue.kind === "warlock-invocation-entitlement") {
+        return Number(issue.data?.actual ?? 0) < Number(issue.data?.expected ?? 0);
+      }
+      return BLOCKING_ADVANCEMENT_COMPLETION_KINDS.has(issue.kind);
+    });
   }
 
   static async applyRepair(actor, issue) {

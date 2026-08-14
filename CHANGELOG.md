@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.9r
+
+- Fixed Character Validator startup reliability: Actor embedded Items are materialized before `flatMap`, and the initial scan is scheduled only after the first Validation window frame is rendered. Scan failures now remain recoverable inside the open window.
+- Added a global Native Advancement Readiness Gate for Character Builder-managed D&D5e Advancement windows. Navigation/commit controls cannot run while the current native child flow is still loading, preventing high-latency ItemChoice pools from being skipped before their options appear.
+- Added a transaction-time Advancement Completeness Gate shared with Character Validation projection logic. Character Creation and Level Up block only newly introduced/progressively worsened proven choice deficits before touching the live Actor.
+- Re-enabled the native D&D5e Currency Manager for protected player sheets and embedded containers while keeping direct currency fields read-only. Native Convert/Transfer workflows remain available without restoring structural sheet edit access.
+
 ## 0.9.9q
 
 ### Public stabilization release — Validator startup and protected player sheets

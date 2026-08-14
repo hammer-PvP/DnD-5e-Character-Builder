@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.9q";
-export const MODULE_BUILD = "community-beta-099q-validator-startup-and-player-sheet-stabilization";
+export const MODULE_VERSION = "0.9.9r";
+export const MODULE_BUILD = "community-beta-099r-advancement-and-validator-stabilization";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {

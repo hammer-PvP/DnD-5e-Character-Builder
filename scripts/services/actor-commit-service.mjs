@@ -1,6 +1,7 @@
 import { MODULE_ID, MODULE_VERSION } from "../constants.mjs";
 import { AgonizingBlastBindingService } from "./agonizing-blast-binding-service.mjs";
 import { TemporaryActorService } from "./temporary-actor-service.mjs";
+import { AdvancementCompletionGateService } from "./advancement-completion-gate-service.mjs";
 
 /**
  * Applies a completed Character Creation Draft as one recoverable protected
@@ -8,7 +9,7 @@ import { TemporaryActorService } from "./temporary-actor-service.mjs";
  * Actor mutation so interrupted connections can be restored on reconnect.
  */
 export class ActorCommitService {
-  static async commit(actor, draft, { transactionToken, onProgress } = {}) {
+  static async commit(actor, draft, { transactionToken, onProgress, registry = null } = {}) {
     if (!actor || !draft) throw new Error("The Actor or Character Creation Draft is missing.");
     if (!transactionToken) throw new Error("The Character Creation transaction guard rejected a missing token.");
     if (actor.getFlag(MODULE_ID, "commitSafetyLock")) {
@@ -38,6 +39,10 @@ export class ActorCommitService {
       if (!draft.items.some(item => item.type === "class")) {
         throw new Error("The Character Creation Draft has no Class Item.");
       }
+      await AdvancementCompletionGateService.assertComplete(draft, {
+        registry,
+        context: "Character Creation"
+      });
 
       stage = "Preparing Changes";
       await progress(12, stage, "Creating the persistent safety snapshot and protected transaction record.");
@@ -173,6 +178,7 @@ export class ActorCommitService {
     } catch (error) {
       console.error(`${MODULE_ID} | Character Creation commit failed during ${stage}.`, error);
       if (!transactionStarted) {
+        if (error?.code === "DND5E_CHARACTER_BUILDER_ADVANCEMENT_INCOMPLETE") throw error;
         const blocked = new Error(`Character Creation was blocked during ${stage}. The live Actor was not changed. Correct the Draft and try again.`);
         blocked.cause = error;
         throw blocked;

@@ -9,6 +9,7 @@ import { ItemChoiceReplacementIntegrityService } from "./item-choice-replacement
 import { TemporaryActorService } from "./temporary-actor-service.mjs";
 import { AlwaysPreparedSpellReconciliationService } from "./always-prepared-spell-reconciliation-service.mjs";
 import { NativeFeatureCompatibilityService } from "./native-feature-compatibility-service.mjs";
+import { AdvancementCompletionGateService } from "./advancement-completion-gate-service.mjs";
 
 /**
  * Applies a completed Level Up draft as one recoverable transaction. The live
@@ -21,7 +22,7 @@ export class LevelUpCommitService {
     return this.#activeTransactions.get(actor?.id) ?? null;
   }
 
-  static async commit(actor, draft, { onProgress = null, transactionToken = null } = {}) {
+  static async commit(actor, draft, { onProgress = null, transactionToken = null, registry = null } = {}) {
     const token = transactionToken ?? foundry.utils.randomID(24);
     if (actor.getFlag(MODULE_ID, "commitSafetyLock")) {
       throw new Error("Character Builder changes are locked for this Actor because a previous rollback could not be verified. A GM must restore or inspect the Actor before another Level Up.");
@@ -67,6 +68,11 @@ export class LevelUpCommitService {
       await AdvancementChoiceAnnotationService.refresh(draft, { state: LevelUpDraftManager.getState(draft) });
       ItemGrantIntegrityService.validate(draft, { context: "levelUp", state });
       AlwaysPreparedSpellReconciliationService.validate(draft, { context: "levelUp", state });
+      await AdvancementCompletionGateService.assertComplete(draft, {
+        registry,
+        baselineActor: actor,
+        context: "Level Up"
+      });
 
       stage = "Preparing Changes";
       await progress(14, stage, "Creating the Actor safety snapshot and preparing document changes.");
@@ -213,6 +219,11 @@ export class LevelUpCommitService {
       if (!actorMutationStarted || !snapshot) {
         await this.#deleteSafetyBackup(safetyBackup);
         safetyBackup = null;
+        if (error?.code === "DND5E_CHARACTER_BUILDER_ADVANCEMENT_INCOMPLETE") {
+          error.actorRestored = true;
+          error.commitStage = stage;
+          throw error;
+        }
         const blocked = new Error(`Level Up was blocked during ${stage}. The live Actor was not changed. Correct the problem and redo the Level Up.`);
         blocked.cause = error;
         blocked.actorRestored = true;

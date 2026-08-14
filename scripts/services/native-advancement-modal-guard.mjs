@@ -2,6 +2,9 @@ import { MODULE_ID } from "../constants.mjs";
 import { LibWrapperService } from "./lib-wrapper-service.mjs";
 import { ModalStackService } from "./modal-stack-service.mjs";
 
+const ADVANCEMENT_NAV_ACTIONS = new Set(["previous", "restart", "next", "complete"]);
+const ADVANCEMENT_LOADING_WARNING_MS = 10000;
+
 export class NativeAdvancementBusyError extends Error {
   constructor(message = "Complete or close the active D&D5e Advancement window before opening another one.") {
     super(message);
@@ -71,6 +74,13 @@ export class NativeAdvancementModalGuard {
         renderHook: null,
         closeHook: null,
         removeCloseObserver: null,
+        readinessObserver: null,
+        readinessObservedElement: null,
+        readinessDocumentObserver: null,
+        removeReadinessCapture: null,
+        readinessTimer: null,
+        readinessStepKey: null,
+        readinessWarningShown: false,
         focusApplied: false,
         modalActivated: false,
         released: false,
@@ -182,6 +192,7 @@ export class NativeAdvancementModalGuard {
 
       try {
         this.#activate(active);
+        this.#installReadinessGuard(active);
         manager.render(true);
         // For an interactive step the native element may be inserted before the
         // public render hook reaches us. Repeated synchronization detects that
@@ -303,6 +314,17 @@ export class NativeAdvancementModalGuard {
     active.closeHook = null;
     active.removeCloseObserver = null;
 
+    active.readinessObserver?.disconnect?.();
+    active.readinessDocumentObserver?.disconnect?.();
+    active.removeReadinessCapture?.();
+    if (active.readinessTimer) clearTimeout(active.readinessTimer);
+    active.readinessObserver = null;
+    active.readinessObservedElement = null;
+    active.readinessDocumentObserver = null;
+    active.removeReadinessCapture = null;
+    active.readinessTimer = null;
+    this.#clearReadinessVisuals(active.manager?.element);
+
     if (active.modalToken) {
       ModalStackService.end(active.modalToken, { closeDescendants: true, restoreFocus: false });
       active.modalToken = null;
@@ -328,6 +350,177 @@ export class NativeAdvancementModalGuard {
       );
       (focusTarget ?? owner).focus?.({ preventScroll: true });
     });
+  }
+
+  /**
+   * Protect the native manager's navigation before its asynchronous child flow
+   * has finished rendering. D&D5e inserts the manager shell first, so capture
+   * phase is the authoritative safety layer; disabled buttons are feedback.
+   */
+  static #installReadinessGuard(active) {
+    if (!active || active.released || active.removeReadinessCapture) return;
+
+    const capture = event => {
+      if (!active || active.released || this.#active !== active) return;
+      const target = event.target?.closest?.("[data-action]");
+      const action = String(target?.dataset?.action ?? "");
+      if (!ADVANCEMENT_NAV_ACTIONS.has(action)) return;
+
+      const managerElement = active.manager?.element;
+      if (!(managerElement instanceof HTMLElement) || !managerElement.isConnected || !managerElement.contains(target)) return;
+      if (this.#isCurrentStepReady(active)) return;
+
+      event.preventDefault?.();
+      event.stopImmediatePropagation?.();
+      event.stopPropagation?.();
+      this.#syncStepReadiness(active);
+    };
+    document.addEventListener("click", capture, { capture: true });
+    active.removeReadinessCapture = () => document.removeEventListener("click", capture, { capture: true });
+
+    // Observe document insertion only until the native manager root exists.
+    // After that a narrow observer follows only that manager's step lifecycle.
+    if (document.body && globalThis.MutationObserver) {
+      active.readinessDocumentObserver = new MutationObserver(() => this.#syncStepReadiness(active));
+      active.readinessDocumentObserver.observe(document.body, { childList: true, subtree: true });
+    }
+    this.#syncStepReadiness(active);
+  }
+
+  static #ensureReadinessObserver(active, managerElement) {
+    if (!globalThis.MutationObserver || !(managerElement instanceof HTMLElement)) return;
+    if (active.readinessObservedElement === managerElement && active.readinessObserver) return;
+
+    active.readinessObserver?.disconnect?.();
+    active.readinessObserver = new MutationObserver(() => this.#syncStepReadiness(active));
+    active.readinessObserver.observe(managerElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["disabled"]
+    });
+    active.readinessObservedElement = managerElement;
+    active.readinessDocumentObserver?.disconnect?.();
+    active.readinessDocumentObserver = null;
+  }
+
+  static #syncStepReadiness(active) {
+    if (!active || active.released || this.#active !== active) return;
+    const managerElement = active.manager?.element;
+    if (!(managerElement instanceof HTMLElement) || !managerElement.isConnected) return;
+
+    this.#ensureReadinessObserver(active, managerElement);
+    const stepKey = this.#readinessStepKey(active.manager?.step);
+    if (stepKey !== active.readinessStepKey) {
+      active.readinessStepKey = stepKey;
+      active.readinessWarningShown = false;
+      if (active.readinessTimer) clearTimeout(active.readinessTimer);
+      active.readinessTimer = null;
+    }
+
+    const ready = this.#isCurrentStepReady(active);
+    const buttons = [...managerElement.querySelectorAll("[data-action]")]
+      .filter(button => ADVANCEMENT_NAV_ACTIONS.has(String(button.dataset?.action ?? "")));
+
+    if (ready) {
+      for (const button of buttons) {
+        if (button.dataset.cbAdvancementWaiting !== "true") continue;
+        const wasDisabled = button.dataset.cbAdvancementWasDisabled === "true";
+        delete button.dataset.cbAdvancementWaiting;
+        delete button.dataset.cbAdvancementWasDisabled;
+        if (!wasDisabled) button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+      managerElement.querySelector("[data-cb-advancement-loading-status]")?.remove();
+      if (active.readinessTimer) clearTimeout(active.readinessTimer);
+      active.readinessTimer = null;
+      active.readinessWarningShown = false;
+      return;
+    }
+
+    for (const button of buttons) {
+      if (button.dataset.cbAdvancementWaiting === "true") continue;
+      button.dataset.cbAdvancementWaiting = "true";
+      button.dataset.cbAdvancementWasDisabled = button.disabled ? "true" : "false";
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+    }
+    this.#renderReadinessStatus(managerElement, active.readinessWarningShown);
+
+    if (!active.readinessTimer && stepKey) {
+      active.readinessTimer = setTimeout(() => {
+        active.readinessTimer = null;
+        if (!active || active.released || this.#active !== active || this.#isCurrentStepReady(active)) return;
+        active.readinessWarningShown = true;
+        this.#renderReadinessStatus(active.manager?.element, true);
+      }, ADVANCEMENT_LOADING_WARNING_MS);
+    }
+  }
+
+  static #isCurrentStepReady(active) {
+    const manager = active?.manager;
+    const managerElement = manager?.element;
+    const flow = manager?.step?.flow;
+    if (!(managerElement instanceof HTMLElement) || !managerElement.isConnected) return false;
+    if (!flow) return true;
+
+    const flowElement = this.#flowElement(flow);
+    return flowElement instanceof HTMLElement
+      && flowElement.isConnected
+      && managerElement.contains(flowElement);
+  }
+
+  static #flowElement(flow) {
+    const direct = flow?.element;
+    if (direct instanceof HTMLElement) return direct;
+    if (direct?.[0] instanceof HTMLElement) return direct[0];
+    const legacy = flow?._element;
+    if (legacy instanceof HTMLElement) return legacy;
+    if (legacy?.[0] instanceof HTMLElement) return legacy[0];
+    return null;
+  }
+
+  static #readinessStepKey(step) {
+    const flow = step?.flow;
+    if (!flow) return "";
+    return [
+      step?.type ?? "",
+      flow?.id ?? "",
+      flow?.level ?? "",
+      flow?.advancement?.id ?? flow?._advancementId ?? ""
+    ].map(value => String(value ?? "")).join(":");
+  }
+
+  static #renderReadinessStatus(managerElement, warning = false) {
+    if (!(managerElement instanceof HTMLElement) || !managerElement.isConnected) return;
+    const nav = managerElement.querySelector("nav");
+    if (!nav) return;
+
+    let status = managerElement.querySelector("[data-cb-advancement-loading-status]");
+    if (!status) {
+      status = managerElement.ownerDocument.createElement("div");
+      status.dataset.cbAdvancementLoadingStatus = "true";
+      status.className = "cb-advancement-loading-status";
+      nav.before(status);
+    }
+    const mode = warning ? "warning" : "loading";
+    if (status.dataset.cbAdvancementLoadingMode === mode) return;
+    status.dataset.cbAdvancementLoadingMode = mode;
+    status.innerHTML = warning
+      ? '<i class="fa-solid fa-triangle-exclamation" inert></i><span>Advancement is still loading. Keep waiting, or close and retry.</span>'
+      : '<i class="fa-solid fa-spinner fa-spin" inert></i><span>Loading Advancement options…</span>';
+  }
+
+  static #clearReadinessVisuals(managerElement) {
+    if (!(managerElement instanceof HTMLElement)) return;
+    managerElement.querySelector("[data-cb-advancement-loading-status]")?.remove();
+    for (const button of managerElement.querySelectorAll('[data-cb-advancement-waiting="true"]')) {
+      const wasDisabled = button.dataset.cbAdvancementWasDisabled === "true";
+      delete button.dataset.cbAdvancementWaiting;
+      delete button.dataset.cbAdvancementWasDisabled;
+      if (!wasDisabled) button.disabled = false;
+      button.removeAttribute("aria-busy");
+    }
   }
 
   static #findOwnerElement() {
@@ -356,6 +549,7 @@ export class NativeAdvancementModalGuard {
     if (!(managerElement instanceof HTMLElement) || !managerElement.isConnected) return;
 
     this.#activateModal(active);
+    this.#syncStepReadiness(active);
 
     // A Compendium Browser, picker, or dialog opened by the Advancement is a
     // child modal. Never raise or focus the manager above that child.

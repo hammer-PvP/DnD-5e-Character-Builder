@@ -11,6 +11,7 @@ import { MetadataReconciliationService } from "../services/metadata-reconciliati
 import { WarlockProjectedCantripService } from "../services/warlock-projected-cantrip-service.mjs";
 import { ModalStackService } from "../services/modal-stack-service.mjs";
 import { SourceFullDetailsApp } from "./source-full-details-app.mjs";
+import { AdvancementCompletionGateService } from "../services/advancement-completion-gate-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -458,6 +459,16 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       return;
     }
     const state = LevelUpDraftManager.getState(this.draft);
+    try {
+      await AdvancementCompletionGateService.assertComplete(this.draft, {
+        registry: this.registry,
+        baselineActor: this.actor,
+        context: "Level Up"
+      });
+    } catch (error) {
+      console.warn(`${MODULE_ID} | Level Up completeness gate blocked finalization.`, error);
+      return ui.notifications.error(error.message, { permanent: true });
+    }
     // A repeated click before confirmation intentionally replaces the pending
     // confirmation with a fresh singleton state. It can never touch an active
     // commit because commitInProgress is set synchronously on confirmation.
@@ -497,7 +508,8 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     try {
       const result = await LevelUpCommitService.commit(this.actor, this.draft, {
         transactionToken: this.commitTransactionToken,
-        onProgress: payload => this.#updateCommitProgress(payload)
+        onProgress: payload => this.#updateCommitProgress(payload),
+        registry: this.registry
       });
       this.commitDialog = {
         ...this.commitDialog,

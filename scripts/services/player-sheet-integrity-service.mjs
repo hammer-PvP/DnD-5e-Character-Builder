@@ -6,7 +6,7 @@ const SAFE_INVENTORY_ACTIONS = new Set([
   "activity-use", "attune", "equip", "prepare", "toggleExpand", "toggleFavorite", "use", "view"
 ]);
 const BLOCKED_SHEET_ACTIONS = new Set([
-  "addDocument", "changeMode", "create", "currency", "delete", "deleteDocument", "duplicate", "edit",
+  "addDocument", "changeMode", "create", "delete", "deleteDocument", "duplicate", "edit",
   "editDescription", "editDocument", "editImage", "identify", "recharge", "showConfiguration", "toggleCharge",
   "toggleEditInline"
 ]);
@@ -332,11 +332,27 @@ export class PlayerSheetIntegrityService {
       el.hidden = true;
       el.setAttribute("aria-hidden", "true");
     });
+
+    this.#ensureCurrencyManagerButtons(root);
   }
 
   static #applyEmbeddedItemDomProtection(root) {
     root.querySelectorAll(".mode-slider, .create-child, [data-action='addDocument'], [data-action='deleteDocument']")
       .forEach(el => el.remove());
+    this.#ensureCurrencyManagerButtons(root);
+  }
+
+  static #ensureCurrencyManagerButtons(root) {
+    for (const section of root.querySelectorAll("section.currency")) {
+      if (section.querySelector('[data-action="currency"]')) continue;
+      const button = section.ownerDocument.createElement("button");
+      button.type = "button";
+      button.className = "item-action unbutton always-interactive";
+      button.dataset.action = "currency";
+      button.setAttribute("aria-label", game.i18n?.localize?.("DND5E.CurrencyManager.Title") ?? "Currency Manager");
+      button.innerHTML = '<i class="fa-solid fa-coins" inert></i>';
+      section.prepend(button);
+    }
   }
 
   static #protectChat(message, element) {
@@ -408,7 +424,6 @@ export class PlayerSheetIntegrityService {
     if (action === "delete" || action === "deleteDocument") return "Deleting character content is GM-only.";
     if (action === "edit" || action === "editDocument" || action === "changeMode") return "Direct character and Item editing is GM-only.";
     if (action === "recharge" || action === "toggleCharge") return "Manual resource changes are GM-only. Use the Item or feature normally.";
-    if (action === "currency") return "Currency editing is GM-only. Approved gameplay systems such as Item Piles can still transfer currency normally.";
     return "This character-sheet change is GM-only.";
   }
 

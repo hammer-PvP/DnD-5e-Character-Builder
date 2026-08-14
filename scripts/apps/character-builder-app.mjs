@@ -21,6 +21,7 @@ import { CreationEditService } from "../services/creation-edit-service.mjs";
 import { ProtectedTransactionDialogService } from "../services/protected-transaction-dialog-service.mjs";
 import { NativeAdvancementBusyError, NativeAdvancementModalGuard } from "../services/native-advancement-modal-guard.mjs";
 import { ModalStackService } from "../services/modal-stack-service.mjs";
+import { AdvancementCompletionGateService } from "../services/advancement-completion-gate-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 const TextEditorImplementation = foundry.applications.ux.TextEditor.implementation;
@@ -1398,6 +1399,16 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     const issues = ValidationService.validateDraft(this.draft);
     if (issues.length) return ui.notifications.error(issues.join(" "));
 
+    try {
+      await AdvancementCompletionGateService.assertComplete(this.draft, {
+        registry: this.registry,
+        context: "Character Creation"
+      });
+    } catch (error) {
+      console.warn(`${MODULE_ID} | Character Creation completeness gate blocked finalization.`, error);
+      return ui.notifications.error(error.message, { permanent: true });
+    }
+
     this.commitDialog = {
       open: true,
       mode: "confirmation",
@@ -1448,10 +1459,15 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       await AdvancementService.dedupe(this.draft);
       ItemGrantIntegrityService.validate(this.draft, { context: "creation" });
       AlwaysPreparedSpellReconciliationService.validate(this.draft, { context: "creation", state: creationState });
+      await AdvancementCompletionGateService.assertComplete(this.draft, {
+        registry: this.registry,
+        context: "Character Creation"
+      });
 
       const result = await DraftManager.commit(this.actor, this.draft, {
         transactionToken: this.commitTransactionToken,
-        onProgress: payload => this.#updateCommitProgress(payload)
+        onProgress: payload => this.#updateCommitProgress(payload),
+        registry: this.registry
       });
       this.commitDialog = {
         ...this.commitDialog,
