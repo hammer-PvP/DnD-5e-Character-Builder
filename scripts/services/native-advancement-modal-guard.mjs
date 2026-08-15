@@ -411,7 +411,7 @@ export class NativeAdvancementModalGuard {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ["disabled", "checked", "value", "class"]
+      attributeFilter: ["disabled"]
     });
     active.readinessObservedElement = managerElement;
     active.readinessDocumentObserver?.disconnect?.();
@@ -447,17 +447,23 @@ export class NativeAdvancementModalGuard {
           button.dataset.cbAdvancementWaiting = "true";
           button.dataset.cbAdvancementWasDisabled = button.disabled ? "true" : "false";
         }
-        button.disabled = true;
-        if (blockedForLoading) button.setAttribute("aria-busy", "true");
-        else button.removeAttribute("aria-busy");
+        // The readiness observer watches the disabled attribute. Writing the
+        // same disabled value from inside its callback creates an endless
+        // MutationObserver microtask loop in Chromium, which freezes Foundry
+        // without producing a console exception. Only mutate when state truly
+        // needs to change.
+        if (!button.disabled) button.disabled = true;
+        if (blockedForLoading) {
+          if (button.getAttribute("aria-busy") !== "true") button.setAttribute("aria-busy", "true");
+        } else if (button.hasAttribute("aria-busy")) button.removeAttribute("aria-busy");
         button.dataset.cbAdvancementGuardReason = blockedForLoading ? "loading" : "incomplete";
       } else if (button.dataset.cbAdvancementWaiting === "true") {
         const wasDisabled = button.dataset.cbAdvancementWasDisabled === "true";
         delete button.dataset.cbAdvancementWaiting;
         delete button.dataset.cbAdvancementWasDisabled;
         delete button.dataset.cbAdvancementGuardReason;
-        if (!wasDisabled) button.disabled = false;
-        button.removeAttribute("aria-busy");
+        if (!wasDisabled && button.disabled) button.disabled = false;
+        if (button.hasAttribute("aria-busy")) button.removeAttribute("aria-busy");
       }
     }
 

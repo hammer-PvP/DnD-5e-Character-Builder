@@ -2,6 +2,7 @@
 
 ## 0.9.9t
 
+- Fixed a hard Chromium/Foundry lock introduced by the mandatory-choice Advancement guard. The manager observer no longer re-writes its own `disabled` navigation state on every mutation, preventing an endless MutationObserver microtask loop while the native Advancement child flow is loading. Observer scope is narrowed back to the navigation state required by the readiness lifecycle.
 - Replaced the Druid-specific Primal Order cantrip compensation with a **global additive cantrip entitlement model**. Raw class `Cantrips Known` ScaleValues remain the base entitlement, while selected features that add to `system.scale.<class>.cantrips-known` receive their own feature-owned cantrip acquisitions. This covers Primal Order: Magician and equivalent class options such as Cleric Divine Order: Thaumaturge without reducing normal class choices.
 - Applied the additive cantrip model consistently to Character Creation, Level Up, and Character Validation. Druid 1 with Magician now projects two normal Druid cantrips plus one additional Magician cantrip.
 - Hardened Character Validation spell reconciliation so one Spell document can satisfy normal class access, a native Advancement grant, Always Prepared state, and feature/provenance ownership at the same time. This prevents the Validator from restoring a second class copy merely because the canonical copy also carries a grant origin.
