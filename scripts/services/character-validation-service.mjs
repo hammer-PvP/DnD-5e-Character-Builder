@@ -375,6 +375,18 @@ export class CharacterValidationService {
         for (const mapping of mappings) {
           if (actor.items.get(mapping.itemId)) continue;
           const sourceUuid = String(mapping.uuid ?? "");
+
+          // A missing embedded ID can be intentional when a native ItemGrant
+          // spell was consolidated into an already-present canonical spell.
+          // The surviving spell carries a Character Builder merge receipt that
+          // proves exactly which owner/Advancement/source/old ID was redirected.
+          // Do not resurrect that intentionally removed duplicate.
+          if (this.#mergedGrantSurvivor(actor, {
+            ownerId: owner.id,
+            advancementId,
+            mergedFromItemId: mapping.itemId,
+            sourceUuid
+          })) continue;
           const sourceAllowed = !sourceUuid.startsWith("Compendium.") || registry.isUuidAllowed(sourceUuid);
           let sourceDocument = null;
           if (sourceUuid) {
@@ -562,6 +574,28 @@ export class CharacterValidationService {
     const localStatuses = [...(local?.statuses ?? [])].map(String).sort().join("|");
     const sourceStatuses = [...(source?.statuses ?? [])].map(String).sort().join("|");
     return !sourceStatuses || localStatuses === sourceStatuses;
+  }
+
+
+  static #mergedGrantSurvivor(actor, { ownerId, advancementId, mergedFromItemId, sourceUuid } = {}) {
+    const expectedOwner = String(ownerId ?? "");
+    const expectedAdvancement = String(advancementId ?? "");
+    const expectedMissingId = String(mergedFromItemId ?? "");
+    const expectedSource = String(sourceUuid ?? "");
+    if (!expectedOwner || !expectedAdvancement || !expectedMissingId) return null;
+
+    for (const item of actor.items ?? []) {
+      const receipts = item.getFlag?.(MODULE_ID, "mergedItemGrants") ?? [];
+      const match = receipts.find(receipt => {
+        if (String(receipt?.ownerItemId ?? "") !== expectedOwner) return false;
+        if (String(receipt?.advancementId ?? "") !== expectedAdvancement) return false;
+        if (String(receipt?.mergedFromItemId ?? "") !== expectedMissingId) return false;
+        if (!expectedSource) return true;
+        return [receipt?.configuredUuid, receipt?.sourceUuid].some(uuid => String(uuid ?? "") === expectedSource);
+      });
+      if (match) return item;
+    }
+    return null;
   }
 
   static #flattenAddedMappings(value, rows = []) {

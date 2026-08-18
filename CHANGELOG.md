@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.9u
+
+- Fixed Player Character Sheet Integrity incorrectly treating D&D5e Activity Usage dialogs as embedded Item sheets. Protected players can again choose legitimate runtime parameters such as spell **Cast at Level / Upcast**, Lay on Hands healing amount, scaling values, and native consumption choices while direct sheet/resource editing remains protected.
+- Kept the integrity boundary UI-scoped: native D&D5e consumption/recovery and authorized programmatic changes from gameplay integrations remain allowed; only direct structural/counter manipulation on the protected sheet is blocked.
+- Fixed native Always Prepared spell consolidation ledger cleanup. Redirecting an ItemGrant to an existing canonical spell now uses Foundry's explicit nested-key deletion semantics, preventing the removed duplicate Item ID from surviving in `Advancement.value.added`.
+- Hardened Character Validation against merged-grant false positives. A missing Advancement Item ID backed by an exact `mergedItemGrants` receipt is recognized as an intentional consolidation and is no longer restored as a duplicate.
+- Updated granted-spell provenance validation so an exact merge receipt satisfies the native Advancement link without forcing the canonical class-access spell to adopt the removed duplicate's `advancementOrigin` / `advancementRoot`. This avoids redundant ownership reconciliation on correctly consolidated spells such as Druid **Speak with Animals**.
+- Weapon Mastery progression received a source-driven static audit only; no mastery rules were changed in this patch.
+
 ## 0.9.9t
 
 - Fixed a hard Chromium/Foundry lock introduced by the mandatory-choice Advancement guard. The manager observer no longer re-writes its own `disabled` navigation state on every mutation, preventing an endless MutationObserver microtask loop while the native Advancement child flow is loading. Observer scope is narrowed back to the navigation state required by the readiness lifecycle.

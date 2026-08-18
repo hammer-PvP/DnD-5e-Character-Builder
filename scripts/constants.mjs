@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.9t";
-export const MODULE_BUILD = "community-beta-099t-additive-cantrips-advancement-validator-transform-cleanup";
+export const MODULE_VERSION = "0.9.9u";
+export const MODULE_BUILD = "community-beta-099u-integrity-runtime-inputs-merged-grant-ledger";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {

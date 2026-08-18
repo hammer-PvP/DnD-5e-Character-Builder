@@ -797,13 +797,23 @@ export class AlwaysPreparedSpellReconciliationService {
     }
     const raw = owner.toObject().system?.advancement?.[receipt.advancementId];
     if (!raw) throw new Error(`The ItemGrant Advancement ${receipt.advancementId} no longer exists on ${owner.name}.`);
-    const value = foundry.utils.deepClone(raw.value ?? {});
-    value.added ??= {};
-    delete value.added[duplicateId];
-    value.added[canonicalId] = receipt.configuredUuid;
-    await owner.update({ [`system.advancement.${receipt.advancementId}.value`]: value }, {
+
+    // Foundry document updates recursively merge nested objects. Replacing a
+    // cloned `value` object with the duplicate key omitted therefore does not
+    // reliably delete the old ItemGrant mapping. Use Foundry's explicit nested
+    // deletion operator and write the surviving canonical mapping atomically.
+    const addedPath = `system.advancement.${receipt.advancementId}.value.added`;
+    await owner.update({
+      [`${addedPath}.-=${duplicateId}`]: null,
+      [`${addedPath}.${canonicalId}`]: receipt.configuredUuid
+    }, {
       characterBuilderAlwaysPreparedReconciliation: true
     });
+
+    const persisted = owner.toObject().system?.advancement?.[receipt.advancementId]?.value?.added ?? {};
+    if (Object.hasOwn(persisted, duplicateId) || persisted[canonicalId] !== receipt.configuredUuid) {
+      throw new Error(`The ItemGrant Advancement ${receipt.advancementId} on ${owner.name} could not be redirected cleanly to ${canonicalId}.`);
+    }
   }
 
   static #rewriteIntegrityResult(result, redirects, draft, reconciledItems) {

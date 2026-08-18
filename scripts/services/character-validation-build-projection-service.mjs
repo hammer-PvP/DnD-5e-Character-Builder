@@ -639,12 +639,21 @@ export class CharacterValidationBuildProjectionService {
         const owners = spell.getFlag?.(MODULE_ID, "featureSpellOwners") ?? [];
         const hasOwner = owners.some(row => String(row.ownerItemId ?? "") === String(owner.id)
           && String(row.advancementId ?? "") === String(advancementId));
+        const mergedReceipt = this.#mergedGrantReceipt(spell, {
+          ownerId: owner.id,
+          advancementId,
+          sourceUuid: expected.uuid
+        });
         const expectedAlways = Number(sourceAdvancement.configuration?.spell?.prepared) === ALWAYS_PREPARED
           || Number(spell.system?.level ?? 0) === 0;
         const missing = [];
         if (expectedSourceItem && currentSourceItem !== expectedSourceItem) missing.push("sourceItem");
-        if (advancementOrigin !== expectedOrigin) missing.push("advancementOrigin");
-        if (advancementRoot !== expectedOrigin) missing.push("advancementRoot");
+        // A canonical spell that also satisfies a native grant intentionally
+        // keeps its normal class-access provenance. The merge receipt is the
+        // authoritative Advancement link, so requiring the canonical spell to
+        // masquerade as the removed grant copy creates false ownership repairs.
+        if (advancementOrigin !== expectedOrigin && !mergedReceipt) missing.push("advancementOrigin");
+        if (advancementRoot !== expectedOrigin && !mergedReceipt) missing.push("advancementRoot");
         if (!hasOwner) missing.push("featureSpellOwners");
         if (expectedAlways && Number(spell.system?.prepared ?? -1) !== ALWAYS_PREPARED) missing.push("Always Prepared");
         if (!missing.length) continue;
@@ -1876,6 +1885,21 @@ export class CharacterValidationBuildProjectionService {
     if (Number.isFinite(own)) return own;
     const levels = Object.keys(advancement?.configuration?.choices ?? {}).map(Number).filter(Number.isFinite).sort((a, b) => a - b);
     return levels[0] ?? 0;
+  }
+
+
+  static #mergedGrantReceipt(spell, { ownerId, advancementId, sourceUuid } = {}) {
+    const expectedOwner = String(ownerId ?? "");
+    const expectedAdvancement = String(advancementId ?? "");
+    const expectedSource = String(sourceUuid ?? "");
+    if (!expectedOwner || !expectedAdvancement) return null;
+    const receipts = spell.getFlag?.(MODULE_ID, "mergedItemGrants") ?? [];
+    return receipts.find(receipt => {
+      if (String(receipt?.ownerItemId ?? "") !== expectedOwner) return false;
+      if (String(receipt?.advancementId ?? "") !== expectedAdvancement) return false;
+      if (!expectedSource) return true;
+      return [receipt?.configuredUuid, receipt?.sourceUuid].some(uuid => String(uuid ?? "") === expectedSource);
+    }) ?? null;
   }
 
   static #flattenAddedMappings(value, rows = []) {

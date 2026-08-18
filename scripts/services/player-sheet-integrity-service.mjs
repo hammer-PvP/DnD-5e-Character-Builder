@@ -173,7 +173,11 @@ export class PlayerSheetIntegrityService {
 
   /** Protect an embedded Item sheet belonging to a protected live Actor. */
   static protectEmbeddedItemSheet(app, root) {
-    const item = app?.item ?? app?.document;
+    // Only protect an actual Item document sheet. ActivityUsageDialog and other
+    // gameplay applications expose an `item` getter too, but their form fields
+    // (spell slot/upcast, scaling value, consumption choices, etc.) are runtime
+    // action parameters and must remain interactive for protected players.
+    const item = app?.document;
     const actor = item?.actor ?? item?.parent;
     if (!root || item?.documentName !== "Item" || !this.protects(actor)) return;
 
