@@ -1,6 +1,8 @@
 import { MODULE_ID, MODULE_VERSION } from "../constants.mjs";
 import { SourceRegistry } from "./source-registry.mjs";
 import { CharacterValidationProgressionService } from "./character-validation-progression-service.mjs";
+import { NativeSpellGrantProjectionService } from "./native-spell-grant-projection-service.mjs";
+import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.mjs";
 
 const VALIDATION_FLAG = "characterValidation";
 const SCHEMA_VERSION = 1;
@@ -494,20 +496,35 @@ export class CharacterValidationService {
       };
     }
 
-    const data = foundry.utils.deepClone(source.toObject());
+    const localAdvancement = owner.toObject().system?.advancement?.[issue.data.advancementId] ?? null;
+    const sourceGrant = source.type === "spell"
+      ? await this.#resolveNativeSourceAdvancement(owner, issue.data.advancementId, sourceUuid)
+      : null;
+    let data = sourceGrant?.advancement
+      ? await NativeSpellGrantProjectionService.materialize({
+          sourceAdvancement: sourceGrant.advancement,
+          sourceUuid,
+          sourceItem: source,
+          itemId: issue.data.itemId,
+          owner,
+          localAdvancement
+        })
+      : null;
+    if (!data) data = foundry.utils.deepClone(source.toObject());
     data._id = issue.data.itemId;
     data.flags ??= {};
     data.flags.dnd5e ??= {};
     data.flags.dnd5e.sourceId = sourceUuid;
     data.flags.dnd5e.advancementOrigin = `${owner.id}.${issue.data.advancementId}`;
-    data.flags.dnd5e.advancementRoot ??= owner.getFlag?.("dnd5e", "advancementRoot") ?? `${owner.id}.${issue.data.advancementId}`;
+    data.flags.dnd5e.advancementRoot = owner.getFlag?.("dnd5e", "advancementRoot") ?? `${owner.id}.${issue.data.advancementId}`;
     data.flags[MODULE_ID] ??= {};
     data.flags[MODULE_ID].validationRestore = {
       restoredAt: Date.now(),
       restoredBy: game.user.id,
       sourceUuid,
       ownerId: owner.id,
-      advancementId: issue.data.advancementId
+      advancementId: issue.data.advancementId,
+      nativeSpellProjection: Boolean(sourceGrant?.advancement)
     };
 
     const [created] = await actor.createEmbeddedDocuments("Item", [data], {
@@ -515,6 +532,34 @@ export class CharacterValidationService {
       characterBuilderValidationRepair: true
     });
     if (!created) throw new Error(`D&D5e did not restore ${source.name}.`);
+
+    // When the missing ledger entry is a native spell grant, preserve the same
+    // feature ownership metadata used by the normal progression reconciler.
+    // D&D5e remains authoritative for the spell mechanics themselves.
+    if (created.type === "spell" && sourceGrant?.advancement) {
+      const classIdentifier = this.#classIdentifier(owner, actor);
+      const classItem = classIdentifier
+        ? actor.items.find(item => item.type === "class" && item.system?.identifier === classIdentifier)
+        : null;
+      await FeatureSpellOwnershipService.addOwner(created, {
+        category: this.#slug(owner.name || "validation-grant"),
+        label: sourceGrant.advancement.title || owner.name || "Native Spell Grant",
+        classIdentifier,
+        classItemId: classItem?.id ?? null,
+        subclassItemId: owner.type === "subclass" ? owner.id : null,
+        featureItemId: owner.type === "feat" ? owner.id : null,
+        ownerItemId: owner.id,
+        advancementId: issue.data.advancementId,
+        transactionId: null,
+        acquiredAtCharacterLevel: null,
+        acquiredAtClassLevel: Number(sourceGrant.advancement.level ?? 0),
+        sourceUuid,
+        spellLevel: Number(created.system?.level ?? 0),
+        alwaysPrepared: Number(created.system?.prepared ?? 0) === 2,
+        nativeGrant: true,
+        validationReconciled: true
+      });
+    }
     return {
       status: "repaired",
       issueId: issue.id,
@@ -523,6 +568,61 @@ export class CharacterValidationService {
       restoredItemId: created.id,
       sourceUuid
     };
+  }
+
+  static #classIdentifier(owner, actor) {
+    if (!owner) return null;
+    if (owner.type === "class") return owner.system?.identifier ?? null;
+    if (owner.type === "subclass") {
+      return owner.system?.classIdentifier ?? owner.system?.class?.identifier ?? owner.system?.class ?? null;
+    }
+    const root = String(owner.getFlag?.("dnd5e", "advancementRoot")
+      ?? owner.getFlag?.("dnd5e", "advancementOrigin") ?? "");
+    const rootItem = actor.items.get(root.split(".")[0]);
+    return rootItem && rootItem.id !== owner.id ? this.#classIdentifier(rootItem, actor) : null;
+  }
+
+  static #slug(value) {
+    return String(value ?? "")
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  }
+
+  static async #resolveNativeSourceAdvancement(owner, advancementId, sourceUuid = null) {
+    const candidates = [
+      owner.getFlag?.("dnd5e", "sourceId"),
+      owner._stats?.compendiumSource,
+      owner.getFlag?.(MODULE_ID, "sourceSnapshot")?.uuid
+    ].filter(uuid => String(uuid ?? "").startsWith("Compendium."));
+    const local = owner.toObject().system?.advancement?.[advancementId] ?? null;
+
+    for (const uuid of candidates) {
+      try {
+        const sourceOwner = await fromUuid(uuid);
+        const direct = sourceOwner?.advancement?.byId?.[advancementId] ?? null;
+        if (direct?.configuration?.spell) return { uuid, owner: sourceOwner, advancement: direct };
+
+        // Embedded Advancement IDs are normally preserved from the canonical
+        // source. If an older/custom copy changed the ID, only fall back when
+        // the Advancement type and recorded granted spell UUID prove the same
+        // source relationship. This avoids guessing by title alone.
+        for (const advancement of Object.values(sourceOwner?.advancement?.byId ?? {})) {
+          if (!advancement?.configuration?.spell) continue;
+          const raw = advancement.toObject?.() ?? advancement;
+          if (local?.type && String(raw?.type ?? "") !== String(local.type)) continue;
+          const configured = [
+            ...(raw?.configuration?.items ?? []).map(row => typeof row === "string" ? row : row?.uuid),
+            ...(raw?.configuration?.pool ?? []).map(row => typeof row === "string" ? row : row?.uuid)
+          ].filter(Boolean);
+          if (sourceUuid && configured.includes(sourceUuid)) {
+            return { uuid, owner: sourceOwner, advancement };
+          }
+        }
+      } catch (_error) {
+        // Continue to the next recorded canonical source.
+      }
+    }
+    return null;
   }
 
   static async #resolveSourceItem(item, registry, explicitUuid = null) {

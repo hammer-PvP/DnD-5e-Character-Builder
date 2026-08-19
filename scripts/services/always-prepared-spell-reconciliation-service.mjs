@@ -53,14 +53,25 @@ export class AlwaysPreparedSpellReconciliationService {
     const redirects = [];
 
     for (const plan of plans) {
-      const canonical = draft.items.get(plan.canonicalItemId);
-      const duplicate = draft.items.get(plan.grantItemId);
-      if (!canonical || !duplicate || canonical.id === duplicate.id) continue;
+      const normal = draft.items.get(plan.canonicalItemId);
+      const grantSpell = draft.items.get(plan.grantItemId);
+      if (!normal || !grantSpell || normal.id === grantSpell.id) continue;
 
-      const merged = await this.#mergePlan(draft, canonical, duplicate, plan, transactionId);
+      // Native augmenting ItemGrants are already the authoritative mechanical
+      // projection produced by D&D5e (uses, recovery, free-cast Forward
+      // Activities, and any source-authored Activity variants). Keep that
+      // enriched document and fold the normal class acquisition into it.
+      // Preparation-only grants retain the older, reversible behavior where the
+      // normal class spell remains the physical survivor.
+      const keepNativeGrant = plan.profile?.kind === "augmenting";
+      const merged = keepNativeGrant
+        ? await this.#mergeNativeAugmentingPlan(draft, grantSpell, normal, plan, transactionId)
+        : await this.#mergePlan(draft, normal, grantSpell, plan, transactionId);
       if (!merged) continue;
       items.push(merged.summary);
-      redirects.push({ from: duplicate.id, to: canonical.id });
+      redirects.push(keepNativeGrant
+        ? { from: normal.id, to: grantSpell.id }
+        : { from: grantSpell.id, to: normal.id });
     }
 
     const persistedState = this.#state(draft, context);
@@ -730,6 +741,131 @@ export class AlwaysPreparedSpellReconciliationService {
     };
   }
 
+  static async #mergeNativeAugmentingPlan(draft, canonical, duplicate, plan, transactionId) {
+    if (plan.profile?.kind !== "augmenting") return null;
+
+    const existingReconciliation = foundry.utils.deepClone(
+      canonical.getFlag(MODULE_ID, "alwaysPreparedReconciliation") ?? {}
+    );
+    const restorablePrepared = Number.isFinite(Number(existingReconciliation.normalAcquisition?.previousPrepared))
+      ? Number(existingReconciliation.normalAcquisition.previousPrepared)
+      : plan.previousPrepared;
+
+    const owners = foundry.utils.deepClone(canonical.getFlag(MODULE_ID, "featureSpellOwners") ?? plan.grant.owners ?? []);
+    for (const owner of owners) {
+      if (owner?.alwaysPrepared && !Number.isFinite(Number(owner.previousPrepared))) {
+        owner.previousPrepared = restorablePrepared;
+      }
+    }
+    if (!owners.length) {
+      owners.push({
+        category: this.#slug(plan.grant.label),
+        label: plan.grant.label,
+        classIdentifier: plan.classIdentifier,
+        classItemId: plan.normal.classItemId ?? null,
+        subclassItemId: plan.grant.ownerType === "subclass" ? plan.grant.ownerItemId : null,
+        featureItemId: plan.grant.featureItemId,
+        ownerItemId: plan.grant.ownerItemId,
+        advancementId: plan.grant.advancementId,
+        transactionId,
+        sourceUuid: plan.grant.sourceUuid,
+        alwaysPrepared: true,
+        nativeGrant: Boolean(plan.grant.nativeGrant),
+        previousPrepared: restorablePrepared
+      });
+    }
+
+    const grants = Array.isArray(existingReconciliation.grants)
+      ? foundry.utils.deepClone(existingReconciliation.grants)
+      : [];
+    const grantRecord = {
+      ownerItemId: plan.grant.ownerItemId,
+      ownerName: plan.grant.ownerName,
+      ownerType: plan.grant.ownerType,
+      featureItemId: plan.grant.featureItemId,
+      advancementId: plan.grant.advancementId,
+      configuredUuid: plan.grant.configuredUuid,
+      sourceUuid: plan.grant.sourceUuid,
+      transactionId,
+      mergedFromItemId: duplicate.id,
+      label: plan.grant.label,
+      grantKind: "augmenting",
+      nativeProjectionSurvivor: true
+    };
+    const grantKey = this.#grantKey(grantRecord);
+    const mergedGrants = grants.filter(row => this.#grantKey(row) !== grantKey);
+    mergedGrants.push(grantRecord);
+
+    const duplicateFlags = foundry.utils.deepClone(duplicate.toObject().flags?.[MODULE_ID] ?? {});
+    const update = {
+      "system.prepared": 2,
+      [`flags.${MODULE_ID}.featureGrantedSpell`]: true,
+      [`flags.${MODULE_ID}.featureSpellOwners`]: owners,
+      [`flags.${MODULE_ID}.alwaysPreparedReconciliation`]: {
+        schema: 3,
+        normalAcquisition: {
+          ...foundry.utils.deepClone(plan.normal),
+          previousPrepared: restorablePrepared,
+          previousSnapshot: foundry.utils.deepClone(plan.previousSnapshot)
+        },
+        grants: mergedGrants,
+        lastTransactionId: transactionId,
+        alwaysPrepared: true,
+        nativeProjectionSurvivor: true
+      }
+    };
+
+    // Preserve the normal class-access provenance on the surviving native grant
+    // without replacing its D&D5e advancementOrigin/advancementRoot or its
+    // enriched mechanical data.
+    for (const key of [
+      "classSpellAccess",
+      "classIdentifier",
+      "classItemId",
+      "accessModel",
+      "category",
+      "sourceLabel",
+      "levelUpSpell"
+    ]) {
+      if (duplicateFlags[key] !== undefined) {
+        update[`flags.${MODULE_ID}.${key}`] = foundry.utils.deepClone(duplicateFlags[key]);
+      }
+    }
+
+    await canonical.update(update, {
+      characterBuilderAlwaysPreparedReconciliation: true
+    });
+
+    // The native ItemGrant already points to `canonical`; only the redundant
+    // normal class copy is removed. No ItemGrant redirect is required, which
+    // also preserves D&D5e's own enriched grant projection verbatim.
+    await draft.deleteEmbeddedDocuments("Item", [duplicate.id], {
+      deleteContents: true,
+      characterBuilderAlwaysPreparedReconciliation: true
+    });
+
+    return {
+      summary: {
+        spellItemId: canonical.id,
+        name: canonical.name,
+        img: canonical.img,
+        identifier: canonical.system?.identifier ?? null,
+        classIdentifier: plan.classIdentifier,
+        source: plan.grant.label,
+        ownerItemId: plan.grant.ownerItemId,
+        ownerName: plan.grant.ownerName,
+        previousPrepared: restorablePrepared,
+        alwaysPrepared: true,
+        grantKind: "augmenting",
+        augmented: true,
+        nativeProjectionSurvivor: true,
+        addedActivityIds: [],
+        normalSelectionReleased: plan.normalSelectionReleased,
+        removedDuplicateItemId: duplicate.id
+      }
+    };
+  }
+
   static #augmentationDelta(canonical, duplicate, plan) {
     if (plan.profile?.kind !== "augmenting") return null;
     // A pre-existing Item use pool may belong to another acquisition and cannot
@@ -798,17 +934,26 @@ export class AlwaysPreparedSpellReconciliationService {
     const raw = owner.toObject().system?.advancement?.[receipt.advancementId];
     if (!raw) throw new Error(`The ItemGrant Advancement ${receipt.advancementId} no longer exists on ${owner.name}.`);
 
-    // Foundry document updates recursively merge nested objects. Replacing a
-    // cloned `value` object with the duplicate key omitted therefore does not
-    // reliably delete the old ItemGrant mapping. Use Foundry's explicit nested
-    // deletion operator and write the surviving canonical mapping atomically.
-    const addedPath = `system.advancement.${receipt.advancementId}.value.added`;
-    await owner.update({
-      [`${addedPath}.-=${duplicateId}`]: null,
-      [`${addedPath}.${canonicalId}`]: receipt.configuredUuid
-    }, {
-      characterBuilderAlwaysPreparedReconciliation: true
-    });
+    // D&D5e's own ItemGrant reversal mutates `value.added` by placing the
+    // Foundry deletion operator *inside* the added object. Updating flattened
+    // child paths bypasses the Advancement DataModel in 5.3.3 and can leave the
+    // stale key behind. Route the exact native-shaped update through Item5e's
+    // Advancement API whenever available.
+    const added = foundry.utils.deepClone(raw.value?.added ?? {});
+    added[`-=${duplicateId}`] = null;
+    added[canonicalId] = receipt.configuredUuid;
+
+    if (typeof owner.updateAdvancement === "function") {
+      await owner.updateAdvancement(receipt.advancementId, {
+        "value.added": added
+      });
+    } else {
+      await owner.update({
+        [`system.advancement.${receipt.advancementId}.value.added`]: added
+      }, {
+        characterBuilderAlwaysPreparedReconciliation: true
+      });
+    }
 
     const persisted = owner.toObject().system?.advancement?.[receipt.advancementId]?.value?.added ?? {};
     if (Object.hasOwn(persisted, duplicateId) || persisted[canonicalId] !== receipt.configuredUuid) {

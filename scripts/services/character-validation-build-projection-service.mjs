@@ -3,6 +3,7 @@ import { SpellPreparationPolicyService } from "./spell-preparation-policy-servic
 import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.mjs";
 import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
 import { AdditionalCantripEntitlementService } from "./additional-cantrip-entitlement-service.mjs";
+import { NativeSpellGrantProjectionService } from "./native-spell-grant-projection-service.mjs";
 
 const BUILD_TRAIT_OWNER_TYPES = new Set(["class", "subclass", "race", "background", "feat"]);
 const ALWAYS_PREPARED = SpellPreparationPolicyService.ALWAYS_PREPARED;
@@ -1139,22 +1140,34 @@ export class CharacterValidationBuildProjectionService {
     } else {
       const sourceSpell = await fromUuid(choice.uuid);
       if (!sourceSpell || sourceSpell.type !== "spell") throw new Error("The canonical granted spell source is unavailable.");
-      const itemData = foundry.utils.deepClone(sourceSpell.toObject());
-      delete itemData._id;
-      itemData.system ??= {};
 
-      let sourceAdvancement = owner.toObject?.().system?.advancement?.[issue.data?.advancementId] ?? null;
-      if (!sourceAdvancement && issue.data?.sourceOwnerUuid) {
-        const sourceOwner = await fromUuid(issue.data.sourceOwnerUuid);
-        sourceAdvancement = sourceOwner?.toObject?.().system?.advancement?.[issue.data?.sourceAdvancementId] ?? null;
+      const sourceOwner = issue.data?.sourceOwnerUuid ? await fromUuid(issue.data.sourceOwnerUuid) : null;
+      const sourceAdvancement = sourceOwner?.advancement?.byId?.[issue.data?.sourceAdvancementId] ?? null;
+      const localAdvancement = owner.toObject?.().system?.advancement?.[issue.data?.advancementId] ?? null;
+      let itemData = sourceAdvancement?.configuration?.spell
+        ? await NativeSpellGrantProjectionService.materialize({
+            sourceAdvancement,
+            sourceUuid: choice.uuid,
+            sourceItem: sourceSpell,
+            owner,
+            localAdvancement
+          })
+        : null;
+
+      if (!itemData) {
+        itemData = foundry.utils.deepClone(sourceSpell.toObject());
+        delete itemData._id;
+        itemData.system ??= {};
+        const spellConfig = localAdvancement?.configuration?.spell ?? {};
+        const abilities = this.#collectionValues(spellConfig.ability);
+        if (abilities[0]) itemData.system.ability = abilities[0];
+        if (spellConfig.method) itemData.system.method = spellConfig.method;
+        if (issue.data?.expectedAlways) itemData.system.prepared = ALWAYS_PREPARED;
+        else if (spellConfig.prepared != null) itemData.system.prepared = Number(spellConfig.prepared);
+        if (issue.data?.expectedSourceItem) itemData.system.sourceItem = issue.data.expectedSourceItem;
       }
-      const spellConfig = sourceAdvancement?.configuration?.spell ?? {};
-      const abilities = this.#collectionValues(spellConfig.ability);
-      if (abilities[0]) itemData.system.ability = abilities[0];
-      if (spellConfig.method) itemData.system.method = spellConfig.method;
-      if (issue.data?.expectedAlways) itemData.system.prepared = ALWAYS_PREPARED;
-      else if (spellConfig.prepared != null) itemData.system.prepared = Number(spellConfig.prepared);
-      if (issue.data?.expectedSourceItem) itemData.system.sourceItem = issue.data.expectedSourceItem;
+
+      delete itemData._id;
       itemData.flags ??= {};
       itemData.flags.dnd5e ??= {};
       itemData.flags.dnd5e.sourceId = sourceSpell.uuid;

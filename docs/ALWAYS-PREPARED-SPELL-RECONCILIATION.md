@@ -2,24 +2,29 @@
 
 ## Scope
 
-This contract applies only inside a Character Builder **Character Creation** or **Level Up** Draft. It does not scan, migrate, or repair existing live Actors.
+This contract applies to Character Builder **Character Creation**, **Level Up**, and the clone-first **Character Validator**. Live creation/Level Up reconciliation remains transaction-scoped; the Validator may repair the revised Actor copy when a native grant is missing, mechanically incomplete, or redundantly coexists with a normal same-class acquisition.
 
-The 0.9.9 stabilization line covers leveled spells granted as Always Prepared by a native Class, Subclass, or class-linked Feature when the same class already owns the same spell through normal class spell access. v0.9.9b distinguishes preparation-only grants from native ItemGrants that explicitly augment the spell with a free-cast use pool, including runtime D&D5e ActivityCollection documents.
+The 0.9.9 stabilization line covers leveled spells granted as Always Prepared by a native Class, Subclass, or class-linked Feature when the same class already owns the same spell through normal class spell access. The v0.9.9u v2 repair distinguishes preparation-only grants from native ItemGrants that explicitly augment the spell with a use pool/free cast and treats D&D5e's own Spell Configuration projection as authoritative.
 
 ## Canonical result
 
-The committed Actor keeps one spell Item. Character Builder preserves two distinct concepts on that document:
+The committed Actor keeps one spell Item only when the two documents represent a normal class acquisition plus an augmenting/preparation grant from that **same class relationship**. Character Builder preserves two distinct concepts on the surviving document:
 
-1. the normal class acquisition that establishes access to the spell; and
-2. the feature acquisition that makes the spell Always Prepared.
+1. the normal class acquisition that establishes ordinary spell access; and
+2. the feature acquisition that makes the spell Always Prepared and may add native use/recovery/free-cast mechanics.
 
-The spell is set to `system.prepared = 2`. Its normal acquisition is retained in `flags.dnd5e-character-builder.alwaysPreparedReconciliation.normalAcquisition`, and feature owners remain in `featureSpellOwners`.
+For **preparation-only** grants, the pre-existing normal class spell may remain the physical survivor and the native grant ledger is redirected to it. For **augmenting** ItemGrants, the D&D5e-created enriched grant is the physical survivor because it already contains the authoritative native mechanical projection; the redundant normal class document is removed and its Character Builder acquisition provenance is folded into the enriched spell.
 
-## Native ItemGrant receipt
+Independent acquisitions are never collapsed merely because the spell identity matches. A Wizard spell, a Species spell, and a Feat spell may legitimately remain separate copies when they have independent provenance or casting mechanics.
 
-A native D&D5e ItemGrant normally records the embedded Item ID in the owning Advancement's `value.added` object. When the redundant grant Item is removed, Character Builder redirects that entry to the canonical spell and writes a matching `mergedItemGrants` receipt on the spell.
+## Native ItemGrant ledger
 
-`ItemGrantIntegrityService` accepts the canonical spell only when both the Advancement origin and configured UUID match that receipt. This prevents a later integrity audit from recreating the redundant grant.
+A native D&D5e ItemGrant records the embedded Item ID in the owning Advancement's `value.added` object.
+
+- For a **preparation-only** consolidation where the grant copy is removed, Character Builder redirects `value.added` to the surviving normal spell using the D&D5e/Foundry Advancement update shape and keeps an exact `mergedItemGrants` receipt.
+- For an **augmenting** grant, the native grant document is retained, so its ItemGrant ledger already points at the surviving enriched spell and no redirect is needed.
+
+`ItemGrantIntegrityService` accepts an intentional consolidation only when provenance and configured UUID evidence are exact. This prevents a later integrity audit from resurrecting a removed redundant document.
 
 ## Released selections
 
@@ -31,7 +36,9 @@ Full-list spellcasters do not receive an additional prepared choice. Their exist
 
 Paladin's Smite remains its own Feature Item. The native Paladin ItemGrant is authoritative for the spell augmentation: it makes Divine Smite Always Prepared, gives the spell a 1/Long Rest use pool, and causes D&D5e to create forwarding Activities for the free casting.
 
-When Divine Smite already exists through normal Paladin spell access, Character Builder keeps that canonical spell, applies only the ItemGrant-declared augmentation to it, redirects the native grant receipt, and removes the redundant grant copy. The original spell-slot Activities remain untouched. After the free use is spent, the same Divine Smite can continue to be cast with spell slots. Find Steed and other grants with the same native ItemGrant pattern use the same generic reconciliation path; there is no spell-name exception.
+When Divine Smite already exists through normal Paladin spell access, Character Builder keeps the **native enriched Paladin's Smite grant copy**, preserves its D&D5e-authored normal/free-cast Activities and use pool verbatim, folds the normal Paladin acquisition provenance into that survivor, and removes the redundant normal spell document. After the free use is spent, the same Divine Smite can continue to be cast with spell slots.
+
+Faithful Steed / Find Steed uses the same generic rule. The native enriched Find Steed remains the survivor, including its normal summon Activities and the free-cast Forward Activities generated by D&D5e. There is no Divine Smite or Find Steed name exception.
 
 ## Merge requirements
 
@@ -58,7 +65,16 @@ Character Builder does not merge:
 - legacy duplicates that predate the active Draft transaction;
 - cantrip acquisition channels in this first stabilization stage.
 
-For native augmenting ItemGrants, the receipt also records the previous use pool and Activities plus the exact augmentation applied, preserving enough provenance for a future safe reversal. These exclusions favor correctness and reversible ownership over cosmetic deduplication.
+For native augmenting ItemGrants, Character Builder no longer reconstructs the augmentation onto a different spell document when the system has already created the enriched grant correctly. It preserves that native projection and records the normal acquisition separately in reconciliation metadata. These exclusions favor correctness and reversible ownership over cosmetic deduplication.
+
+
+## Character Validator native projection repair
+
+When the Validator must restore a missing granted spell, it starts from a clean canonical source and invokes D&D5e's native Advancement Spell Configuration projection (`configuration.spell.applySpellChanges`) rather than reproducing only preparation flags. This restores the same casting method, Always Prepared state, sourceItem, use pool/recovery, and free-cast Forward Activities that the native ItemGrant would create.
+
+The Validator also audits already-present augmenting grants. A spell that is Always Prepared but is missing the ItemGrant-declared uses/recovery or native free-cast Activity projection is reported as incomplete and repaired from a clean native projection without resetting current `uses.spent`. The repair adds only missing mechanics and is idempotent; applying validation again must not multiply Forward Activities.
+
+After native mechanics are healthy, the Validator may remove a redundant **normal same-class** spell copy while preserving independent acquisitions from Species, Feats, other classes, Items, or distinct casting configurations.
 
 ## Commit validation
 
@@ -74,7 +90,7 @@ Any failure aborts the Draft transaction before the live Actor is modified.
 
 ## Protected systems
 
-This implementation does not modify Character Keeper, rest management, Rules Automation Assistance, Bardic Inspiration resolution, the shared roll-resolution protocol, or Item Creator runtime responsibilities.
+Always Prepared reconciliation itself does not modify Character Keeper, rest management, Bardic Inspiration resolution, the shared roll-resolution protocol, or Item Creator runtime responsibilities. The v0.9.9u v2 package separately adds a generic Rules Assistance consumption guard for level-constrained native Summon profiles; that guard does not participate in spell deduplication or grant materialization.
 
 ## Runtime feature-state reconciliation
 

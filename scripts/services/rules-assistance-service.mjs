@@ -13,6 +13,7 @@ import { SourceTargetDamageRiderService } from "./source-target-damage-rider-ser
 import { CuttingWordsAssistanceService } from "./cutting-words-assistance-service.mjs";
 import { ResourceEventService } from "./resource-event-service.mjs";
 import { TransformationActorCleanupService } from "./transformation-actor-cleanup-service.mjs";
+import { SummonProfileLevelGuardService } from "./summon-profile-level-guard-service.mjs";
 
 const RULES = Object.freeze({
   GREAT_WEAPON_FIGHTING: "great-weapon-fighting",
@@ -49,6 +50,7 @@ export class RulesAssistanceService {
     CuttingWordsAssistanceService.initialize();
     ResourceEventService.initialize();
     TransformationActorCleanupService.initialize();
+    SummonProfileLevelGuardService.initialize();
 
     Hooks.on("dnd5e.preUseActivity", (activity, usageConfig, dialogConfig, messageConfig) =>
       this.#prepareCast(activity, usageConfig, dialogConfig, messageConfig)

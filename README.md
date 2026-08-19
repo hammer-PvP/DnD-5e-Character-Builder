@@ -168,13 +168,15 @@ The native Advancement browser is not filtered or modified. Character Builder va
 
 Character Builder treats an Always Prepared grant as an additional ownership state of a spell, not as permission to leave two mechanically identical spell Items on the Actor.
 
-During a new Character Creation or Level Up transaction, when a native Class, Subclass, or class-linked Feature grants a leveled spell that the same class already supplies through normal spell access, Character Builder keeps one canonical spell, promotes it to **Always Prepared**, preserves every acquisition owner, and redirects the native ItemGrant record to that canonical document. The Review still reports the feature that granted the spell.
+During Character Creation or Level Up, when a native Class, Subclass, or class-linked Feature grants a leveled spell that the same class already supplies through normal spell access, Character Builder keeps one canonical spell and preserves every acquisition owner. Preparation-only grants may reuse the normal class spell and redirect the native ItemGrant ledger to it. When the ItemGrant is mechanically augmenting, the **D&D5e-created enriched grant is kept instead** so its native uses, recovery, source-authored Activities, and free-cast Forward Activities remain authoritative; the redundant normal class document is removed. The Review still reports the feature that granted the spell.
 
 For limited-list casters, a normally selected spell that becomes Always Prepared releases its former selection and the player must choose a replacement before committing the Level Up. Full-list casters receive the preparation-state change without an artificial extra choice.
 
-**Paladin's Smite** remains a separate native Feature, while its native ItemGrant enriches the single canonical **Divine Smite** spell with Always Prepared status, the 1/Long Rest free-cast pool, and the forwarding Activities created by D&D5e. The original spell-slot Activities remain intact, so after the free cast is spent the same Divine Smite can still consume normal spell slots.
+**Paladin's Smite** remains a separate native Feature, while its native ItemGrant creates the canonical enriched **Divine Smite** spell with Always Prepared status, the 1/Long Rest free-cast pool, normal spell-slot Activities, and D&D5e-generated free-cast Forward Activities. **Faithful Steed** follows the same rule for **Find Steed**. Character Builder does not rebuild those augmentations onto a less-complete duplicate when the native enriched copy already exists.
 
-The merge is intentionally conservative. It requires the same canonical spell source and mechanically equivalent base Activities/effects. Non-mechanical metadata such as embedded-document timestamps is ignored. A native ItemGrant may contribute a use pool and free-cast forwarding Activities only when those additions are explicitly declared by that same ItemGrant; arbitrary spell modifications are still rejected. Spells from Items, different classes, casting abilities, or casting methods remain separate. Reconciliation is limited to the active Draft transaction and does not migrate existing Actors.
+The merge is intentionally conservative. It requires the same canonical spell identity, the same class relationship, compatible casting method/ability, and a native ItemGrant whose own Spell Configuration proves the augmentation. Independent acquisitions stay separate: for example, the same spell learned as a Wizard spell and granted independently by a Species or Feat can remain multiple physical Items.
+
+The clone-first Character Validator uses the same source-driven model. If a granted spell is deleted, it restores the document from a clean source and invokes D&D5e's native `configuration.spell.applySpellChanges()` projection so Always Prepared state, uses/recovery, and free-cast Activities return together. It can also repair incomplete Validator-restored copies without resetting spent uses, then remove only proven redundant normal same-class copies.
 
 ## Character Validation
 
@@ -252,7 +254,8 @@ The current rule list includes:
 - Source-to-Target Damage Riders (Hunter's Mark / Hex);
 - Bard — Cutting Words manual reaction assistance;
 - Concentration & Dependent Effects;
-- Temporary Transformation Actor Cleanup.
+- Temporary Transformation Actor Cleanup;
+- Summon Profile Level Guard.
 
 Damage assistance uses native D&D5e roll hooks and changes only the current roll configuration. Effect assistance reuses the native Active Effect already supplied by the source spell or feature. It never creates duplicate weapons, duplicate spells, duplicate Activities, replacement chat commands, or permanent formula edits.
 
@@ -280,6 +283,8 @@ Character Builder also exposes a versioned **Resource Consumption Event** after 
 
 
 **Temporary Transformation Actor Cleanup** completes the native D&D5e revert lifecycle when a player, rather than a GM, cancels a transformation. After D&D5e has restored the original character/token state, the active GM removes only temporary Actor documents whose native transformation flags prove they belong to that original Actor's transformation chain. The cleanup is generic to native transformations and never identifies Actors by creature name, type, folder, or ownership. Original character Actors and source-form Actors are never deleted by this rule.
+
+**Summon Profile Level Guard** closes a native consumption edge case without changing Activity Usage dialogs. Immediately before D&D5e consumes a spell slot or Item use, Character Builder checks the Summon Activity's own source-authored profile `level.min` / `level.max` restrictions through the system's `availableProfiles` result. If no summon profile is legal at the effective level, activation is cancelled before consumption. This is generic rather than Find Steed-specific and also applies when a free-cast Forward Activity invokes the constrained Summon Activity.
 
 **Save-Gated Effect Application** reuses D&D5e's native Effects tray instead of auto-applying a debuff from a hidden save result. For supported compatibility adapters, Character Builder ensures the source Activity exposes a non-transfer effect profile in the usage card. The tray is visible to the GM, who applies the effect only to targets that actually failed. D&D5e then creates the target Active Effect and, for a concentrated source, automatically binds it to the concentration through `flags.dnd5e.dependentOn`. Bane 2024 is the first regression adapter. If the official Item already contains a mechanical Bane effect, Character Builder links that native effect rather than adding a duplicate modifier; only a missing/empty effect profile receives the generic contextual fallback.
 

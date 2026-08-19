@@ -4,6 +4,7 @@ import { SpellPreparationPolicyService } from "./spell-preparation-policy-servic
 import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.mjs";
 import { AdvancementChoiceAnnotationService } from "./advancement-choice-annotation-service.mjs";
 import { CharacterValidationBuildProjectionService } from "./character-validation-build-projection-service.mjs";
+import { NativeSpellGrantProjectionService } from "./native-spell-grant-projection-service.mjs";
 
 const PHYSICAL_ITEM_TYPES = new Set(["weapon", "equipment", "consumable", "tool", "container", "loot"]);
 const CANONICAL_OWNER_TYPES = new Set(["class", "subclass", "race", "background", "feat"]);
@@ -106,6 +107,10 @@ export class CharacterValidationProgressionService {
         return this.#repairMissingCanonicalGrant(actor, issue);
       case "always-prepared-state":
         return this.#repairAlwaysPrepared(actor, issue);
+      case "native-spell-grant-incomplete":
+        return this.#repairNativeSpellGrantProjection(actor, issue);
+      case "augmented-spell-redundancy":
+        return this.#repairAugmentedSpellRedundancy(actor, issue);
       case "duplicate-same-origin-spell":
         return this.#repairDuplicateSameOriginSpell(actor, issue);
       default:
@@ -124,6 +129,8 @@ export class CharacterValidationProgressionService {
       "choice-metadata-incomplete",
       "missing-canonical-grant",
       "always-prepared-state",
+      "native-spell-grant-incomplete",
+      "augmented-spell-redundancy",
       "duplicate-same-origin-spell"
     ]).has(kind) || CharacterValidationBuildProjectionService.canRepair(kind);
   }
@@ -544,7 +551,81 @@ export class CharacterValidationProgressionService {
           const requiredPrepared = this.#grantPreparedState(sourceAdvancement, sourceItem.document);
           if (requiredPrepared !== SpellPreparationPolicyService.ALWAYS_PREPARED) continue;
           const spell = this.#preferredGrantedSpell(matches, owner, local?.id ?? sourceAdvancementId);
-          if (!spell || Number(spell.system?.prepared ?? -1) === SpellPreparationPolicyService.ALWAYS_PREPARED) continue;
+          if (!spell) continue;
+
+          const nativeSourceAdvancement = source.document?.advancement?.byId?.[sourceAdvancementId] ?? sourceAdvancement;
+          const nativeMechanics = await this.#nativeSpellGrantMechanicsStatus(spell, {
+            sourceAdvancement: nativeSourceAdvancement,
+            sourceDocument: sourceItem.document,
+            sourceUuid: sourceItem.uuid,
+            owner,
+            localAdvancement: local?.advancement ?? null
+          });
+          if (nativeMechanics.augmenting && !nativeMechanics.complete) {
+            rows.push({
+              id: `native-spell-grant:${owner.id}:${sourceAdvancementId}:${spell.id}`,
+              kind: "native-spell-grant-incomplete",
+              severity: "error",
+              repairable: true,
+              repairMode: "safe",
+              repairLabel: "Restore Native Spell Mechanics",
+              title: `${spell.name} — Native Grant Mechanics Incomplete`,
+              summary: `${spell.name} is linked to ${sourceAdvancement.title || owner.name}, but its native D&D5e free-cast/use projection is incomplete.`,
+              details: `The Validator will rebuild the expected spell projection from ${sourceItem.label} using D&D5e's native Spell Configuration and add only the missing required mechanics.`,
+              data: {
+                spellId: spell.id,
+                ownerId: owner.id,
+                ownerLevel,
+                sourceOwnerUuid: source.uuid,
+                sourceAdvancementId,
+                localAdvancementId: local?.id ?? sourceAdvancementId,
+                configuredUuid,
+                resolvedUuid: sourceItem.uuid,
+                sourceName: sourceItem.document.name,
+                missing: nativeMechanics.missing
+              }
+            });
+            continue;
+          }
+
+          // A native augmenting grant (for example a free-cast Always Prepared
+          // spell) subsumes a normal acquisition from the same class. Preserve
+          // independent species/feat/other-class copies, but collapse the
+          // redundant normal class copy into the enriched native projection.
+          if (nativeMechanics.augmenting && nativeMechanics.complete) {
+            const classIdentifier = this.#classIdentifier(owner, actor);
+            const normalCopies = classIdentifier ? actor.items.filter(item =>
+              item.id !== spell.id
+              && item.type === "spell"
+              && this.#sameItemIdentity(item, sourceItem.document, configuredUuid)
+              && this.#normalClassAcquisition(item, actor, classIdentifier)
+              && this.#compatibleSpellCasting(item, spell)
+            ) : [];
+            if (normalCopies.length) {
+              rows.push({
+                id: `augmented-spell-redundancy:${owner.id}:${sourceAdvancementId}:${spell.id}`,
+                kind: "augmented-spell-redundancy",
+                severity: "error",
+                repairable: true,
+                repairMode: "safe",
+                repairLabel: "Keep Native Enriched Spell",
+                title: `${spell.name} — Redundant Normal Class Copy`,
+                summary: `${spell.name} has a native enriched grant from ${sourceAdvancement.title || owner.name} plus ${normalCopies.length} redundant normal ${classIdentifier} cop${normalCopies.length === 1 ? "y" : "ies"}.`,
+                details: "The native enriched ItemGrant copy is authoritative because it already contains normal casting plus the granted use/recovery/free-cast mechanics. Independent acquisitions from other classes, species, feats, or items are preserved.",
+                data: {
+                  keepId: spell.id,
+                  deleteIds: normalCopies.map(item => item.id),
+                  ownerId: owner.id,
+                  advancementId: local?.id ?? sourceAdvancementId,
+                  classIdentifier,
+                  configuredUuid,
+                  resolvedUuid: sourceItem.uuid
+                }
+              });
+            }
+          }
+
+          if (Number(spell.system?.prepared ?? -1) === SpellPreparationPolicyService.ALWAYS_PREPARED) continue;
 
           rows.push({
             id: `always-prepared:${owner.id}:${sourceAdvancementId}:${spell.id}`,
@@ -806,7 +887,12 @@ export class CharacterValidationProgressionService {
       canonicalProjection: true
     };
 
-    this.#applyGrantSpellConfiguration(data, sourceOwner, sourceAdvancement, issue.data?.sourceAdvancementId, owner);
+    const localRaw = owner.toObject().system?.advancement?.[localAdvancementId] ?? {};
+    NativeSpellGrantProjectionService.apply(data, {
+      sourceAdvancement,
+      owner,
+      localAdvancement: localRaw
+    });
     const [created] = await actor.createEmbeddedDocuments("Item", [data], {
       keepId: true,
       characterBuilderValidationRepair: true
@@ -894,6 +980,229 @@ export class CharacterValidationProgressionService {
       issueId: issue.id,
       title: issue.title,
       message: `Restored ${spell.name} as Always Prepared for ${owner.name}.`
+    };
+  }
+
+  static async #repairNativeSpellGrantProjection(actor, issue) {
+    const spell = actor.items.get(issue.data?.spellId);
+    const owner = actor.items.get(issue.data?.ownerId);
+    if (!spell || !owner) throw new Error("The granted spell or its owning progression Item no longer exists.");
+
+    const sourceOwner = await fromUuid(issue.data?.sourceOwnerUuid);
+    const sourceAdvancement = sourceOwner?.advancement?.byId?.[issue.data?.sourceAdvancementId] ?? null;
+    const sourceItem = await fromUuid(issue.data?.resolvedUuid ?? issue.data?.configuredUuid);
+    if (!sourceAdvancement || !sourceItem) throw new Error("The native spell grant source is unavailable.");
+
+    const itemId = spell.id;
+    let expected = sourceAdvancement.createItemData
+      ? await sourceAdvancement.createItemData(issue.data?.resolvedUuid ?? issue.data?.configuredUuid, itemId)
+      : foundry.utils.deepClone(sourceItem.toObject());
+    if (!expected) throw new Error(`D&D5e could not rebuild the native projection for ${spell.name}.`);
+    expected._id = itemId;
+    const localAdvancement = owner.toObject().system?.advancement?.[issue.data?.localAdvancementId ?? issue.data?.sourceAdvancementId] ?? {};
+    NativeSpellGrantProjectionService.apply(expected, {
+      sourceAdvancement,
+      owner,
+      localAdvancement
+    });
+
+    const actualRaw = spell.toObject();
+    const expectedActivities = expected.system?.activities ?? {};
+    const actualActivities = foundry.utils.deepClone(actualRaw.system?.activities ?? {});
+    const update = {};
+
+    // Restore the native spell-level configuration while preserving current
+    // runtime use expenditure. Recovery/max are entitlement data; spent is
+    // gameplay state and must not be reset by validation.
+    for (const key of ["prepared", "method", "ability", "sourceItem"]) {
+      if (expected.system?.[key] !== undefined) update[`system.${key}`] = foundry.utils.deepClone(expected.system[key]);
+    }
+    if (expected.system?.uses) {
+      const uses = foundry.utils.deepClone(expected.system.uses);
+      if (actualRaw.system?.uses?.spent !== undefined) uses.spent = actualRaw.system.uses.spent;
+      update["system.uses"] = uses;
+    }
+
+    // Base Activities keep their live data. Missing native base Activities are
+    // restored, and missing native free-cast Forward Activities are added from
+    // a clean D&D5e projection. This avoids applying applySpellChanges twice to
+    // the live Item and therefore cannot multiply free-cast Activities.
+    for (const [id, expectedActivity] of Object.entries(expectedActivities)) {
+      if (String(expectedActivity?.type ?? "") !== "forward") {
+        if (!actualActivities[id]) actualActivities[id] = foundry.utils.deepClone(expectedActivity);
+        continue;
+      }
+      const forwardedId = String(expectedActivity?.activity?.id ?? "");
+      const existingEntry = Object.entries(actualActivities).find(([, activity]) =>
+        String(activity?.type ?? "") === "forward"
+        && String(activity?.activity?.id ?? "") === forwardedId
+      );
+      if (!existingEntry) {
+        actualActivities[id] = foundry.utils.deepClone(expectedActivity);
+      } else if (!this.#hasRequiredItemUseTargets(existingEntry[1], expectedActivity)) {
+        const [existingId, existingActivity] = existingEntry;
+        const expectedTargets = (expectedActivity?.consumption?.targets ?? [])
+          .filter(target => String(target?.type ?? "") === "itemUses");
+        const preserved = foundry.utils.deepClone(existingActivity?.consumption?.targets ?? [])
+          .filter(target => String(target?.type ?? "") !== "itemUses");
+        actualActivities[existingId].consumption ??= {};
+        actualActivities[existingId].consumption.targets = [
+          ...preserved,
+          ...foundry.utils.deepClone(expectedTargets)
+        ];
+      }
+    }
+
+    // requireSlot=true grants modify the original Activities rather than adding
+    // Forward Activities. Merge only the required Item-use consumption target.
+    for (const [id, expectedActivity] of Object.entries(expectedActivities)) {
+      if (String(expectedActivity?.type ?? "") === "forward" || !actualActivities[id]) continue;
+      const expectedTargets = (expectedActivity?.consumption?.targets ?? [])
+        .filter(target => String(target?.type ?? "") === "itemUses");
+      if (!expectedTargets.length) continue;
+      const targets = foundry.utils.deepClone(actualActivities[id].consumption?.targets ?? [])
+        .filter(target => String(target?.type ?? "") !== "itemUses");
+      targets.push(...foundry.utils.deepClone(expectedTargets));
+      actualActivities[id].consumption ??= {};
+      actualActivities[id].consumption.targets = targets;
+    }
+    update["system.activities"] = actualActivities;
+
+    await spell.update(update, {
+      characterBuilderValidationRepair: true,
+      characterBuilderValidationProgressionProjection: true
+    });
+
+    // Reconnect the native ItemGrant ledger and feature ownership as part of the
+    // same repair. This matters when an older Validator reused a mechanically
+    // incomplete same-class copy to satisfy the grant without recording the
+    // ItemGrant relationship itself.
+    const localAdvancementId = issue.data?.localAdvancementId ?? issue.data?.sourceAdvancementId;
+    const configuredUuid = issue.data?.configuredUuid ?? issue.data?.resolvedUuid;
+    const refreshedAdvancement = owner.toObject().system?.advancement?.[localAdvancementId] ?? null;
+    if (refreshedAdvancement && configuredUuid) {
+      const added = foundry.utils.deepClone(refreshedAdvancement.value?.added ?? {});
+      if (added[spell.id] !== configuredUuid) {
+        added[spell.id] = configuredUuid;
+        if (typeof owner.updateAdvancement === "function") {
+          await owner.updateAdvancement(localAdvancementId, { "value.added": added });
+        } else {
+          await owner.update({ [`system.advancement.${localAdvancementId}.value.added`]: added }, {
+            characterBuilderValidationRepair: true,
+            characterBuilderValidationProgressionProjection: true
+          });
+        }
+      }
+    }
+
+    const classIdentifier = this.#classIdentifier(owner, actor);
+    const classItem = this.#classItem(owner, actor);
+    await FeatureSpellOwnershipService.addOwner(spell, {
+      category: this.#slug(sourceAdvancement.title || owner.name || "validation-grant"),
+      label: sourceAdvancement.title || owner.name || "Native Spell Grant",
+      classIdentifier,
+      classItemId: classItem?.id ?? null,
+      subclassItemId: owner.type === "subclass" ? owner.id : null,
+      featureItemId: owner.type === "feat" ? owner.id : null,
+      ownerItemId: owner.id,
+      advancementId: localAdvancementId,
+      transactionId: null,
+      acquiredAtCharacterLevel: this.#actorLevel(actor),
+      acquiredAtClassLevel: Number(sourceAdvancement.level ?? issue.data?.ownerLevel ?? 0),
+      sourceUuid: configuredUuid ?? null,
+      spellLevel: Number(spell.system?.level ?? 0),
+      alwaysPrepared: Number(expected.system?.prepared ?? spell.system?.prepared ?? 0) === SpellPreparationPolicyService.ALWAYS_PREPARED,
+      nativeGrant: true,
+      validationReconciled: true
+    });
+
+    return {
+      status: "repaired",
+      issueId: issue.id,
+      title: issue.title,
+      message: `Restored ${spell.name}'s native D&D5e ItemGrant spell mechanics without resetting spent uses.`
+    };
+  }
+
+  static async #repairAugmentedSpellRedundancy(actor, issue) {
+    const keep = actor.items.get(issue.data?.keepId);
+    if (!keep) throw new Error("The native enriched spell selected to keep no longer exists.");
+    const duplicates = (issue.data?.deleteIds ?? []).map(id => actor.items.get(id)).filter(Boolean);
+    if (!duplicates.length) {
+      return { status: "repaired", issueId: issue.id, title: issue.title, message: `${keep.name} no longer has a redundant normal class copy.` };
+    }
+
+    const classIdentifier = String(issue.data?.classIdentifier ?? "");
+    const normal = duplicates.map(spell => this.#normalClassAcquisition(spell, actor, classIdentifier)).find(Boolean) ?? null;
+    const previousPrepared = Number(duplicates[0]?.system?.prepared ?? 0);
+    const moduleFlags = foundry.utils.deepClone(duplicates[0]?.toObject().flags?.[MODULE_ID] ?? {});
+    const existingReconciliation = foundry.utils.deepClone(keep.getFlag?.(MODULE_ID, "alwaysPreparedReconciliation") ?? {});
+    const update = {
+      "system.prepared": SpellPreparationPolicyService.ALWAYS_PREPARED,
+      [`flags.${MODULE_ID}.featureGrantedSpell`]: true,
+      [`flags.${MODULE_ID}.alwaysPreparedReconciliation`]: {
+        ...existingReconciliation,
+        schema: Math.max(3, Number(existingReconciliation.schema ?? 0)),
+        normalAcquisition: {
+          ...(existingReconciliation.normalAcquisition ?? {}),
+          ...(normal ?? {}),
+          previousPrepared,
+          previousSnapshot: {
+            prepared: previousPrepared,
+            ability: duplicates[0]?.system?.ability ?? null,
+            method: duplicates[0]?.system?.method ?? null,
+            uses: foundry.utils.deepClone(duplicates[0]?.system?.uses ?? {}),
+            activities: foundry.utils.deepClone(duplicates[0]?.toObject().system?.activities ?? {})
+          }
+        },
+        alwaysPrepared: true,
+        nativeProjectionSurvivor: true,
+        validationReconciled: true
+      }
+    };
+    for (const key of ["classSpellAccess", "classIdentifier", "classItemId", "accessModel", "category", "sourceLabel", "levelUpSpell"]) {
+      if (moduleFlags[key] !== undefined) update[`flags.${MODULE_ID}.${key}`] = foundry.utils.deepClone(moduleFlags[key]);
+    }
+    await keep.update(update, {
+      characterBuilderValidationRepair: true,
+      characterBuilderValidationProgressionProjection: true
+    });
+
+    const deleteIds = duplicates.map(spell => spell.id);
+    const owner = actor.items.get(issue.data?.ownerId);
+    const advancementId = issue.data?.advancementId;
+    const configuredUuid = issue.data?.configuredUuid ?? issue.data?.resolvedUuid;
+    const rawAdvancement = owner?.toObject().system?.advancement?.[advancementId] ?? null;
+    if (owner && advancementId && rawAdvancement && configuredUuid) {
+      const added = foundry.utils.deepClone(rawAdvancement.value?.added ?? {});
+      for (const id of deleteIds) {
+        if (Object.hasOwn(added, id)) added[`-=${id}`] = null;
+      }
+      added[keep.id] = configuredUuid;
+      if (typeof owner.updateAdvancement === "function") {
+        await owner.updateAdvancement(advancementId, { "value.added": added });
+      } else {
+        await owner.update({ [`system.advancement.${advancementId}.value.added`]: added }, {
+          characterBuilderValidationRepair: true,
+          characterBuilderValidationProgressionProjection: true
+        });
+      }
+      const persisted = owner.toObject().system?.advancement?.[advancementId]?.value?.added ?? {};
+      if (deleteIds.some(id => Object.hasOwn(persisted, id)) || persisted[keep.id] !== configuredUuid) {
+        throw new Error(`The native ItemGrant ledger for ${keep.name} could not be reconciled to the enriched survivor.`);
+      }
+    }
+
+    await actor.deleteEmbeddedDocuments("Item", deleteIds, {
+      deleteContents: true,
+      characterBuilderValidationRepair: true
+    });
+    return {
+      status: "repaired",
+      issueId: issue.id,
+      title: issue.title,
+      message: `Kept the native enriched ${keep.name} and removed ${deleteIds.length} redundant normal class cop${deleteIds.length === 1 ? "y" : "ies"}.`,
+      deletedItemIds: deleteIds
     };
   }
 
@@ -1191,20 +1500,162 @@ export class CharacterValidationProgressionService {
     })[0];
   }
 
-  static #applyGrantSpellConfiguration(data, sourceOwner, sourceAdvancement, sourceAdvancementId, owner = null) {
-    if (data?.type !== "spell") return;
-    const raw = sourceOwner?.toObject?.().system?.advancement?.[sourceAdvancementId];
-    const spellConfig = raw?.configuration?.spell ?? {};
-    const abilities = Array.isArray(spellConfig.ability) ? spellConfig.ability : this.#collectionValues(spellConfig.ability);
-    if (abilities[0]) data.system.ability = abilities[0];
-    if (spellConfig.method) data.system.method = spellConfig.method;
-    if (owner?.system?.identifier) data.system.sourceItem = `${owner.type}:${owner.system.identifier}`;
-    data.system.prepared = SpellPreparationPolicyService.resolve({
-      level: data.system?.level,
-      explicitPrepared: spellConfig.prepared,
-      alwaysPrepared: Number(spellConfig.prepared) === SpellPreparationPolicyService.ALWAYS_PREPARED,
-      category: "native-item-grant"
-    });
+  static async #nativeSpellGrantMechanicsStatus(spell, {
+    sourceAdvancement,
+    sourceDocument,
+    sourceUuid,
+    owner = null,
+    localAdvancement = null
+  } = {}) {
+    const rawAdvancement = sourceAdvancement?.toObject?.() ?? sourceAdvancement ?? {};
+    const spellConfig = rawAdvancement?.configuration?.spell ?? {};
+    const uses = spellConfig.uses ?? {};
+    const maximum = String(uses.max ?? "").trim();
+    const period = String(uses.per ?? "").trim();
+    const augmenting = Boolean(maximum && maximum !== "0" && period);
+    if (!augmenting) return { augmenting: false, complete: true, missing: [] };
+
+    // Build the expected Item from a clean source through the same D&D5e Spell
+    // Configuration projection used by ItemGrantAdvancement.apply(). Comparing
+    // against that projection keeps this validator generic across free-cast,
+    // require-slot, and future source-authored Activity shapes.
+    const expected = typeof sourceAdvancement?.configuration?.spell?.applySpellChanges === "function"
+      ? await NativeSpellGrantProjectionService.materialize({
+          sourceAdvancement,
+          sourceUuid,
+          sourceItem: sourceDocument,
+          owner,
+          localAdvancement
+        })
+      : null;
+
+    const missing = [];
+    const actualRaw = spell.toObject();
+    const actualUses = actualRaw.system?.uses ?? {};
+    const expectedUses = expected?.system?.uses ?? null;
+    if (expectedUses) {
+      if (String(actualUses.max ?? "").trim() !== String(expectedUses.max ?? "").trim()) missing.push("uses.max");
+      const expectedRecovery = Array.isArray(expectedUses.recovery) ? expectedUses.recovery : [];
+      const actualRecovery = Array.isArray(actualUses.recovery) ? actualUses.recovery : [];
+      for (const row of expectedRecovery) {
+        if (!actualRecovery.some(candidate =>
+          String(candidate?.period ?? "") === String(row?.period ?? "")
+          && String(candidate?.type ?? "") === String(row?.type ?? "")
+        )) missing.push(`uses.recovery:${row?.period ?? "unknown"}`);
+      }
+    } else {
+      if (String(actualUses.max ?? "").trim() !== maximum) missing.push("uses.max");
+      const recovery = Array.isArray(actualUses.recovery) ? actualUses.recovery : [];
+      if (!recovery.some(row => String(row?.period ?? "") === period)) missing.push(`uses.recovery:${period}`);
+    }
+
+    for (const key of ["method", "prepared", "sourceItem"]) {
+      const expectedValue = expected?.system?.[key];
+      if (expectedValue === undefined || expectedValue === null || expectedValue === "") continue;
+      if (String(actualRaw.system?.[key] ?? "") !== String(expectedValue)) missing.push(key);
+    }
+    if (expected?.system?.ability) {
+      const actualAbility = String(actualRaw.system?.ability ?? "");
+      if (actualAbility && actualAbility !== String(expected.system.ability)) missing.push("ability");
+    }
+
+    const actualActivities = actualRaw.system?.activities ?? {};
+    const expectedActivities = expected?.system?.activities
+      ?? sourceDocument?.toObject?.().system?.activities
+      ?? sourceDocument?.system?.activities
+      ?? {};
+
+    for (const [id, expectedActivity] of Object.entries(expectedActivities)) {
+      if (String(expectedActivity?.type ?? "") === "forward") {
+        const forwardedId = String(expectedActivity?.activity?.id ?? "");
+        const hasForward = Object.values(actualActivities).some(activity =>
+          String(activity?.type ?? "") === "forward"
+          && String(activity?.activity?.id ?? "") === forwardedId
+          && this.#hasRequiredItemUseTargets(activity, expectedActivity)
+        );
+        if (!hasForward) missing.push(`free-cast:${forwardedId || id}`);
+        continue;
+      }
+
+      const actualActivity = actualActivities[id];
+      if (!actualActivity) {
+        missing.push(`activity:${id}`);
+        continue;
+      }
+      if (!this.#hasRequiredItemUseTargets(actualActivity, expectedActivity)) {
+        missing.push(`item-use:${id}`);
+      }
+    }
+
+    return { augmenting: true, complete: missing.length === 0, missing: [...new Set(missing)] };
+  }
+
+  static #hasRequiredItemUseTargets(actual, expected) {
+    const required = (expected?.consumption?.targets ?? [])
+      .filter(target => String(target?.type ?? "") === "itemUses");
+    if (!required.length) return true;
+    const actualTargets = (actual?.consumption?.targets ?? [])
+      .filter(target => String(target?.type ?? "") === "itemUses");
+    return required.every(target => actualTargets.some(candidate =>
+      String(candidate?.target ?? "") === String(target?.target ?? "")
+      && String(candidate?.value ?? "") === String(target?.value ?? "")
+    ));
+  }
+
+  static #activityConsumesItemUse(activity) {
+    return (activity?.consumption?.targets ?? []).some(target =>
+      String(target?.type ?? "") === "itemUses" && Number(target?.value ?? 1) > 0
+    );
+  }
+
+  static #normalClassAcquisition(spell, actor, classIdentifier) {
+    if (!spell || spell.type !== "spell" || !classIdentifier) return null;
+    const flags = spell.flags?.[MODULE_ID] ?? {};
+    const classItem = actor.items.find(item => item.type === "class" && item.system?.identifier === classIdentifier);
+    if (flags.classSpellAccess === true && (flags.classIdentifier === classIdentifier || flags.classItemId === classItem?.id)) {
+      return {
+        type: "class-spell-access",
+        classIdentifier,
+        classItemId: flags.classItemId ?? classItem?.id ?? null,
+        accessModel: flags.accessModel ?? null,
+        category: flags.category ?? null
+      };
+    }
+    const levelUp = flags.levelUpSpell;
+    if (levelUp?.classIdentifier === classIdentifier && !levelUp?.featureItemId) {
+      return {
+        type: "level-up-spell",
+        classIdentifier,
+        classItemId: levelUp.classItemId ?? classItem?.id ?? null,
+        accessModel: levelUp.accessModel ?? null,
+        category: levelUp.category ?? null,
+        transactionId: levelUp.transactionId ?? null
+      };
+    }
+    const reconciliation = flags.alwaysPreparedReconciliation?.normalAcquisition;
+    if (reconciliation?.classIdentifier === classIdentifier) return foundry.utils.deepClone(reconciliation);
+
+    const featureOwners = flags.featureSpellOwners ?? [];
+    const advancementOrigin = String(spell.getFlag?.("dnd5e", "advancementOrigin") ?? "");
+    if (!featureOwners.length && !advancementOrigin && String(spell.system?.sourceItem ?? "") === `class:${classIdentifier}`) {
+      return {
+        type: "native-class-spell",
+        classIdentifier,
+        classItemId: classItem?.id ?? null,
+        accessModel: null,
+        category: null
+      };
+    }
+    return null;
+  }
+
+  static #compatibleSpellCasting(left, right) {
+    const leftMethod = String(left?.system?.method ?? "spell");
+    const rightMethod = String(right?.system?.method ?? "spell");
+    if (leftMethod !== rightMethod) return false;
+    const leftAbility = String(left?.system?.ability ?? "");
+    const rightAbility = String(right?.system?.ability ?? "");
+    return !(leftAbility && rightAbility && leftAbility !== rightAbility);
   }
 
   static #classIdentifier(owner, actor) {

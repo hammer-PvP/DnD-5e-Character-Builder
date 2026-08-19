@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
 export const MODULE_VERSION = "0.9.9u";
-export const MODULE_BUILD = "community-beta-099u-integrity-runtime-inputs-merged-grant-ledger";
+export const MODULE_BUILD = "community-beta-099u-v2-native-grant-projection-summon-guard";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -157,6 +157,13 @@ export const RULES_ASSISTANCE_DEFINITIONS = Object.freeze([
     label: "Temporary Transformation Actor Cleanup",
     description: "After a player returns from a native D&D5e transformation, asks the active GM to remove only the temporary Actor documents proven to belong to that transformation chain. Original characters and source-form Actors are never removed.",
     tag: "Maintenance"
+  }),
+  Object.freeze({
+    key: "summonProfileLevelGuard",
+    ruleId: "summon-profile-level-guard",
+    label: "Summon Profile Level Guard",
+    description: "Blocks a native Summon Activity before consumption when none of its source-authored summon profiles is legal at the effective spell/feature level.",
+    tag: "Usage Guard"
   })
 ]);
 
