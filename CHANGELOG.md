@@ -1,19 +1,8 @@
 # Changelog
 
-## 0.9.9u v2
-
-- Fixed Paladin 1 → 2 Always Prepared reconciliation when native ItemGrant ledger redirection could fail with `could not be redirected cleanly`. Preparation-only redirects now use the D&D5e Advancement update shape instead of flattened nested deletion paths.
-- Changed augmenting Always Prepared reconciliation to preserve the **native D&D5e enriched grant document** as the physical survivor. Normal same-class copies are removed only after their Character Builder acquisition provenance is folded into the enriched spell. This preserves source-authored normal Activities, use pools/recovery, and native free-cast Forward Activities verbatim for patterns such as Paladin's Smite / Divine Smite and Faithful Steed / Find Steed.
-- Kept independent spell acquisitions separate. Same spell identity alone is never a deduplication signal; other-class, Species, Feat, Item, or mechanically distinct acquisitions remain independent.
-- Upgraded clone-first Character Validation spell restoration to use D&D5e's native Advancement Spell Configuration projection (`configuration.spell.applySpellChanges`) from a clean source. Missing granted spells now return with the same method, Always Prepared state, sourceItem, uses/recovery, and free-cast Activity projection that native ItemGrant application creates.
-- Added Validator repair for already-present native grants whose free-cast/use projection is incomplete, including incomplete `validationRestore` copies created by earlier validation. Current `uses.spent` is preserved and missing Forward Activities are added idempotently rather than reapplying native changes to the live Item.
-- Added acquisition-aware Validator consolidation for a native enriched Always Prepared grant plus a redundant normal **same-class** copy. The enriched grant survives; unrelated duplicate identities such as Wizard + Species + Feat acquisitions are not collapsed.
-- Extended structural `Advancement.value.added` restoration so a deleted spell still recorded by an ItemGrant is rebuilt through the same native Spell Configuration projection before the original embedded Item ID is restored.
-- Added optional **Summon Profile Level Guard** under Rules Automation Assistance. At `dnd5e.preActivityConsumption`, native Summon Activities with source-authored profile level limits are blocked when `availableProfiles` is empty at the effective level, preventing slot/use consumption before an invalid summon. The rule is data-driven and also covers constrained Summons reached through native free-cast Forward Activities.
-- Internal manifest/module version remains `0.9.9u` for this v2 working package, as requested; the build marker identifies the v2 code line.
-
 ## 0.9.9u
 
+- **v2 validation hotfix:** corrected preparation-only Always Prepared ItemGrant redirection (first exposed by Oath of Devotion at Paladin 2 → 3). `Item5e.updateAdvancement()` now receives a properly nested Advancement payload instead of a flattened `"value.added"` key, with a migration-safe full-collection fallback using D&D5e's own `system.==advancement` replacement path if the deletion operator is not consumed. This applies generically to class/subclass preparation-only grants.
 - Fixed Player Character Sheet Integrity incorrectly treating D&D5e Activity Usage dialogs as embedded Item sheets. Protected players can again choose legitimate runtime parameters such as spell **Cast at Level / Upcast**, Lay on Hands healing amount, scaling values, and native consumption choices while direct sheet/resource editing remains protected.
 - Kept the integrity boundary UI-scoped: native D&D5e consumption/recovery and authorized programmatic changes from gameplay integrations remain allowed; only direct structural/counter manipulation on the protected sheet is blocked.
 - Fixed native Always Prepared spell consolidation ledger cleanup. Redirecting an ItemGrant to an existing canonical spell now uses Foundry's explicit nested-key deletion semantics, preventing the removed duplicate Item ID from surviving in `Advancement.value.added`.

@@ -935,27 +935,57 @@ export class AlwaysPreparedSpellReconciliationService {
     if (!raw) throw new Error(`The ItemGrant Advancement ${receipt.advancementId} no longer exists on ${owner.name}.`);
 
     // D&D5e's own ItemGrant reversal mutates `value.added` by placing the
-    // Foundry deletion operator *inside* the added object. Updating flattened
-    // child paths bypasses the Advancement DataModel in 5.3.3 and can leave the
-    // stale key behind. Route the exact native-shaped update through Item5e's
-    // Advancement API whenever available.
+    // Foundry deletion operator *inside* the added object. Item5e.updateAdvancement
+    // expects the partial Advancement document itself, not flattened child keys
+    // nested inside that object. Passing { "value.added": ... } therefore does
+    // not reliably reach the Advancement DataModel (the first live preparation-
+    // only subclass grant exposed this at Paladin 2 -> 3).
     const added = foundry.utils.deepClone(raw.value?.added ?? {});
     added[`-=${duplicateId}`] = null;
     added[canonicalId] = receipt.configuredUuid;
+    const nextValue = foundry.utils.deepClone(raw.value ?? {});
+    nextValue.added = added;
 
     if (typeof owner.updateAdvancement === "function") {
       await owner.updateAdvancement(receipt.advancementId, {
-        "value.added": added
+        value: nextValue
       });
     } else {
       await owner.update({
-        [`system.advancement.${receipt.advancementId}.value.added`]: added
+        [`system.advancement.${receipt.advancementId}.value`]: nextValue
       }, {
         characterBuilderAlwaysPreparedReconciliation: true
       });
     }
 
-    const persisted = owner.toObject().system?.advancement?.[receipt.advancementId]?.value?.added ?? {};
+    let persisted = owner.toObject().system?.advancement?.[receipt.advancementId]?.value?.added ?? {};
+
+    // Be defensive around migrated/legacy Advancement collection shapes. If the
+    // normal DataModel update did not consume the nested deletion operator,
+    // replace the complete advancement mapping with the exact desired snapshot.
+    // D&D5e itself uses `system.==advancement` for this migration-safe path.
+    if (Object.hasOwn(persisted, duplicateId) || persisted[canonicalId] !== receipt.configuredUuid) {
+      const advancements = foundry.utils.deepClone(owner.toObject().system?.advancement ?? {});
+      const target = advancements?.[receipt.advancementId];
+      if (!target) {
+        throw new Error(`The ItemGrant Advancement ${receipt.advancementId} no longer exists on ${owner.name}.`);
+      }
+      const cleanAdded = foundry.utils.deepClone(target.value?.added ?? raw.value?.added ?? {});
+      delete cleanAdded[duplicateId];
+      delete cleanAdded[`-=${duplicateId}`];
+      cleanAdded[canonicalId] = receipt.configuredUuid;
+      target.value = {
+        ...(foundry.utils.deepClone(target.value ?? {})),
+        added: cleanAdded
+      };
+      await owner.update({
+        "system.==advancement": advancements
+      }, {
+        characterBuilderAlwaysPreparedReconciliation: true
+      });
+      persisted = owner.toObject().system?.advancement?.[receipt.advancementId]?.value?.added ?? {};
+    }
+
     if (Object.hasOwn(persisted, duplicateId) || persisted[canonicalId] !== receipt.configuredUuid) {
       throw new Error(`The ItemGrant Advancement ${receipt.advancementId} on ${owner.name} could not be redirected cleanly to ${canonicalId}.`);
     }
