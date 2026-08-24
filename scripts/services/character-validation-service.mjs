@@ -39,7 +39,7 @@ export class CharacterValidationService {
     const parentValidation = foundry.utils.deepClone(sourceActor.getFlag(MODULE_ID, VALIDATION_FLAG) ?? null);
     const rootActorUuid = parentValidation?.rootActorUuid ?? sourceActor.uuid;
     const rootActor = await fromUuid(rootActorUuid).catch(() => null) ?? sourceActor;
-    const rootName = String(rootActor?.name ?? sourceActor.name ?? "Character").trim();
+    const rootName = this.#baseReviewName(rootActor?.name ?? sourceActor.name ?? "Character");
     const revision = this.#nextRevision(rootActorUuid);
     const reviewName = this.#reviewName(rootName, revision);
 
@@ -314,8 +314,18 @@ export class CharacterValidationService {
     return max + 1;
   }
 
+  static #baseReviewName(name) {
+    let base = String(name ?? "Character").trim() || "Character";
+    // Validation copies may outlive their original Actor. Normalize both the
+    // legacy Portuguese suffix and the current English suffix so revalidating a
+    // copy never produces a chain such as "Validated 1 - Validated 2".
+    const suffix = /\s+-\s+(?:Validated|Revisado)(?:\s+\d+)?\s*$/i;
+    while (suffix.test(base)) base = base.replace(suffix, "").trim();
+    return base || "Character";
+  }
+
   static #reviewName(rootName, revision) {
-    return revision <= 1 ? `${rootName} - Revisado` : `${rootName} - Revisado ${revision}`;
+    return `${this.#baseReviewName(rootName)} - Validated ${Math.max(1, Number(revision ?? 1))}`;
   }
 
   static async #scanBrokenActivityEffects(actor, registry) {
@@ -516,7 +526,7 @@ export class CharacterValidationService {
     data.flags.dnd5e ??= {};
     data.flags.dnd5e.sourceId = sourceUuid;
     data.flags.dnd5e.advancementOrigin = `${owner.id}.${issue.data.advancementId}`;
-    data.flags.dnd5e.advancementRoot = owner.getFlag?.("dnd5e", "advancementRoot") ?? `${owner.id}.${issue.data.advancementId}`;
+    data.flags.dnd5e.advancementRoot = owner.getFlag?.("dnd5e", "advancementRoot") ?? owner.getFlag?.("dnd5e", "advancementOrigin") ?? `${owner.id}.${issue.data.advancementId}`;
     data.flags[MODULE_ID] ??= {};
     data.flags[MODULE_ID].validationRestore = {
       restoredAt: Date.now(),

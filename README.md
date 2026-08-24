@@ -178,7 +178,9 @@ The merge is intentionally conservative. It requires the same canonical spell so
 
 ## Character Validation
 
-Game Masters can right-click a Player Character in the Actor Directory and choose **Validate Character**. The tool always creates a revised copy first (`<Name> - Revisado`, then numbered revisions) and never modifies the original Actor.
+Game Masters can right-click a Player Character in the Actor Directory and choose **Validate Character**. The tool always creates a revised copy first (`<Name> - Validated 1`, then `Validated 2`, `Validated 3`, and so on) and never modifies the original Actor. Revalidating a validation copy keeps the original character name and advances the validation number instead of stacking suffixes.
+
+Character Validator is a secondary integrity and migration safety net, not a required completion step for Character Builder. A healthy character created and progressed entirely through Character Builder should normally require no Validator repairs; findings on such a character should be treated as evidence to audit the owning primary workflow rather than as a reason to rely on post-processing.
 
 The Validator treats Character Builder data as read-only evidence: it may consult source snapshots, progression rules, choice badges, history, provenance, and canonical enabled sources, but it does not edit Character Builder settings, compendiums, registries, templates, or runtime rules. Repairs are limited to the revised Actor and are classified as deterministic restore, metadata/state reconciliation, guided native choice replay, or review-only when provenance is ambiguous.
 

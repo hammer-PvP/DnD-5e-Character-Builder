@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.9v
+
+- Hardened **Character Validator** naming. Every validation copy now uses the English `<Character Name> - Validated N` convention, including the first pass, and revalidating an existing validation copy advances the counter without stacking `Validated` or legacy `Revisado` suffixes.
+- Made Trait/language validation semantically canonical instead of category-string-sensitive. Existing legal language choices such as `languages:exotic:infernal` now satisfy the same mechanical language entitlement even if another reconstruction path would group the language differently, preventing duplicate native Advancement choices and validation links.
+- Hardened nested native spell-grant provenance. `advancementOrigin` remains the immediate ItemGrant while `advancementRoot` preserves a valid outer Advancement ancestor; the Validator no longer flattens a correct nested grant chain merely to normalize module metadata.
+- Made `featureSpellOwners` identity structural rather than presentation-label based. Validator reconciliation of the same owner/Advancement can enrich missing metadata without creating a second owner or relabeling/re-stamping the proven acquisition solely because feature/category labels differ.
+- Fixed multiclass ItemGrant summary ownership so advancing one class to class level N no longer re-stamps existing grants owned by a different class that happened to unlock at the same numeric class level. Actor-wide mandatory-grant integrity checking remains intact.
+- Restored the native D&D5e **Currency Manager** on protected Player Character and container sheets. Direct currency fields remain read-only, while the injected control now opens D&D5e's own Currency Manager for authorized transfers instead of rendering as an unbound button under the global sheet lock.
+- Preserved conservative Validator behavior, including legitimate deterministic stale self-reference rebinding. This patch does not add Weapon Mastery chat assistance and does not patch source-authored Clairvoyant Combatant or Hex (Powerful) mechanics.
+
 ## 0.9.9u
 
 - **v2 validation hotfix:** corrected preparation-only Always Prepared ItemGrant redirection (first exposed by Oath of Devotion at Paladin 2 → 3). `Item5e.updateAdvancement()` now receives a properly nested Advancement payload instead of a flattened `"value.added"` key, with a migration-safe full-collection fallback using D&D5e's own `system.==advancement` replacement path if the deletion operator is not consumed. This applies generically to class/subclass preparation-only grants.

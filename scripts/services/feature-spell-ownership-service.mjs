@@ -138,13 +138,64 @@ export class FeatureSpellOwnershipService {
 
   static #mergeOwner(existing, record) {
     const key = this.#ownerKey(record);
+    const prior = existing.find(owner => this.#ownerKey(owner) === key) ?? null;
     const rows = existing.filter(owner => this.#ownerKey(owner) !== key);
-    rows.push(foundry.utils.deepClone(record));
+    const next = foundry.utils.deepClone(record);
+
+    if (prior) {
+      // Validation is a repair observation, not a new acquisition. Preserve
+      // historical acquisition fields when the Validator re-observes a proven
+      // owner. Normal progression/runtime maintenance remains free to record a
+      // legitimate new configuration transaction for that same owner.
+      if (record.validationReconciled) {
+        for (const field of [
+          "transactionId", "acquiredAtCharacterLevel",
+          "acquiredAtClassLevel", "previousPrepared"
+        ]) {
+          if (prior[field] !== undefined && prior[field] !== null && prior[field] !== "") next[field] = foundry.utils.deepClone(prior[field]);
+        }
+      }
+
+      // Never discard an established structural pointer just because a later
+      // observer has less context. Missing legacy metadata may still be filled
+      // by the new record.
+      for (const field of [
+        "classIdentifier", "classItemId", "subclassItemId", "featureItemId",
+        "ownerItemId", "advancementId", "sourceUuid", "spellLevel"
+      ]) {
+        const incomingMissing = next[field] === undefined || next[field] === null || next[field] === "";
+        if (incomingMissing && prior[field] !== undefined && prior[field] !== null && prior[field] !== "") {
+          next[field] = foundry.utils.deepClone(prior[field]);
+        }
+      }
+
+      // Validator reconciliation is not permission to rename/reclassify a
+      // proven owner. Runtime maintenance may legitimately update presentation
+      // labels (for example a reconfigured Circle of the Land), so this
+      // preservation is deliberately limited to validation observations.
+      if (record.validationReconciled) {
+        for (const field of ["category", "label"]) {
+          if (prior[field] !== undefined && prior[field] !== null && prior[field] !== "") next[field] = foundry.utils.deepClone(prior[field]);
+        }
+      }
+
+      next.alwaysPrepared = Boolean(prior.alwaysPrepared || next.alwaysPrepared);
+      next.nativeGrant = Boolean(prior.nativeGrant || next.nativeGrant);
+      if (prior.validationReconciled || next.validationReconciled) next.validationReconciled = true;
+    }
+
+    rows.push(next);
     return rows;
   }
 
   static #ownerKey(owner) {
-    return [owner.category, owner.featureItemId, owner.ownerItemId, owner.advancementId].join(":");
+    const structuralOwner = owner.ownerItemId ?? owner.featureItemId ?? owner.subclassItemId ?? owner.classItemId ?? "";
+    const advancementId = owner.advancementId ?? "";
+    if (structuralOwner || advancementId) return `owner:${structuralOwner}:advancement:${advancementId}`;
+    // Legacy records without an embedded owner/grant still need a stable,
+    // non-presentational identity. Source + class is the narrowest safe
+    // fallback and avoids returning to label/category based deduplication.
+    return `fallback:${owner.classIdentifier ?? ""}:${owner.sourceUuid ?? ""}`;
   }
 
   static #featureForTitle(draft, title, owner) {

@@ -503,7 +503,7 @@ export class PlayerSheetIntegrityService {
       button.setAttribute("aria-hidden", "true");
     }
 
-    if (this.ruleEnabled(RULES.CURRENCY)) this.#ensureCurrencyManagerButtons(root);
+    if (this.ruleEnabled(RULES.CURRENCY)) this.#ensureCurrencyManagerButtons(root, actor);
   }
 
   static #applyEmbeddedItemDomProtection(item, root) {
@@ -525,18 +525,36 @@ export class PlayerSheetIntegrityService {
       }
       if (itemLocked) this.#setControlReadOnly(control);
     }
-    if (this.ruleEnabled(RULES.CURRENCY)) this.#ensureCurrencyManagerButtons(root);
+    if (this.ruleEnabled(RULES.CURRENCY)) this.#ensureCurrencyManagerButtons(root, item);
   }
 
-  static #ensureCurrencyManagerButtons(root) {
+  static #ensureCurrencyManagerButtons(root, document) {
+    if (!document?.system?.currency) return;
     for (const section of root.querySelectorAll("section.currency")) {
       if (section.querySelector('[data-action="currency"]')) continue;
       const button = section.ownerDocument.createElement("button");
       button.type = "button";
       button.className = "item-action unbutton always-interactive";
       button.dataset.action = "currency";
+      button.dataset.cbNativeCurrencyManager = "true";
       button.setAttribute("aria-label", game.i18n?.localize?.("DND5E.CurrencyManager.Title") ?? "Currency Manager");
       button.innerHTML = '<i class="fa-solid fa-coins" inert></i>';
+
+      // D&D5e binds inventory-element actions during connectedCallback(). Under
+      // the global protected-sheet lock the native currency control is omitted,
+      // so this replacement is necessarily inserted after that binding pass.
+      // Open the system's own CurrencyManager directly rather than recreating a
+      // transfer workflow or mutating currency through Character Builder.
+      button.addEventListener("click", event => {
+        event.preventDefault();
+        event.stopPropagation();
+        const CurrencyManager = globalThis.dnd5e?.applications?.CurrencyManager;
+        if (!CurrencyManager) {
+          this.#warn("The native D&D5e Currency Manager is unavailable.");
+          return;
+        }
+        new CurrencyManager({ document }).render({ force: true });
+      });
       section.prepend(button);
     }
   }

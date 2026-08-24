@@ -876,7 +876,7 @@ export class CharacterValidationProgressionService {
     data.flags.dnd5e ??= {};
     data.flags.dnd5e.sourceId = issue.data?.resolvedUuid ?? issue.data?.configuredUuid;
     data.flags.dnd5e.advancementOrigin = `${owner.id}.${localAdvancementId}`;
-    data.flags.dnd5e.advancementRoot ??= owner.getFlag?.("dnd5e", "advancementRoot") ?? `${owner.id}.${localAdvancementId}`;
+    data.flags.dnd5e.advancementRoot ??= owner.getFlag?.("dnd5e", "advancementRoot") ?? owner.getFlag?.("dnd5e", "advancementOrigin") ?? `${owner.id}.${localAdvancementId}`;
     data.flags[MODULE_ID] ??= {};
     data.flags[MODULE_ID].validationRestore = {
       restoredAt: Date.now(),

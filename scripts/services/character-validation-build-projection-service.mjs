@@ -550,6 +550,7 @@ export class CharacterValidationBuildProjectionService {
       if (!["ItemGrant", "ItemChoice"].includes(String(sourceAdvancement?.type ?? ""))) continue;
       const advancementId = local?.id ?? sourceAdvancementId;
       const expectedOrigin = `${owner.id}.${advancementId}`;
+      const expectedRoot = this.#expectedGrantRoot(owner, actor, expectedOrigin);
       const mappedRows = this.#flattenAddedMappings(local?.advancement?.value?.added ?? {});
 
       const expectedRows = [];
@@ -612,6 +613,7 @@ export class CharacterValidationBuildProjectionService {
                   sourceAdvancementId,
                   sourceUuid: expected.uuid,
                   expectedOrigin,
+                  expectedRoot,
                   expectedSourceItem,
                   expectedAlways,
                   entitlementLevel: Number(sourceAdvancement.level ?? 0),
@@ -654,7 +656,7 @@ export class CharacterValidationBuildProjectionService {
         // authoritative Advancement link, so requiring the canonical spell to
         // masquerade as the removed grant copy creates false ownership repairs.
         if (advancementOrigin !== expectedOrigin && !mergedReceipt) missing.push("advancementOrigin");
-        if (advancementRoot !== expectedOrigin && !mergedReceipt) missing.push("advancementRoot");
+        if (advancementRoot !== expectedRoot && !mergedReceipt) missing.push("advancementRoot");
         if (!hasOwner) missing.push("featureSpellOwners");
         if (expectedAlways && Number(spell.system?.prepared ?? -1) !== ALWAYS_PREPARED) missing.push("Always Prepared");
         if (!missing.length) continue;
@@ -673,6 +675,7 @@ export class CharacterValidationBuildProjectionService {
             sourceAdvancementId,
             sourceUuid: expected.uuid,
             expectedOrigin,
+            expectedRoot,
             expectedSourceItem,
             expectedAlways,
             entitlementLevel: Number(sourceAdvancement.level ?? 0)
@@ -698,6 +701,7 @@ export class CharacterValidationBuildProjectionService {
             sourceAdvancementId,
             sourceUuid: expected.uuid,
             expectedOrigin,
+            expectedRoot,
             expectedSourceItem,
             expectedAlways,
             entitlementLevel: Number(sourceAdvancement.level ?? 0)
@@ -763,10 +767,11 @@ export class CharacterValidationBuildProjectionService {
       const requiredRank = sourceAdvancement.configuration?.mode === "expertise" ? 2 : 1;
       const localChosen = this.#collectionValues(local?.advancement?.value?.chosen).map(String).filter(Boolean);
       const badgeChosen = this.#badgeChosenTokens(actor, owner, local?.id ?? sourceAdvancementId, pools, requiredRank);
-      const choiceChosen = [...new Set([
-        ...localChosen.filter(token => !grants.includes(token)),
-        ...badgeChosen.filter(token => !grants.includes(token))
-      ])];
+      const grantKeys = new Set(grants.map(token => this.#traitSemanticKey(token)));
+      const choiceChosen = this.#uniqueTraitTokens([
+        ...localChosen.filter(token => !grantKeys.has(this.#traitSemanticKey(token))),
+        ...badgeChosen.filter(token => !grantKeys.has(this.#traitSemanticKey(token)))
+      ]);
       entitlements.push({
         owner, source, sourceAdvancementId, sourceAdvancement, local,
         grants, pools, expected, requiredRank, localChosen, badgeChosen, choiceChosen
@@ -828,8 +833,11 @@ export class CharacterValidationBuildProjectionService {
     // evidence. Badges can recover a choice ledger lost by older materializers
     // without changing the already-correct mechanical state.
     for (const entitlement of entitlements) {
-      const legalLocal = new Set(entitlement.localChosen.filter(token => this.#traitTokenMatchesPools(token, entitlement.pools)));
-      const badgeOnly = entitlement.badgeChosen.filter(token => this.#traitTokenMatchesPools(token, entitlement.pools) && !legalLocal.has(token));
+      const legalLocal = new Set(entitlement.localChosen
+        .filter(token => this.#traitTokenMatchesPools(token, entitlement.pools))
+        .map(token => this.#traitSemanticKey(token)));
+      const badgeOnly = entitlement.badgeChosen.filter(token => this.#traitTokenMatchesPools(token, entitlement.pools)
+        && !legalLocal.has(this.#traitSemanticKey(token)));
       const recoverableBadgeTokens = [];
 
       for (const token of entitlement.choiceChosen) {
@@ -1172,7 +1180,7 @@ export class CharacterValidationBuildProjectionService {
       itemData.flags.dnd5e ??= {};
       itemData.flags.dnd5e.sourceId = sourceSpell.uuid;
       itemData.flags.dnd5e.advancementOrigin = issue.data?.expectedOrigin;
-      itemData.flags.dnd5e.advancementRoot = issue.data?.expectedOrigin;
+      itemData.flags.dnd5e.advancementRoot = issue.data?.expectedRoot ?? issue.data?.expectedOrigin;
       const [created] = await actor.createEmbeddedDocuments("Item", [itemData], {
         characterBuilderValidationRepair: true,
         characterBuilderValidationBuildProjection: true
@@ -1212,15 +1220,26 @@ export class CharacterValidationBuildProjectionService {
     await FeatureSpellOwnershipService.addOwner(spell, ownerRecord, {
       prepared: issue.data?.expectedAlways ? ALWAYS_PREPARED : null
     });
-    await spell.update({
-      ...(issue.data?.expectedSourceItem ? { "system.sourceItem": issue.data.expectedSourceItem } : {}),
-      "flags.dnd5e.advancementOrigin": issue.data?.expectedOrigin,
-      "flags.dnd5e.advancementRoot": issue.data?.expectedOrigin,
-      ...(issue.data?.sourceUuid ? { "flags.dnd5e.sourceId": issue.data.sourceUuid } : {})
-    }, {
-      characterBuilderValidationRepair: true,
-      characterBuilderValidationBuildProjection: true
-    });
+    const updates = {};
+    if (issue.data?.expectedSourceItem && String(spell.system?.sourceItem ?? "") !== String(issue.data.expectedSourceItem)) {
+      updates["system.sourceItem"] = issue.data.expectedSourceItem;
+    }
+    if (issue.data?.expectedOrigin && String(spell.getFlag?.("dnd5e", "advancementOrigin") ?? "") !== String(issue.data.expectedOrigin)) {
+      updates["flags.dnd5e.advancementOrigin"] = issue.data.expectedOrigin;
+    }
+    const expectedRoot = issue.data?.expectedRoot ?? issue.data?.expectedOrigin;
+    if (expectedRoot && String(spell.getFlag?.("dnd5e", "advancementRoot") ?? "") !== String(expectedRoot)) {
+      updates["flags.dnd5e.advancementRoot"] = expectedRoot;
+    }
+    if (issue.data?.sourceUuid && String(spell.getFlag?.("dnd5e", "sourceId") ?? "") !== String(issue.data.sourceUuid)) {
+      updates["flags.dnd5e.sourceId"] = issue.data.sourceUuid;
+    }
+    if (Object.keys(updates).length) {
+      await spell.update(updates, {
+        characterBuilderValidationRepair: true,
+        characterBuilderValidationBuildProjection: true
+      });
+    }
     return { status: "repaired", issueId: issue.id, title: issue.title, message: `Reconciled ${spell.name} ownership to ${owner.name}.` };
   }
 
@@ -1240,7 +1259,13 @@ export class CharacterValidationBuildProjectionService {
     const raw = owner.toObject().system?.advancement?.[localAdvancementId];
     if (!raw) throw new Error("The Trait Advancement could not be reconstructed on the revised Actor.");
     const chosen = this.#collectionValues(raw.value?.chosen).map(String).filter(Boolean);
-    for (const token of tokens) if (!chosen.includes(token)) chosen.push(token);
+    const chosenKeys = new Set(chosen.map(token => this.#traitSemanticKey(token)));
+    for (const token of tokens) {
+      const key = this.#traitSemanticKey(token);
+      if (chosenKeys.has(key)) continue;
+      chosen.push(token);
+      chosenKeys.add(key);
+    }
     await owner.update({ [`system.advancement.${localAdvancementId}.value.chosen`]: chosen }, {
       characterBuilderValidationRepair: true,
       characterBuilderValidationBuildProjection: true
@@ -1279,7 +1304,7 @@ export class CharacterValidationBuildProjectionService {
       const raw = owner.toObject().system?.advancement?.[localAdvancementId];
       if (!raw) throw new Error("The Trait Advancement could not be reconstructed on the revised Actor.");
       const chosen = this.#collectionValues(raw.value?.chosen).map(String).filter(Boolean);
-      if (!chosen.includes(candidate.token)) chosen.push(candidate.token);
+      if (!chosen.some(token => this.#traitSemanticKey(token) === this.#traitSemanticKey(candidate.token))) chosen.push(candidate.token);
       await owner.update({ [`system.advancement.${localAdvancementId}.value.chosen`]: chosen }, {
         characterBuilderValidationRepair: true,
         characterBuilderValidationBuildProjection: true
@@ -1483,8 +1508,14 @@ export class CharacterValidationBuildProjectionService {
 
   static async #recordValidationLink(owner, row) {
     const existing = foundry.utils.deepClone(owner.getFlag?.(MODULE_ID, "validationEntitlementLinks") ?? []);
-    const key = `${row.kind}:${row.advancementId}:${row.value}`;
-    const filtered = existing.filter(entry => entry?.key !== key);
+    const identityValue = row.kind === "trait" ? this.#traitSemanticKey(row.value) : String(row.value ?? "");
+    const key = `${row.kind}:${row.advancementId}:${identityValue}`;
+    const filtered = existing.filter(entry => {
+      if (entry?.key === key) return false;
+      if (row.kind !== "trait" || entry?.kind !== "trait") return true;
+      if (String(entry?.advancementId ?? "") !== String(row.advancementId ?? "")) return true;
+      return this.#traitSemanticKey(entry?.value) !== identityValue;
+    });
     filtered.push({ key, ...row, reconciledAt: Date.now(), reconciledBy: game.user?.id ?? null });
     await owner.setFlag(MODULE_ID, "validationEntitlementLinks", filtered);
   }
@@ -1738,7 +1769,7 @@ export class CharacterValidationBuildProjectionService {
     const rows = [];
     for (const [key, skill] of Object.entries(actor.system?.skills ?? {})) if (Number(skill?.value ?? 0) > 0) rows.push(`skills:${key}`);
     for (const [key, ability] of Object.entries(actor.system?.abilities ?? {})) if (Number(ability?.proficient ?? 0) > 0) rows.push(`saves:${key}`);
-    for (const language of this.#collectionValues(actor.system?.traits?.languages?.value)) rows.push(`languages:standard:${language}`);
+    for (const language of this.#collectionValues(actor.system?.traits?.languages?.value)) rows.push(this.#languageTraitToken(language));
     for (const weapon of this.#collectionValues(actor.system?.traits?.weaponProf?.value)) rows.push(`weapon:${weapon}`);
     for (const armor of this.#collectionValues(actor.system?.traits?.armorProf?.value)) rows.push(`armor:${armor}`);
     for (const family of ["dr", "di", "dv", "ci"]) {
@@ -1813,6 +1844,25 @@ export class CharacterValidationBuildProjectionService {
     }
   }
 
+  static #languageTraitToken(language) {
+    const key = String(language ?? "").trim();
+    if (!key) return "languages:standard:";
+    const find = (node, path = []) => {
+      for (const [entryKey, entry] of Object.entries(node ?? {})) {
+        // Top-level keys are broad categories (standard/exotic), while nested
+        // objects such as Primordial are themselves valid language identities
+        // even though they also expose dialect children.
+        if (entryKey === key && (path.length || !(entry && typeof entry === "object" && entry.children))) return [...path, entryKey];
+        if (!entry || typeof entry !== "object" || !entry.children) continue;
+        const nested = find(entry.children, [...path, entryKey]);
+        if (nested) return nested;
+      }
+      return null;
+    };
+    const path = find(globalThis.CONFIG?.DND5E?.languages ?? {});
+    return `languages:${(path ?? ["standard", key]).join(":")}`;
+  }
+
   static #traitStorageValue(parts) {
     if (!Array.isArray(parts) || parts.length < 2) return "";
     // Native D&D5e tokens encode specific weapon families as
@@ -1821,14 +1871,28 @@ export class CharacterValidationBuildProjectionService {
     return String(parts.length > 2 ? parts.at(-1) : parts[1]);
   }
 
-  static #traitReservationKey(token, requiredRank = 1) {
+  static #traitSemanticKey(token) {
     const parts = String(token ?? "").split(":");
-    let identity;
-    if (parts[0] === "languages") identity = `languages:${parts.at(-1)}`;
-    else if (parts[0] === "tool") identity = `tool:${parts.at(-1)}`;
-    else if (parts[0] === "weapon" || parts[0] === "armor") identity = `${parts[0]}:${this.#traitStorageValue(parts)}`;
-    else identity = `${parts[0]}:${parts.slice(1).join(":")}`;
-    return `rank:${Math.max(1, Number(requiredRank ?? 1))}:${identity}`;
+    if (parts[0] === "languages") return `languages:${parts.at(-1)}`;
+    if (parts[0] === "tool") return `tool:${parts.at(-1)}`;
+    if (parts[0] === "weapon" || parts[0] === "armor") return `${parts[0]}:${this.#traitStorageValue(parts)}`;
+    return `${parts[0]}:${parts.slice(1).join(":")}`;
+  }
+
+  static #uniqueTraitTokens(tokens = []) {
+    const rows = [];
+    const seen = new Set();
+    for (const token of tokens) {
+      const key = this.#traitSemanticKey(token);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      rows.push(token);
+    }
+    return rows;
+  }
+
+  static #traitReservationKey(token, requiredRank = 1) {
+    return `rank:${Math.max(1, Number(requiredRank ?? 1))}:${this.#traitSemanticKey(token)}`;
   }
 
   static #badgeChosenTokens(actor, owner, advancementId, pools, requiredRank = 1) {
@@ -1864,7 +1928,11 @@ export class CharacterValidationBuildProjectionService {
     };
     if (parts[0] === "skills") return lookup(config.skills?.[key]) ?? this.#title(key);
     if (parts[0] === "saves") return `${lookup(config.abilities?.[key]) ?? this.#title(key)} Saving Throw`;
-    if (parts[0] === "languages") return lookup(config.languages?.[key]) ?? this.#title(key);
+    if (parts[0] === "languages") {
+      let node = config.languages;
+      for (const part of parts.slice(1)) node = node?.[part]?.children ?? node?.[part];
+      return lookup(node) ?? this.#title(key);
+    }
     if (parts[0] === "weapon") return lookup(config.weaponTypes?.[key]) ?? this.#title(key);
     if (parts[0] === "armor") return lookup(config.armorTypes?.[key]) ?? this.#title(key);
     if (["dr", "di", "dv"].includes(parts[0])) return lookup(config.damageTypes?.[key]) ?? this.#title(key);
@@ -1922,6 +1990,19 @@ export class CharacterValidationBuildProjectionService {
       else if (child && typeof child === "object") this.#flattenAddedMappings(child, rows);
     }
     return rows;
+  }
+
+  static #expectedGrantRoot(owner, actor, expectedOrigin) {
+    for (const reference of [owner?.getFlag?.("dnd5e", "advancementRoot"), owner?.getFlag?.("dnd5e", "advancementOrigin")]) {
+      const value = String(reference ?? "").trim();
+      if (!value || value === expectedOrigin) continue;
+      const [itemId, advancementId] = value.split(".");
+      const item = actor.items.get(itemId);
+      if (!item || item.id === owner.id || !advancementId) continue;
+      const raw = item.toObject?.().system?.advancement?.[advancementId];
+      if (raw) return value;
+    }
+    return expectedOrigin;
   }
 
   static #classIdentifier(owner, actor) {

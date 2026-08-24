@@ -170,7 +170,7 @@ export class ItemGrantIntegrityService {
           for (const item of currentFlowRows) await this.#normalizeCurrentGrantSpellItem(item);
 
           const newlyUnlocked = context === "creation"
-            || advancementLevel === Number(resolvedState.targetClassLevel)
+            || this.#advancementUnlockedInCurrentTransaction(owner, advancementLevel, draft, resolvedState, context)
             || rows.some(item => !sourceItemIds.has(item.id));
           if (newlyUnlocked) {
             for (const item of rows) {
@@ -353,6 +353,47 @@ export class ItemGrantIntegrityService {
     return Math.max(context === "creation" ? 1 : 0, total);
   }
 
+
+  static #advancementUnlockedInCurrentTransaction(owner, advancementLevel, draft, state, context) {
+    if (context === "creation") return true;
+    const level = Number(advancementLevel ?? 0);
+    if (!level) return false;
+
+    const owningClass = this.#owningClass(owner, draft);
+    if (owningClass) {
+      const selectedClass = state?.selectedClassId ? draft.items.get(state.selectedClassId) : null;
+      const selectedIdentifier = String(state?.selectedClassIdentifier ?? selectedClass?.system?.identifier ?? "");
+      const sameClass = owningClass.id === selectedClass?.id
+        || (selectedIdentifier && String(owningClass.system?.identifier ?? "") === selectedIdentifier);
+      if (!sameClass) return false;
+      const from = Number(state?.sourceClassLevel ?? 0);
+      const to = Number(state?.targetClassLevel ?? owningClass.system?.levels ?? 0);
+      return level > from && level <= to;
+    }
+
+    // Non-class-rooted progression (Species, Background, stand-alone Feats,
+    // etc.) follows total character level. This keeps Actor-wide integrity
+    // repair intact without confusing an unrelated class level N with an old
+    // grant that also happened to unlock at level N.
+    const from = Number(state?.sourceCharacterLevel ?? 0);
+    const to = Number(state?.targetCharacterLevel ?? draft.system?.details?.level ?? 0);
+    return level > from && level <= to;
+  }
+
+  static #owningClass(owner, draft, visited = new Set()) {
+    if (!owner || visited.has(owner.id)) return null;
+    visited.add(owner.id);
+    if (owner.type === "class") return owner;
+    if (owner.type === "subclass") {
+      const identifier = owner.system?.classIdentifier ?? owner.system?.class?.identifier ?? owner.system?.class;
+      return draft.items.find(item => item.type === "class" && item.system?.identifier === identifier) ?? null;
+    }
+    const reference = owner.getFlag?.("dnd5e", "advancementRoot") ?? owner.getFlag?.("dnd5e", "advancementOrigin");
+    const rootId = String(reference ?? "").split(".")[0];
+    const rootItem = rootId ? draft.items.get(rootId) : null;
+    return rootItem && rootItem.id !== owner.id ? this.#owningClass(rootItem, draft, visited) : null;
+  }
+
   static #isGrantInstance(item, origin) {
     if (!item) return false;
     if (item.getFlag("dnd5e", "advancementOrigin") === origin) return true;
@@ -417,6 +458,7 @@ export class ItemGrantIntegrityService {
       data.flags.dnd5e.sourceId = resolvedUuid;
       data.flags.dnd5e.advancementOrigin = `${owner.id}.${advancementId}`;
       data.flags.dnd5e.advancementRoot = owner.getFlag("dnd5e", "advancementRoot")
+        ?? owner.getFlag("dnd5e", "advancementOrigin")
         ?? `${owner.id}.${advancementId}`;
     }
 
@@ -475,6 +517,7 @@ export class ItemGrantIntegrityService {
     data.flags.dnd5e.sourceId = resolvedUuid;
     data.flags.dnd5e.advancementOrigin = `${owner.id}.${advancementId}`;
     data.flags.dnd5e.advancementRoot ??= owner.getFlag("dnd5e", "advancementRoot")
+      ?? owner.getFlag("dnd5e", "advancementOrigin")
       ?? `${owner.id}.${advancementId}`;
     data.flags[MODULE_ID] ??= {};
     data.flags[MODULE_ID].itemGrantInstance = {
