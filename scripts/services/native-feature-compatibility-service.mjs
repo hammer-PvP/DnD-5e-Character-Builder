@@ -41,7 +41,7 @@ export class NativeFeatureCompatibilityService {
     }
   }
 
-  static async reconcileActor(actor, { reason = "manual" } = {}) {
+  static async reconcileActor(actor, { reason = "manual", render = true } = {}) {
     if (!actor || actor.type !== "character") {
       return { checked: 0, updated: 0, reason };
     }
@@ -59,6 +59,7 @@ export class NativeFeatureCompatibilityService {
         if (this.#sameRecovery(current, desired)) continue;
 
         await target.update({ "system.uses.recovery": desired }, {
+          render,
           characterBuilderNativeFeatureCompatibility: true,
           characterBuilderNativeFeatureCompatibilityReason: reason
         });

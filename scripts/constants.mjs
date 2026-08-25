@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.9v";
-export const MODULE_BUILD = "community-beta-099v-validator-sheet-integrity-hardening-r1";
+export const MODULE_VERSION = "0.9.9w";
+export const MODULE_BUILD = "community-beta-099w-level-up-mastery-hardening-r1";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -164,6 +164,13 @@ export const RULES_ASSISTANCE_DEFINITIONS = Object.freeze([
     label: "Summon Profile Level Guard",
     description: "Blocks a native Summon Activity before consumption when none of its source-authored summon profiles is legal at the effective spell/feature level.",
     tag: "Usage Guard"
+  }),
+  Object.freeze({
+    key: "weaponMasteryChatAssistance",
+    ruleId: "weapon-mastery-chat-assistance",
+    label: "Weapon Mastery Chat Assistance",
+    description: "Adds compact native-card mastery links plus deterministic Graze/Cleave damage and Topple DC assistance, without target, turn, or Action Economy tracking.",
+    tag: "Chat Assistance"
   })
 ]);
 

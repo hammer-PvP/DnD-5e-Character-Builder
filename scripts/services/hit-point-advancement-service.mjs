@@ -246,11 +246,16 @@ export class HitPointAdvancementService {
     return true;
   }
 
-  static async clearLockedRoll(actor, { reason = "committed", archive = false } = {}) {
+  static async clearLockedRoll(actor, { reason = "committed", archive = false, render = true } = {}) {
     const lock = this.lockedRoll(actor);
     if (!lock) return;
     if (archive) await this.#archiveReset(actor, lock, reason);
-    await actor.unsetFlag(MODULE_ID, this.LOCK_FLAG);
+    if (render === false) {
+      await actor.update({ [`flags.${MODULE_ID}.-=${this.LOCK_FLAG}`]: null }, {
+        render: false,
+        characterBuilderHitPointLockCleanup: true
+      });
+    } else await actor.unsetFlag(MODULE_ID, this.LOCK_FLAG);
   }
 
   static async #archiveReset(actor, lock, reason) {

@@ -2,6 +2,8 @@ import { MODULE_ID } from "../constants.mjs";
 import { SourceResolver } from "./source-resolver.mjs";
 import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
 
+const TextEditorImplementation = foundry.applications.ux.TextEditor.implementation;
+
 /**
  * Character Builder-owned Sorcerer Metamagic selection and replacement.
  *

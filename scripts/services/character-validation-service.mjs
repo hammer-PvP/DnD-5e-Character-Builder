@@ -3,6 +3,7 @@ import { SourceRegistry } from "./source-registry.mjs";
 import { CharacterValidationProgressionService } from "./character-validation-progression-service.mjs";
 import { NativeSpellGrantProjectionService } from "./native-spell-grant-projection-service.mjs";
 import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.mjs";
+import { InternalActorReferenceRebindingService } from "./internal-actor-reference-rebinding-service.mjs";
 
 const VALIDATION_FLAG = "characterValidation";
 const SCHEMA_VERSION = 1;
@@ -174,133 +175,32 @@ export class CharacterValidationService {
   }
 
   static #scanForeignSelfReferences(actor) {
-    const issues = [];
-    const collect = (value, path = "", rows = []) => {
-      if (typeof value === "string") {
-        const regex = /Actor\.([A-Za-z0-9]{16})\.Item\.([A-Za-z0-9]{16})(?:\.Activity\.([A-Za-z0-9]{16}))?/g;
-        let match;
-        while ((match = regex.exec(value))) {
-          const [, actorId, itemId, activityId] = match;
-          if (actorId === actor.id) continue;
-          const localItem = actor.items.get(itemId);
-          if (!localItem) continue;
-          if (activityId && !localItem.system?.activities?.get?.(activityId)
-            && !localItem.toObject().system?.activities?.[activityId]) continue;
-          rows.push({ path, value, actorId, itemId, activityId: activityId ?? null });
-        }
-        return rows;
-      }
-      if (Array.isArray(value)) {
-        value.forEach((child, index) => collect(child, path ? `${path}.${index}` : String(index), rows));
-        return rows;
-      }
-      if (!value || typeof value !== "object") return rows;
-      for (const [key, child] of Object.entries(value)) collect(child, path ? `${path}.${key}` : key, rows);
-      return rows;
-    };
-
-    const documentRows = [];
-    const actorRaw = actor.toObject();
-    const actorScope = { system: actorRaw.system ?? {}, flags: actorRaw.flags ?? {}, prototypeToken: actorRaw.prototypeToken ?? {} };
-    const actorRefs = collect(actorScope).filter(row => !row.path.startsWith(`flags.${MODULE_ID}.${VALIDATION_FLAG}`));
-    if (actorRefs.length) documentRows.push({ documentType: "Actor", documentId: actor.id, name: actor.name, refs: actorRefs });
-
-    for (const item of actor.items ?? []) {
-      const raw = item.toObject();
-      const refs = collect({ system: raw.system ?? {}, flags: raw.flags ?? {} });
-      if (refs.length) documentRows.push({ documentType: "Item", documentId: item.id, name: item.name, refs });
-      for (const effect of item.effects ?? []) {
-        const effectRaw = effect.toObject();
-        const effectRefs = collect({ origin: effectRaw.origin, description: effectRaw.description, flags: effectRaw.flags ?? {} });
-        if (effectRefs.length) documentRows.push({ documentType: "ItemActiveEffect", documentId: effect.id, parentId: item.id, name: effect.name, refs: effectRefs });
-      }
-    }
-    for (const effect of actor.effects ?? []) {
-      const effectRaw = effect.toObject();
-      const refs = collect({ origin: effectRaw.origin, description: effectRaw.description, flags: effectRaw.flags ?? {} });
-      if (refs.length) documentRows.push({ documentType: "ActorActiveEffect", documentId: effect.id, name: effect.name, refs });
-    }
-
-    for (const row of documentRows) {
-      issues.push({
-        id: `foreign-self-reference:${row.documentType}:${row.parentId ?? actor.id}:${row.documentId}`,
-        kind: "foreign-self-reference",
-        severity: "error",
-        repairable: true,
-        repairMode: "safe",
-        repairLabel: "Rebind to Revised Actor",
-        title: `${row.name} — Stale Actor Reference`,
-        summary: `${row.refs.length} internal reference${row.refs.length === 1 ? " still points" : "s still point"} to another Actor ID even though the referenced embedded document exists on this revised Actor.`,
-        details: "The Validator can replace only the Actor UUID prefix and preserve the embedded Item/Activity IDs.",
-        data: row
-      });
-    }
-    return issues;
+    return InternalActorReferenceRebindingService.scan(actor).map(row => ({
+      id: `foreign-self-reference:${row.documentType}:${row.parentId ?? actor.id}:${row.documentId}`,
+      kind: "foreign-self-reference",
+      severity: "error",
+      repairable: true,
+      repairMode: "safe",
+      repairLabel: "Rebind to Revised Actor",
+      title: `${row.name} — Stale Actor Reference`,
+      summary: `${row.refs.length} internal reference${row.refs.length === 1 ? " still points" : "s still point"} to another Actor ID even though the referenced embedded document exists on this revised Actor.`,
+      details: "The Validator can replace only the Actor UUID prefix and preserve the embedded Item/Activity IDs.",
+      data: row
+    }));
   }
 
   static async #repairForeignSelfReferences(actor, issue) {
     const row = issue.data ?? {};
-    const provenPrefixes = [...new Map((row.refs ?? []).map(ref => {
-      const actorId = String(ref?.actorId ?? "");
-      const itemId = String(ref?.itemId ?? "");
-      if (!actorId || !itemId || actorId === actor.id || !actor.items.get(itemId)) return null;
-      return [`Actor.${actorId}.Item.${itemId}`, `Actor.${actor.id}.Item.${itemId}`];
-    }).filter(Boolean)).entries()];
-    if (!provenPrefixes.length) throw new Error("No provable stale self-reference remains to repair.");
-
-    const replace = value => {
-      if (typeof value !== "string") return value;
-      let result = value;
-      for (const [from, to] of provenPrefixes) result = result.split(from).join(to);
-      return result;
-    };
-    const patchObject = value => {
-      if (typeof value === "string") return replace(value);
-      if (Array.isArray(value)) return value.map(patchObject);
-      if (!value || typeof value !== "object") return value;
-      const result = {};
-      for (const [key, child] of Object.entries(value)) result[key] = patchObject(child);
-      return result;
-    };
-
-    if (row.documentType === "Actor") {
-      const raw = actor.toObject();
-      await actor.update({
-        system: patchObject(raw.system ?? {}),
-        flags: patchObject(raw.flags ?? {}),
-        prototypeToken: patchObject(raw.prototypeToken ?? {})
-      }, { characterBuilderValidationRepair: true });
-    } else if (row.documentType === "Item") {
-      const item = actor.items.get(row.documentId);
-      if (!item) throw new Error("The Item with the stale self-reference no longer exists.");
-      const raw = item.toObject();
-      await item.update({ system: patchObject(raw.system ?? {}), flags: patchObject(raw.flags ?? {}) }, {
-        characterBuilderValidationRepair: true
-      });
-    } else if (row.documentType === "ItemActiveEffect") {
-      const effect = actor.items.get(row.parentId)?.effects?.get?.(row.documentId);
-      if (!effect) throw new Error("The embedded Active Effect with the stale self-reference no longer exists.");
-      const raw = effect.toObject();
-      await effect.update({
-        origin: replace(raw.origin),
-        description: patchObject(raw.description),
-        flags: patchObject(raw.flags ?? {})
-      }, { characterBuilderValidationRepair: true });
-    } else if (row.documentType === "ActorActiveEffect") {
-      const effect = actor.effects.get?.(row.documentId);
-      if (!effect) throw new Error("The Actor Active Effect with the stale self-reference no longer exists.");
-      const raw = effect.toObject();
-      await effect.update({
-        origin: replace(raw.origin),
-        description: patchObject(raw.description),
-        flags: patchObject(raw.flags ?? {})
-      }, { characterBuilderValidationRepair: true });
-    }
+    const result = await InternalActorReferenceRebindingService.rebindDocument(actor, row, {
+      reason: "character-validation",
+      render: true
+    });
+    if (!result.changed) throw new Error("No provable stale self-reference remains to repair.");
     return {
       status: "repaired",
       issueId: issue.id,
       title: issue.title,
-      message: `Rebound ${row.refs?.length ?? 0} stale internal Actor reference${row.refs?.length === 1 ? "" : "s"} on ${row.name}.`
+      message: `Rebound ${result.references} stale internal Actor reference${result.references === 1 ? "" : "s"} on ${row.name}.`
     };
   }
 

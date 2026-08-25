@@ -519,7 +519,12 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
         stage: "Complete",
         detail: `${this.actor.name} reached character level ${result.history.targetCharacterLevel}.`
       };
-      this.render({ force: true });
+      // The Milestone grant is intentionally consumed by the completed commit.
+      // Do not force a full ApplicationV2 render here: _prepareContext would
+      // correctly reject the now-consumed grant and turn a successful commit
+      // into a false post-commit eligibility error. Update only the already
+      // rendered protected-transaction dialog, then close normally.
+      this.#renderCommitSuccessState();
       ui.notifications.info(`${this.actor.name} reached level ${result.history.targetCharacterLevel}.`);
       await new Promise(resolve => setTimeout(resolve, 700));
       this.draft = null;
@@ -569,6 +574,30 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     if (value) value.textContent = `${Math.round(this.commitDialog.percent)}%`;
     if (stage) stage.textContent = this.commitDialog.stage;
     if (detail) detail.textContent = this.commitDialog.detail;
+  }
+
+  #renderCommitSuccessState() {
+    const root = this.element;
+    if (!root || !this.commitDialog) return;
+    const dialog = root.querySelector?.(".cb-commit-transaction-dialog");
+    if (dialog) {
+      dialog.classList.remove("progress", "confirmation", "error", "critical");
+      dialog.classList.add("success");
+    }
+    const title = root.querySelector?.("#cb-commit-title");
+    if (title) title.textContent = this.commitDialog.title;
+    const icon = root.querySelector?.(".cb-commit-state-icon");
+    if (icon) {
+      icon.className = "fa-solid fa-circle-check cb-commit-state-icon success";
+      icon.setAttribute("aria-hidden", "true");
+    }
+    const track = root.querySelector?.(".cb-commit-progress-track");
+    track?.setAttribute?.("aria-valuenow", "100");
+    this.#updateCommitProgress({
+      percent: 100,
+      stage: this.commitDialog.stage,
+      detail: this.commitDialog.detail
+    });
   }
 
   #focusCommitDialog() {

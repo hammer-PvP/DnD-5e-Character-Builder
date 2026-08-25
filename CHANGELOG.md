@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.9w
+
+- Hardened the protected **Level Up** transaction lifecycle. A successful Milestone commit no longer forces a full Level Up context rebuild after the grant has been legitimately consumed, preventing the false post-commit “GM has not granted this Actor a Milestone Level Up” error.
+- Reduced protected Level Up UI churn by suppressing intermediate Actor/Item renders during commit, coalescing final draft/grant cleanup, and refreshing the live Actor sheet only after the transaction completes. The existing Draft → live Actor replacement and rollback model remains unchanged.
+- Stabilized GM-managed Short Rest / Long Rest controls so Character Builder tracks its own disabled state before clearing management metadata instead of misclassifying that state as an external lock.
+- Fixed Sorcerer Metamagic description enrichment on Foundry VTT 14 by using `foundry.applications.ux.TextEditor.implementation`, eliminating repeated `TextEditorImplementation is not defined` fallback errors.
+- Added a generic internal Actor-reference rebinding pass to Character Creation, Level Up materialization, and Character Validation. Only stale `Actor.<id>.Item.<id>[.Activity.<id>]` self-references whose embedded Item/Activity IDs are proven to exist on the current Actor are rebound; the Validator remains the safety net for legacy Actors.
+- Added optional **Weapon Mastery Chat Assistance** on native D&D5e attack Activity cards. D&D5e remains authoritative for the originating Actor's mastery eligibility and for the mastery actually selected when multiple options are available.
+- Weapon Mastery cards stay compact: the mastery name is a native content link to `CONFIG.DND5E.weaponMasteries[mastery].reference`, with no duplicated rules text. Vex, Sap, Nick, Push, and Slow are link-only assistance.
+- Added deterministic **Graze Damage** assistance after a provable miss: the roll contains only the attack ability modifier and the weapon's native damage type.
+- Added deterministic **Cleave Damage** assistance alongside the native Attack/Damage controls: it rolls the weapon's base damage package and weapon-owned magic/enchantment bonuses while omitting a positive ability modifier; a negative ability modifier remains. Target choice, distance/reach, hit adjudication, and once-per-turn enforcement remain native/manual table responsibilities.
+- Added compact **Topple** DC assistance (`8 + proficiency bonus + attack ability modifier`) next to the official mastery link, without creating a save/prone automation subsystem.
+- Weapon Mastery Assistance creates no persistent mastery state, target tracking, turn tracking, geometry validation, or Action Economy engine.
+
 ## 0.9.9v
 
 - Hardened **Character Validator** naming. Every validation copy now uses the English `<Character Name> - Validated N` convention, including the first pass, and revalidating an existing validation copy advances the counter without stacking `Validated` or legacy `Revisado` suffixes.

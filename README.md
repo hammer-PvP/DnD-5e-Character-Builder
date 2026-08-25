@@ -254,9 +254,11 @@ The current rule list includes:
 - Source-to-Target Damage Riders (Hunter's Mark / Hex);
 - Bard — Cutting Words manual reaction assistance;
 - Concentration & Dependent Effects;
-- Temporary Transformation Actor Cleanup.
+- Temporary Transformation Actor Cleanup;
+- Summon Profile Level Guard;
+- Weapon Mastery Chat Assistance.
 
-Damage assistance uses native D&D5e roll hooks and changes only the current roll configuration. Effect assistance reuses the native Active Effect already supplied by the source spell or feature. It never creates duplicate weapons, duplicate spells, duplicate Activities, replacement chat commands, or permanent formula edits.
+Roll-modifier assistance uses native D&D5e roll hooks and changes only the current roll configuration. Weapon Mastery damage assistance posts specialized native D&D5e `DamageRoll` messages from the source weapon without permanently editing its formula. Effect assistance reuses the native Active Effect already supplied by the source spell or feature. Rules Assistance never creates duplicate weapons, duplicate spells, duplicate Activities, replacement chat commands, or permanent formula edits.
 
 Bardic Inspiration assistance runs only when an official native Bardic Inspiration effect is already present, but its player-facing decision is intentionally **not conditioned on hidden success or failure**. Every eligible attack roll, ability check, skill check, tool check, or saving throw receives the same compact **Use / Keep** decision while the effect remains available. The player sees the roll total and Inspiration die only; AC, DC, Success, and Failure remain private to D&D5e's normal GM adjudication. The transparent decision has no visual blur, remains draggable and on top, and functionally blocks other actions until resolved. The original Bardic Inspiration use is not spent again. Effects originating from Items remain under the Item Creator runtime.
 
@@ -267,6 +269,8 @@ Post-roll providers can coordinate through `game.modules.get("dnd5e-character-bu
 Mage Armor is applied automatically to one eligible target after a successful use. The target cannot be wearing equipped light, medium, or heavy body armor; clothing and shields do not block the effect. A repeated cast refreshes the existing native effect instead of stacking another copy, and equipping body armor ends Mage Armor. Armor of Shadows always resolves to the Warlock using the Invocation.
 
 Agonizing Blast uses Character Builder's managed Invocation target to apply and maintain the official PHB enchantment on the selected cantrip. The native enchantment supplies the visible `, Agonizing` suffix and the dynamic `@abilities.cha.mod` damage bonus. Its reconciliation is event-driven rather than a polling loop and can be disabled independently from the other assistance rules.
+
+**Weapon Mastery Chat Assistance** enriches the native D&D5e attack Activity card rather than creating a replacement card. Eligibility comes from the originating Actor's native `WeaponData.masteryOptions`; when D&D5e offers multiple mastery options, the assistance follows the mastery recorded on the actual attack roll instead of assuming the weapon's printed default. Every supported mastery is represented by a compact native content link to the D&D5e mastery reference. Graze adds a contextual damage button only after a provable miss, Cleave adds a specialized weapon-damage button alongside the native Attack/Damage controls, and Topple may display only its final calculated DC. Vex, Sap, Nick, Push, and Slow remain link-only. The service creates no persistent target, turn, distance, or Action Economy state.
 
 Lay on Hands `Remove Poison` waits for the native Activity to complete and spend its normal 5-point cost, then removes only the native `Poisoned` status from the single recorded target. It never searches for or deletes unrelated Active Effects.
 

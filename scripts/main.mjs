@@ -418,18 +418,27 @@ function configureManagedRestButtons(actor, root) {
   for (const type of ["short", "long"]) {
     const button = root.querySelector(`[data-action="rest"][data-type="${type}"]`);
     if (!button) continue;
+    const wasManagedByCharacterBuilder = button.dataset.cbRestManaged === "true";
+    // Preserve the native/third-party disabled state captured before Character
+    // Builder first took ownership of the button. Repeated sheet decoration
+    // must not reinterpret Character Builder's own disabled state as external,
+    // nor forget a real external lock on the next pass.
+    const disabledOutsideCharacterBuilder = wasManagedByCharacterBuilder
+      ? button.dataset.cbRestExternalDisabled === "true"
+      : button.disabled;
     button.classList.remove("cb-managed-rest", "cb-rest-available", "cb-rest-locked");
     button.removeAttribute("data-cb-rest-managed");
+    button.removeAttribute("data-cb-rest-external-disabled");
     if (!managed) {
-      // Leave the native/system/third-party disabled state untouched when the
-      // Character Builder gate is not enabled.
+      button.disabled = disabledOutsideCharacterBuilder;
+      button.setAttribute("aria-disabled", button.disabled ? "true" : "false");
       continue;
     }
 
     const available = RestAccessService.available(actor, type);
-    const disabledOutsideCharacterBuilder = button.disabled && button.dataset.cbRestManaged !== "true";
     button.classList.add("cb-managed-rest", available ? "cb-rest-available" : "cb-rest-locked");
     button.dataset.cbRestManaged = "true";
+    button.dataset.cbRestExternalDisabled = disabledOutsideCharacterBuilder ? "true" : "false";
     button.disabled = !available || disabledOutsideCharacterBuilder;
     button.setAttribute("aria-disabled", button.disabled ? "true" : "false");
     button.dataset.tooltip = available

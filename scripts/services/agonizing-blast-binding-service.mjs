@@ -21,14 +21,14 @@ export class AgonizingBlastBindingService {
 
     const scheduleItem = (item, options, userId) => {
       const actor = item?.actor ?? item?.parent?.actor ?? item?.parent;
-      if (!actor || options?.characterBuilderRulesAssistance) return;
+      if (!actor || this.#isExplicitlyReconciledMutation(options)) return;
       if (!this.#canReact(actor, userId)) return;
       this.schedule(actor);
     };
     const scheduleEffect = (effect, options, userId) => {
       const item = effect?.parent;
       const actor = item?.actor ?? item?.parent;
-      if (!actor || options?.characterBuilderRulesAssistance) return;
+      if (!actor || this.#isExplicitlyReconciledMutation(options)) return;
       if (!this.#canReact(actor, userId)) return;
       this.schedule(actor);
     };
@@ -74,20 +74,20 @@ export class AgonizingBlastBindingService {
     this.#timers.set(actor.id, timer);
   }
 
-  static async reconcileActor(actor, { reason = "manual" } = {}) {
+  static async reconcileActor(actor, { reason = "manual", render = true } = {}) {
     if (!this.enabled()) return { checked: 0, applied: 0, adopted: 0, removed: 0, missing: 0, disabled: true };
     if (!actor || actor.type !== "character") return { checked: 0, applied: 0, adopted: 0, removed: 0, missing: 0 };
     const key = actor.id ?? actor.uuid;
     if (this.#locks.has(key)) return this.#locks.get(key);
 
-    const operation = this.#reconcile(actor, { reason }).finally(() => {
+    const operation = this.#reconcile(actor, { reason, render }).finally(() => {
       if (this.#locks.get(key) === operation) this.#locks.delete(key);
     });
     this.#locks.set(key, operation);
     return operation;
   }
 
-  static async #reconcile(actor, { reason }) {
+  static async #reconcile(actor, { reason, render }) {
     const summary = { checked: 0, applied: 0, adopted: 0, removed: 0, missing: 0, reason };
     const invocations = this.#items(actor).filter(item => this.#identifier(item) === AGONIZING_IDENTIFIER);
     const desiredKeys = new Set();
@@ -143,6 +143,7 @@ export class AgonizingBlastBindingService {
       const current = this.#effectBinding(effect);
       if (this.#bindingKey(current) !== this.#bindingKey(binding)) {
         await effect.update({ [`flags.${MODULE_ID}.${BINDING_FLAG}`]: binding }, {
+          render,
           characterBuilderRulesAssistance: true
         });
       }
@@ -153,7 +154,7 @@ export class AgonizingBlastBindingService {
         const binding = this.#effectBinding(effect);
         if (binding?.type !== AGONIZING_IDENTIFIER) continue;
         if (desiredKeys.has(this.#bindingKey(binding))) continue;
-        await effect.delete({ characterBuilderRulesAssistance: true });
+        await effect.delete({ render, characterBuilderRulesAssistance: true });
         summary.removed += 1;
       }
     }
@@ -261,6 +262,17 @@ export class AgonizingBlastBindingService {
     if (Array.isArray(effects)) return effects;
     if (Array.isArray(effects.contents)) return effects.contents;
     return [...effects];
+  }
+
+  static #isExplicitlyReconciledMutation(options) {
+    return Boolean(
+      options?.characterBuilderRulesAssistance
+      || options?.characterBuilderLevelUp
+      || options?.characterBuilderLevelUpRollback
+      || options?.characterBuilder
+      || options?.characterBuilderActorReferenceRebinding
+      || options?.characterBuilderNativeFeatureCompatibility
+    );
   }
 
   static #canReact(actor, userId) {

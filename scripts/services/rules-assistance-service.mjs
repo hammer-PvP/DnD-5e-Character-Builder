@@ -14,6 +14,7 @@ import { CuttingWordsAssistanceService } from "./cutting-words-assistance-servic
 import { ResourceEventService } from "./resource-event-service.mjs";
 import { TransformationActorCleanupService } from "./transformation-actor-cleanup-service.mjs";
 import { SummonProfileLevelGuardService } from "./summon-profile-level-guard-service.mjs";
+import { WeaponMasteryAssistanceService } from "./weapon-mastery-assistance-service.mjs";
 
 const RULES = Object.freeze({
   GREAT_WEAPON_FIGHTING: "great-weapon-fighting",
@@ -51,6 +52,7 @@ export class RulesAssistanceService {
     ResourceEventService.initialize();
     TransformationActorCleanupService.initialize();
     SummonProfileLevelGuardService.initialize();
+    WeaponMasteryAssistanceService.initialize();
 
     Hooks.on("dnd5e.preUseActivity", (activity, usageConfig, dialogConfig, messageConfig) =>
       this.#prepareCast(activity, usageConfig, dialogConfig, messageConfig)
@@ -91,6 +93,7 @@ export class RulesAssistanceService {
     if (this.ruleEnabled("agonizing-blast-native-binding")) {
       await AgonizingBlastBindingService.ready();
     }
+    WeaponMasteryAssistanceService.refreshRenderedMessages();
   }
 
   static async reconcileActor(actor) {

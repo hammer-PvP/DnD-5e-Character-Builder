@@ -10,6 +10,7 @@ import { TemporaryActorService } from "./temporary-actor-service.mjs";
 import { AlwaysPreparedSpellReconciliationService } from "./always-prepared-spell-reconciliation-service.mjs";
 import { NativeFeatureCompatibilityService } from "./native-feature-compatibility-service.mjs";
 import { AdvancementCompletionGateService } from "./advancement-completion-gate-service.mjs";
+import { InternalActorReferenceRebindingService } from "./internal-actor-reference-rebinding-service.mjs";
 
 /**
  * Applies a completed Level Up draft as one recoverable transaction. The live
@@ -96,7 +97,11 @@ export class LevelUpCommitService {
       await progress(28, stage, "Applying the validated class, subclass, and Actor source data.");
       this.#assertToken(actor, token);
       actorMutationStarted = true;
-      await actor.update(baseUpdate, { characterBuilderLevelUp: true, characterBuilderTransactionToken: token });
+      await actor.update(baseUpdate, {
+        render: false,
+        characterBuilderLevelUp: true,
+        characterBuilderTransactionToken: token
+      });
 
       stage = "Creating Features and Spells";
       await progress(44, stage, "Replacing embedded Items with the completed draft documents.");
@@ -104,6 +109,7 @@ export class LevelUpCommitService {
       const existingIds = actor.items.map(item => item.id);
       if (existingIds.length) {
         await actor.deleteEmbeddedDocuments("Item", existingIds, {
+          render: false,
           deleteContents: true,
           characterBuilderLevelUp: true,
           characterBuilderTransactionToken: token
@@ -111,12 +117,17 @@ export class LevelUpCommitService {
       }
       if (itemData.length) {
         await actor.createEmbeddedDocuments("Item", itemData, {
+          render: false,
           keepId: true,
           characterBuilderLevelUp: true,
           characterBuilderTransactionToken: token
         });
-        await AgonizingBlastBindingService.reconcileActor(actor, { reason: "level-up-commit" });
-        await NativeFeatureCompatibilityService.reconcileActor(actor, { reason: "level-up-commit" });
+        await InternalActorReferenceRebindingService.rebindActor(actor, {
+          reason: "level-up-materialization",
+          render: false
+        });
+        await AgonizingBlastBindingService.reconcileActor(actor, { reason: "level-up-commit", render: false });
+        await NativeFeatureCompatibilityService.reconcileActor(actor, { reason: "level-up-commit", render: false });
         const missing = itemData.filter(item => !actor.items.get(item._id));
         if (missing.length) throw new Error(`${missing.length} Level Up Item document(s) were not created on the live Actor.`);
       }
@@ -129,6 +140,7 @@ export class LevelUpCommitService {
       if (originalClassId && actor.items.get(originalClassId)
         && actor.system?.details?.originalClass !== originalClassId) {
         await actor.update({ "system.details.originalClass": originalClassId }, {
+          render: false,
           characterBuilderLevelUp: true,
           characterBuilderTransactionToken: token
         });
@@ -145,6 +157,7 @@ export class LevelUpCommitService {
         ? Math.max(0, Math.min(newMaximum, oldValue + maximumIncrease))
         : Math.max(0, oldValue + maximumIncrease);
       await actor.update({ "system.attributes.hp.value": newValue }, {
+        render: false,
         characterBuilderLevelUp: true,
         characterBuilderTransactionToken: token
       });
@@ -187,21 +200,36 @@ export class LevelUpCommitService {
         }))
       }].slice(-50);
       const exactLastLevelUp = foundry.utils.deepClone(history.at(-1));
-      await actor.setFlag(MODULE_ID, "levelUpHistory", history);
-      // Foundry flag updates merge nested objects. Remove the previous summary
-      // before writing the new transaction so fields from an older Level Up
-      // cannot survive in lastLevelUp.
-      await actor.unsetFlag(MODULE_ID, "lastLevelUp");
-      await actor.setFlag(MODULE_ID, "lastLevelUp", exactLastLevelUp);
+      // Foundry flag updates merge nested objects. Remove the previous
+      // summary in the same suppressed update that writes canonical history,
+      // then recreate lastLevelUp exactly from the current transaction.
+      await actor.update({
+        [`flags.${MODULE_ID}.levelUpHistory`]: history,
+        [`flags.${MODULE_ID}.-=lastLevelUp`]: null
+      }, {
+        render: false,
+        characterBuilderLevelUp: true,
+        characterBuilderTransactionToken: token
+      });
+      await actor.update({ [`flags.${MODULE_ID}.lastLevelUp`]: exactLastLevelUp }, {
+        render: false,
+        characterBuilderLevelUp: true,
+        characterBuilderTransactionToken: token
+      });
 
       stage = "Finalizing";
       await progress(94, stage, "Clearing the pending draft and finalizing the Level Up.");
       this.#assertToken(actor, token);
-      await HitPointAdvancementService.clearLockedRoll(actor, { reason: "committed", archive: false });
-      await actor.unsetFlag(MODULE_ID, "levelUpDraftId");
+      await HitPointAdvancementService.clearLockedRoll(actor, { reason: "committed", archive: false, render: false });
+      const finalFlagCleanup = { [`flags.${MODULE_ID}.-=levelUpDraftId`]: null };
       if (LevelUpService.settings().levelUpMode === "milestone") {
-        await actor.unsetFlag(MODULE_ID, "levelUpGrant");
+        finalFlagCleanup[`flags.${MODULE_ID}.-=levelUpGrant`] = null;
       }
+      await actor.update(finalFlagCleanup, {
+        render: false,
+        characterBuilderLevelUp: true,
+        characterBuilderTransactionToken: token
+      });
       try {
         await TemporaryActorService.deleteLevelUpDraft(draft, {
           sourceActorId: actor.id,

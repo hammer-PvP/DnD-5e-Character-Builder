@@ -2,6 +2,7 @@ import { MODULE_ID, MODULE_VERSION } from "../constants.mjs";
 import { AgonizingBlastBindingService } from "./agonizing-blast-binding-service.mjs";
 import { TemporaryActorService } from "./temporary-actor-service.mjs";
 import { AdvancementCompletionGateService } from "./advancement-completion-gate-service.mjs";
+import { InternalActorReferenceRebindingService } from "./internal-actor-reference-rebinding-service.mjs";
 
 /**
  * Applies a completed Character Creation Draft as one recoverable protected
@@ -123,6 +124,10 @@ export class ActorCommitService {
           characterBuilderIdempotencyToken: transactionToken
         });
       }
+      await InternalActorReferenceRebindingService.rebindActor(actor, {
+        reason: "character-creation-materialization",
+        render: false
+      });
       await AgonizingBlastBindingService.reconcileActor(actor, { reason: "character-creation-commit" });
       const missing = itemData.filter(item => !actor.items.get(item._id));
       if (missing.length) throw new Error(`${missing.length} embedded Item document(s) were not created on the final Actor.`);
