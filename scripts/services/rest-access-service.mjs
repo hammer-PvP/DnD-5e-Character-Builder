@@ -58,7 +58,40 @@ export class RestAccessService {
         results.push({ actorId: actor.id, name: actor.name, ok: false, message: error.message });
       }
     }
-    return { restType: type, results };
+    return { restType: type, action: "grant", results };
+  }
+
+
+  static revoke(actor, restType) {
+    return this.#revoke(actor, this.#normalizeType(restType));
+  }
+
+  static async revokeMany(actors, restType) {
+    this.#assertGM();
+    if (!this.enabled()) throw new Error("GM-managed rests are disabled in Character Builder settings.");
+    const type = this.#normalizeType(restType);
+    const unique = new Map();
+    for (const actor of actors ?? []) {
+      if (this.#eligibleActor(actor)) unique.set(actor.id, actor);
+    }
+    if (!unique.size) throw new Error("Select at least one completed Player Character.");
+
+    const results = [];
+    for (const actor of unique.values()) {
+      try {
+        const current = this.entry(actor, type);
+        if (!current?.available) {
+          results.push({ actorId: actor.id, name: actor.name, ok: true, skipped: true, message: `${this.label(type)} already revoked.` });
+          continue;
+        }
+        await this.#revoke(actor, type);
+        results.push({ actorId: actor.id, name: actor.name, ok: true, message: `${this.label(type)} revoked.` });
+        actor.sheet?.render?.(false);
+      } catch (error) {
+        results.push({ actorId: actor.id, name: actor.name, ok: false, message: error.message });
+      }
+    }
+    return { restType: type, action: "revoke", results };
   }
 
   static entry(actor, restType) {
@@ -118,6 +151,23 @@ export class RestAccessService {
       grantedAt: Date.now(),
       grantedBy: game.user.id,
       grantId: foundry.utils.randomID?.(20) ?? crypto.randomUUID()
+    };
+    await actor.setFlag(MODULE_ID, this.FLAG, state);
+    return foundry.utils.deepClone(state[type]);
+  }
+
+  static async #revoke(actor, type) {
+    this.#assertGM();
+    if (!this.enabled()) throw new Error("GM-managed rests are disabled in Character Builder settings.");
+    if (!this.#eligibleActor(actor)) throw new Error("Rest access can be revoked only from completed Player Characters.");
+    const state = this.state(actor);
+    const current = state[type];
+    if (!current?.available) return foundry.utils.deepClone(current ?? null);
+    state[type] = {
+      ...current,
+      available: false,
+      revokedAt: Date.now(),
+      revokedBy: game.user.id
     };
     await actor.setFlag(MODULE_ID, this.FLAG, state);
     return foundry.utils.deepClone(state[type]);

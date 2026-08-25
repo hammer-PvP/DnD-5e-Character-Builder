@@ -114,8 +114,8 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
     root.querySelector('[data-action="current-scene"]')?.addEventListener("click", event => this.#selectCurrentScene(event));
     root.querySelector('[data-action="apply"]')?.addEventListener("click", event => this.#applyProgression(event));
     root.querySelector('[data-action="grant-epic-boon"]')?.addEventListener("click", event => this.#grantEpicBoons(event));
-    root.querySelector('[data-action="grant-short-rest"]')?.addEventListener("click", event => this.#grantRest(event, "short"));
-    root.querySelector('[data-action="grant-long-rest"]')?.addEventListener("click", event => this.#grantRest(event, "long"));
+    root.querySelector('[data-action="short-rest-access"]')?.addEventListener("click", event => this.#changeRestAccess(event, "short"));
+    root.querySelector('[data-action="long-rest-access"]')?.addEventListener("click", event => this.#changeRestAccess(event, "long"));
     root.querySelector('[data-character-search]')?.addEventListener("input", event => this.#filter(event));
     root.querySelector('[name="totalXp"]')?.addEventListener("input", () => this.#refreshPreview());
     root.querySelectorAll('[name="actorIds"]').forEach(input => input.addEventListener("change", () => this.#refreshPreview()));
@@ -207,10 +207,8 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
     }
     const boon = this.element.querySelector('[data-action="grant-epic-boon"]');
     if (boon) boon.disabled = this.busy || boonActors.length === 0;
-    for (const action of ["grant-short-rest", "grant-long-rest"]) {
-      const button = this.element.querySelector(`[data-action="${action}"]`);
-      if (button) button.disabled = this.busy || restActors.length === 0;
-    }
+    this.#refreshRestActionButton("short", restActors);
+    this.#refreshRestActionButton("long", restActors);
   }
 
   async #applyProgression(event) {
@@ -256,24 +254,49 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
     await this.#runBatch(() => ProgressionToolService.grantEpicBoons(actors), { epicBoon: true });
   }
 
-  async #grantRest(event, restType) {
+  #refreshRestActionButton(restType, actors) {
+    const type = restType === "short" ? "short" : "long";
+    const button = this.element.querySelector(`[data-action="${type}-rest-access"]`);
+    if (!button) return;
+    const allGranted = actors.length > 0 && actors.every(actor => RestAccessService.available(actor, type));
+    const action = allGranted ? "revoke" : "grant";
+    button.dataset.restAction = action;
+    button.disabled = this.busy || actors.length === 0;
+    const verb = button.querySelector("[data-rest-action-verb]");
+    const detail = button.querySelector("[data-rest-action-detail]");
+    if (verb) verb.textContent = `${action === "grant" ? "Grant" : "Revoke"} ${RestAccessService.label(type)}`;
+    if (detail) detail.textContent = action === "grant" ? "Grant to selected" : "Revoke from selected";
+    button.classList.toggle("cb-tool-rest-revoke", action === "revoke");
+  }
+
+  async #changeRestAccess(event, restType) {
     event.preventDefault();
     if (this.busy) return;
     const actors = this.#selectedActors("rest");
     if (!actors.length) return ui.notifications.warn("Select at least one completed Player Character.");
-    const label = RestAccessService.label(restType);
+    const type = restType === "short" ? "short" : "long";
+    const label = RestAccessService.label(type);
+    const allGranted = actors.every(actor => RestAccessService.available(actor, type));
+    const action = allGranted ? "revoke" : "grant";
+    const verb = action === "grant" ? "Grant" : "Revoke";
     const names = actors.map(actor => `<li>${foundry.utils.escapeHTML(actor.name)}</li>`).join("");
+    const content = action === "grant"
+      ? `<p>Make <strong>${label}</strong> available to <strong>${actors.length}</strong> selected character${actors.length === 1 ? "" : "s"}?</p><ul>${names}</ul><p>Mixed selections are normalized to Granted. The player chooses when to use the rest, and the grant is consumed only after the authoritative rest and Character Keeper finish successfully.</p>`
+      : `<p>Revoke <strong>${label}</strong> availability from <strong>${actors.length}</strong> selected character${actors.length === 1 ? "" : "s"}?</p><ul>${names}</ul><p>This removes only the GM authorization. It does not undo a rest that has already completed.</p>`;
     const confirmed = await this.#confirm({
-      title: `Grant ${label}`,
-      content: `<p>Make <strong>${label}</strong> available to <strong>${actors.length}</strong> selected character${actors.length === 1 ? "" : "s"}?</p><ul>${names}</ul><p>The player chooses when to use it. The grant is consumed only after the native rest and Character Keeper finish successfully.</p>`,
-      yes: `Grant ${label}`
+      title: `${verb} ${label}`,
+      content,
+      yes: `${verb} ${label}`
     });
     if (!confirmed) return;
 
-    await this.#runBatch(() => RestAccessService.grantMany(actors, restType), { restType });
+    const operation = action === "grant"
+      ? () => RestAccessService.grantMany(actors, type)
+      : () => RestAccessService.revokeMany(actors, type);
+    await this.#runBatch(operation, { restType: type, restAction: action });
   }
 
-  async #runBatch(operation, { xpMode = false, epicBoon = false, restType = null } = {}) {
+  async #runBatch(operation, { xpMode = false, epicBoon = false, restType = null, restAction = null } = {}) {
     this.busy = true;
     let refreshAfter = false;
     this.#setBusy(true);
@@ -288,7 +311,9 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
       } else if (epicBoon) {
         ui.notifications.info(`Granted an Epic Boon to ${successes} character(s).`);
       } else if (restType) {
-        ui.notifications.info(`${RestAccessService.label(restType)} is now available to ${successes} character(s).`);
+        const verb = restAction === "revoke" ? "Revoked" : "Granted";
+        const suffix = restAction === "revoke" ? "from" : "to";
+        ui.notifications.info(`${verb} ${RestAccessService.label(restType)} ${suffix} ${successes} character(s).`);
       } else {
         ui.notifications.info(xpMode
           ? `Distributed ${result.xpPerActor.toLocaleString()} XP to ${successes} character(s).`

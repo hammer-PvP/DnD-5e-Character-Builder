@@ -102,6 +102,16 @@ At least one method must remain enabled.
 - **Milestone:** A GM must grant Level Up for that Actor.
 - **Actor impact:** Changes availability only; it does not alter existing levels or XP.
 
+### Level Up Ready Sound
+
+- **Scope:** World, GM-only.
+- **Default:** Empty (no sound).
+- **File selection:** Uses Foundry's native audio File Picker; the Test button plays locally without saving.
+- **Channel:** Foundry **Interface Sounds**, so each user's Interface volume controls playback.
+- **XP mode:** Plays only when an Actor crosses from below to at-or-above the next character-level XP threshold. Remaining above the threshold or unrelated Actor updates do not replay the cue.
+- **Milestone mode:** Plays only when a previously unavailable GM Level Up grant becomes available.
+- **Recipients:** The cue is broadcast to active non-GM users explicitly owning or assigned to that Actor; the initiating client also receives Foundry's local one-off playback.
+
 ### Enable Multiclass
 
 - **Default:** On.
@@ -175,7 +185,7 @@ At least one method must remain enabled.
 - **Default:** **Off**.
 - **Disabled:** Character Builder does not restrict Short Rest or Long Rest. Native D&D5e behavior remains authoritative.
 - **Enabled:** Native Short Rest and Long Rest buttons remain visible on completed Player Character sheets but are disabled until the GM grants the matching rest from **Character Builder Tool**.
-- **Grant scope:** The Tool acts only on the characters currently selected by the GM. Short Rest and Long Rest availability are stored independently per Actor.
+- **Grant/Revoke scope:** The Tool acts only on the characters currently selected by the GM. Short Rest and Long Rest availability are stored independently per Actor. If none or only some selected Actors currently have a rest grant, the control is **Grant** and normalizes all selected Actors to available. If every selected Actor already has that rest grant, the control becomes **Revoke** and removes it from all selected Actors.
 - **Player action:** A grant never performs the rest. It enables the normal native sheet button; the player chooses when to use it.
 - **Visual state:** An available rest button is highlighted/glowing. A locked rest button remains visible but disabled.
 - **Consumption:** One successful completed native rest consumes the matching grant after Character Keeper and enabled post-rest processing complete. If a post-native Keeper transaction fails and can be recovered, the grant is retained rather than forcing the player to request another rest.

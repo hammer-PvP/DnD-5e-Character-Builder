@@ -12,6 +12,7 @@ import { PlayerSheetIntegrityService } from "../services/player-sheet-integrity-
 import { PlayerSheetIntegritySettingsService } from "../services/player-sheet-integrity-settings-service.mjs";
 import { PlayerSheetIntegrityConfigApp } from "./player-sheet-integrity-config-app.mjs";
 import { RestAccessService } from "../services/rest-access-service.mjs";
+import { LevelUpReadySoundService } from "../services/level-up-ready-sound-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -129,6 +130,9 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     root.querySelector('[name="rollMode"]')?.addEventListener("change", () => this.#refreshRollSettings());
     root.querySelector('[name="enableEpicBoons"]')?.addEventListener("change", () => this.#refreshEpicBoonSettings());
     root.querySelector('[name="halfLongRestRecoveryOnShortRest"]')?.addEventListener("change", () => this.#refreshShortRestHomebrewSettings());
+    root.querySelector('[data-action="browse-level-up-sound"]')?.addEventListener("click", event => this.#browseLevelUpSound(event));
+    root.querySelector('[data-action="test-level-up-sound"]')?.addEventListener("click", event => this.#testLevelUpSound(event));
+    root.querySelector('[name="levelUpReadySound"]')?.addEventListener("input", () => this.#refreshLevelUpSoundControls());
     this.#refreshHpDefaults();
     this.#refreshMulticlassRequirements();
     this.#refreshScribeSettings();
@@ -136,6 +140,7 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     this.#refreshRollSettings();
     this.#refreshEpicBoonSettings();
     this.#refreshShortRestHomebrewSettings();
+    this.#refreshLevelUpSoundControls();
   }
 
   async #save(event) {
@@ -196,6 +201,7 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       rollSets,
       shopBonusGold,
       levelUpMode: String(form.querySelector('[name="levelUpMode"]')?.value ?? "milestone"),
+      levelUpReadySound: String(form.querySelector('[name="levelUpReadySound"]')?.value ?? "").trim(),
       allowMulticlassing: form.querySelector('[name="allowMulticlassing"]')?.checked ?? false,
       enforceMulticlassRequirements: form.querySelector('[name="enforceMulticlassRequirements"]')?.checked ?? true,
       enableFeats: form.querySelector('[name="enableFeats"]')?.checked ?? true,
@@ -253,6 +259,12 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     if (!['xp', 'milestone'].includes(settings.levelUpMode)) {
       return ui.notifications.error("Choose a valid Level Up mode.");
     }
+    if (settings.levelUpReadySound) {
+      const AudioHelper = foundry.audio?.AudioHelper ?? globalThis.AudioHelper;
+      if (AudioHelper?.hasAudioExtension && !AudioHelper.hasAudioExtension(settings.levelUpReadySound)) {
+        return ui.notifications.error("Level Up Ready Sound must be a supported audio file.");
+      }
+    }
     if (!Number.isInteger(rawShortRestCooldown) || rawShortRestCooldown < 0 || rawShortRestCooldown > 10080) {
       return ui.notifications.error("Short Rest Homebrew Cooldown must be a whole number from 0 to 10080 minutes.");
     }
@@ -278,6 +290,43 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     ui.notifications.info("Character Builder settings saved.");
     await this.close();
     if (!tutorialSuppressed) setTimeout(() => SplashTutorialService.openNow(), 150);
+  }
+
+
+  async #browseLevelUpSound(event) {
+    event.preventDefault();
+    if (!game.user.isGM) return;
+    const button = event.currentTarget;
+    const input = this.element?.querySelector?.('[name="levelUpReadySound"]');
+    const FilePicker = foundry.applications?.apps?.FilePicker?.implementation
+      ?? foundry.applications?.apps?.FilePicker
+      ?? globalThis.FilePicker;
+    if (!FilePicker?.fromButton || !button || !input) {
+      return ui.notifications.error("Foundry File Picker is unavailable.");
+    }
+    const picker = FilePicker.fromButton(button);
+    picker.callback = path => {
+      input.value = String(path ?? "");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    await picker.render({ force: true });
+  }
+
+  async #testLevelUpSound(event) {
+    event.preventDefault();
+    const input = this.element?.querySelector?.('[name="levelUpReadySound"]');
+    try {
+      await LevelUpReadySoundService.playLocal(input?.value ?? "");
+    } catch (error) {
+      ui.notifications.warn(error.message);
+    }
+  }
+
+  #refreshLevelUpSoundControls() {
+    const input = this.element?.querySelector?.('[name="levelUpReadySound"]');
+    const test = this.element?.querySelector?.('[data-action="test-level-up-sound"]');
+    if (test) test.disabled = !String(input?.value ?? "").trim();
   }
 
 

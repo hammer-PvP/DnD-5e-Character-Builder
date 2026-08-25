@@ -14,254 +14,275 @@
   <div class="cb-settings-body">
     <div class="cb-settings-grid">
       <fieldset class="cb-settings-wide cb-tutorial-settings">
-        <legend>Splash Tutorial</legend>
-        <div class="cb-settings-toggle">
-          <label><input type="checkbox" name="tutorialSuppressed" {{checked tutorialSuppressed}}> Don't Show Splash Tutorial</label>
-          <p class="hint">Prevent the tutorial from opening automatically for this user. The guide can still be opened manually.</p>
-        </div>
-        <div class="cb-tutorial-settings-actions">
-          <button type="button" data-action="open-tutorial">
-            <i class="fa-solid fa-book-open-reader"></i> Open Splash Tutorial
-          </button>
-          {{#if isGM}}
-          <button type="button" class="gold-button" data-action="force-tutorial">
-            <i class="fa-solid fa-users-viewfinder"></i> Show Splash Tutorial to Everyone Once
-          </button>
-          {{/if}}
-        </div>
-        {{#if isGM}}
-        <p class="hint">The GM action is a one-time trigger. It clears tutorial suppression for online users immediately and for offline users at their next login.</p>
-        {{/if}}
-      </fieldset>
+              <legend>Splash Tutorial</legend>
+              <div class="cb-settings-toggle">
+                <label><input type="checkbox" name="tutorialSuppressed" {{checked tutorialSuppressed}}> Don't Show Splash Tutorial</label>
+                <p class="hint">Prevent the tutorial from opening automatically for this user. The guide can still be opened manually.</p>
+              </div>
+              <div class="cb-tutorial-settings-actions">
+                <button type="button" data-action="open-tutorial">
+                  <i class="fa-solid fa-book-open-reader"></i> Open Splash Tutorial
+                </button>
+                {{#if isGM}}
+                <button type="button" class="gold-button" data-action="force-tutorial">
+                  <i class="fa-solid fa-users-viewfinder"></i> Show Splash Tutorial to Everyone Once
+                </button>
+                {{/if}}
+              </div>
+              {{#if isGM}}
+              <p class="hint">The GM action is a one-time trigger. It clears tutorial suppression for online users immediately and for offline users at their next login.</p>
+              {{/if}}
+            </fieldset>
 
       {{#if isGM}}
       <fieldset class="cb-settings-wide cb-content-source-summary-card">
-        <legend>Content Sources</legend>
-        <div class="cb-content-source-summary-layout">
-          <div>
-            <p><strong>{{enabledSourceCount}}</strong> of <strong>{{availableSourceCount}}</strong> discovered sources are enabled.</p>
-            <p class="hint">{{#if enabledSourceLabels}}Priority: {{enabledSourceLabels}}{{else}}No installed source is currently enabled.{{/if}}</p>
-            <p class="hint">Character Builder scans active module, system, and world Item compendiums for Classes, Subclasses, Features, Spells, Backgrounds, Species, and equipment.</p>
-          </div>
-          <button type="button" class="gold-button" data-action="configure-sources">
-            <i class="fa-solid fa-books"></i> Select Content Sources
-          </button>
-        </div>
-      </fieldset>
+              <legend>Content Sources</legend>
+              <div class="cb-content-source-summary-layout">
+                <div>
+                  <p><strong>{{enabledSourceCount}}</strong> of <strong>{{availableSourceCount}}</strong> discovered sources are enabled.</p>
+                  <p class="hint">{{#if enabledSourceLabels}}Priority: {{enabledSourceLabels}}{{else}}No installed source is currently enabled.{{/if}}</p>
+                  <p class="hint">Character Builder scans active module, system, and world Item compendiums for Classes, Subclasses, Features, Spells, Backgrounds, Species, and equipment.</p>
+                </div>
+                <button type="button" class="gold-button" data-action="configure-sources">
+                  <i class="fa-solid fa-books"></i> Select Content Sources
+                </button>
+              </div>
+            </fieldset>
 
       <fieldset class="cb-settings-wide cb-rules-mode-setting">
-        <legend>Rules Progression Model</legend>
-        <div class="form-group cb-settings-form-group">
-          <label>Rules Generation</label>
-          <select name="rulesMode">
-            {{#each rulesModes}}
-            <option value="{{id}}" {{#if selected}}selected{{/if}}>{{label}}</option>
-            {{/each}}
-          </select>
-        </div>
-        <p class="hint"><strong>Modern D&amp;D:</strong> subclass selection is held until Class level 3. Native subclass Advancements originally assigned to levels 1 or 2 are delivered together when the subclass is chosen at level 3.</p>
-        <p class="hint"><strong>D&amp;D 5th Edition (2014):</strong> preserves the levels declared by the selected Class and Subclass documents, including subclasses chosen before level 3.</p>
-      </fieldset>
+              <legend>Rules Progression Model</legend>
+              <div class="form-group cb-settings-form-group">
+                <label>Rules Generation</label>
+                <select name="rulesMode">
+                  {{#each rulesModes}}
+                  <option value="{{id}}" {{#if selected}}selected{{/if}}>{{label}}</option>
+                  {{/each}}
+                </select>
+              </div>
+              <p class="hint"><strong>Modern D&amp;D:</strong> subclass selection is held until Class level 3. Native subclass Advancements originally assigned to levels 1 or 2 are delivered together when the subclass is chosen at level 3.</p>
+              <p class="hint"><strong>D&amp;D 5th Edition (2014):</strong> preserves the levels declared by the selected Class and Subclass documents, including subclasses chosen before level 3.</p>
+            </fieldset>
 
-      <fieldset>
-        <legend>Ability Score Methods</legend>
-        <div class="cb-settings-inline-options">
-          <label><input type="checkbox" name="pointBuy" {{checked settings.abilityMethods.pointBuy}}> Point Buy</label>
-          <label><input type="checkbox" name="standardArray" {{checked settings.abilityMethods.standardArray}}> Standard Array</label>
-          <label><input type="checkbox" name="customArray" {{checked settings.abilityMethods.customArray}}> Custom Array</label>
-          <label><input type="checkbox" name="roll" {{checked settings.abilityMethods.roll}}> Roll</label>
-          <label><input type="checkbox" name="manual" {{checked settings.abilityMethods.manual}}> Manual Entry</label>
-        </div>
+      <div class="cb-settings-columns">
+        <div class="cb-settings-column">
+          <fieldset>
+                  <legend>Ability Score Methods</legend>
+                  <div class="cb-settings-inline-options">
+                    <label><input type="checkbox" name="pointBuy" {{checked settings.abilityMethods.pointBuy}}> Point Buy</label>
+                    <label><input type="checkbox" name="standardArray" {{checked settings.abilityMethods.standardArray}}> Standard Array</label>
+                    <label><input type="checkbox" name="customArray" {{checked settings.abilityMethods.customArray}}> Custom Array</label>
+                    <label><input type="checkbox" name="roll" {{checked settings.abilityMethods.roll}}> Roll</label>
+                    <label><input type="checkbox" name="manual" {{checked settings.abilityMethods.manual}}> Manual Entry</label>
+                  </div>
 
-        <div class="cb-settings-subsection">
-          <h3>Custom Array</h3>
-          <p class="hint">Configure six independent slots. Each slot can be assigned to any Ability Score once, even when two slots contain the same value.</p>
-          <div class="cb-custom-array-grid">
-            {{#each settings.customArray}}
-            <label>
-              <span>#{{dnd5eCharacterBuilderAdd @index 1}}</span>
-              <input type="number" name="customArray.{{@index}}" value="{{this}}" min="1" max="20" step="1">
-            </label>
-            {{/each}}
-          </div>
-        </div>
+                  <div class="cb-settings-subsection">
+                    <h3>Custom Array</h3>
+                    <p class="hint">Configure six independent slots. Each slot can be assigned to any Ability Score once, even when two slots contain the same value.</p>
+                    <div class="cb-custom-array-grid">
+                      {{#each settings.customArray}}
+                      <label>
+                        <span>#{{dnd5eCharacterBuilderAdd @index 1}}</span>
+                        <input type="number" name="customArray.{{@index}}" value="{{this}}" min="1" max="20" step="1">
+                      </label>
+                      {{/each}}
+                    </div>
+                  </div>
 
-        <div class="cb-settings-subsection">
-          <h3>Roll Ability Scores</h3>
-          <div class="form-group cb-settings-form-group">
-            <label>Roll Mode</label>
-            <select name="rollMode">
-              <option value="single" {{#if (dnd5eCharacterBuilderEq settings.rollAbilityScores.mode "single")}}selected{{/if}}>Single Roll</option>
-              <option value="limited" {{#if (dnd5eCharacterBuilderEq settings.rollAbilityScores.mode "limited")}}selected{{/if}}>Limited Rolls</option>
-              <option value="unlimited" {{#if (dnd5eCharacterBuilderEq settings.rollAbilityScores.mode "unlimited")}}selected{{/if}}>Unlimited Rolls</option>
-            </select>
-            <p class="hint">Limited Rolls counts every complete set, including the first.</p>
-          </div>
-          <label class="cb-roll-limit-setting">
-            <span>Complete Sets Allowed</span>
-            <input type="number" name="rollLimit" value="{{settings.rollAbilityScores.limit}}" min="1" step="1">
-          </label>
-        </div>
-      </fieldset>
+                  <div class="cb-settings-subsection">
+                    <h3>Roll Ability Scores</h3>
+                    <div class="form-group cb-settings-form-group">
+                      <label>Roll Mode</label>
+                      <select name="rollMode">
+                        <option value="single" {{#if (dnd5eCharacterBuilderEq settings.rollAbilityScores.mode "single")}}selected{{/if}}>Single Roll</option>
+                        <option value="limited" {{#if (dnd5eCharacterBuilderEq settings.rollAbilityScores.mode "limited")}}selected{{/if}}>Limited Rolls</option>
+                        <option value="unlimited" {{#if (dnd5eCharacterBuilderEq settings.rollAbilityScores.mode "unlimited")}}selected{{/if}}>Unlimited Rolls</option>
+                      </select>
+                      <p class="hint">Limited Rolls counts every complete set, including the first.</p>
+                    </div>
+                    <label class="cb-roll-limit-setting">
+                      <span>Complete Sets Allowed</span>
+                      <input type="number" name="rollLimit" value="{{settings.rollAbilityScores.limit}}" min="1" step="1">
+                    </label>
+                  </div>
+                </fieldset>
 
-      <fieldset>
-        <legend>Starting Equipment Shop</legend>
-        <div class="form-group cb-settings-form-group">
-          <label>Shop Bonus Gold</label>
-          <input type="number" name="shopBonusGold" value="{{settings.shopBonusGold}}" min="0" step="1">
-          <p class="hint">Additional GP added to the Draft as soon as character creation begins. It remains available whether or not the player opens the Shop.</p>
-        </div>
-      </fieldset>
+          <fieldset>
+                  <legend>Starting Equipment Shop</legend>
+                  <div class="form-group cb-settings-form-group">
+                    <label>Shop Bonus Gold</label>
+                    <input type="number" name="shopBonusGold" value="{{settings.shopBonusGold}}" min="0" step="1">
+                    <p class="hint">Additional GP added to the Draft as soon as character creation begins. It remains available whether or not the player opens the Shop.</p>
+                  </div>
+                </fieldset>
 
-      <fieldset>
-        <legend>Level Up Availability</legend>
-        <div class="form-group cb-settings-form-group">
-          <label>Advancement Method</label>
-          <select name="levelUpMode">
-            <option value="xp" {{#if (dnd5eCharacterBuilderEq settings.levelUpMode "xp")}}selected{{/if}}>Experience Points</option>
-            <option value="milestone" {{#if (dnd5eCharacterBuilderEq settings.levelUpMode "milestone")}}selected{{/if}}>Milestone — GM Grant Required</option>
-          </select>
-          <p class="hint">XP unlocks Level Up at the next character-level threshold. Milestone requires a GM grant.</p>
-        </div>
-        <div class="cb-settings-toggle">
-          <label><input type="checkbox" name="allowMulticlassing" {{checked settings.allowMulticlassing}}> Enable Multiclass</label>
-          <p class="hint">Allow players to add a new Class during Level Up.</p>
-        </div>
-        <div class="cb-settings-toggle">
-          <label><input type="checkbox" name="enforceMulticlassRequirements" {{checked settings.enforceMulticlassRequirements}}> Enforce Multiclass Requirements</label>
-          <p class="hint">Apply official prerequisites. Disabling this option does not enable Multiclass by itself.</p>
-        </div>
-        <div class="cb-settings-policy-grid">
-          <div class="cb-settings-toggle">
-            <label><input type="checkbox" name="enableFeats" {{checked settings.enableFeats}}> Enable Feats</label>
-            <p class="hint">Allow optional Feat choices, including Feats that grant a +1 Ability Score increase. Mandatory source grants remain unchanged.</p>
-          </div>
-          <div class="cb-settings-toggle">
-            <label><input type="checkbox" name="enableAbilityScoreImprovement" {{checked settings.enableAbilityScoreImprovement}}> Enable Ability Score Improvement</label>
-            <p class="hint">Allow the generic two-point Ability Score Improvement choice. Feat-granted +1 increases are controlled by Enable Feats.</p>
-          </div>
-          <div class="cb-settings-toggle">
-            <label><input type="checkbox" name="enableEpicBoons" {{checked settings.enableEpicBoons}}> Enable Epic Boons</label>
-            <p class="hint">Allow optional Epic Boon choices. Existing Epic Boons are never removed.</p>
-          </div>
-          <div class="cb-settings-toggle">
-            <label><input type="checkbox" name="enableGrantEpicBoons" {{checked settings.enableGrantEpicBoons}}> Enable Grant Epic Boons</label>
-            <p class="hint">Allow the GM to grant pending Epic Boon choices to eligible level 20 Player Characters. Requires Enable Epic Boons.</p>
-          </div>
-        </div>
-        <p class="hint">Native D&amp;D5e choice lists remain untouched. Character Builder validates the returned choice before it is applied.</p>
-      </fieldset>
+          <fieldset>
+                  <legend>Hit Point Advancement</legend>
+                  <p class="hint">Choose the allowed methods. A Roll remains locked to the pending Actor and target level.</p>
+                  <div class="cb-settings-inline-options">
+                    <label><input type="checkbox" name="hpMethod.roll" {{checked settings.hitPointAdvancement.methods.roll}}> Roll Hit Die</label>
+                    <label><input type="checkbox" name="hpMethod.average" {{checked settings.hitPointAdvancement.methods.average}}> Average</label>
+                    <label><input type="checkbox" name="hpMethod.maximum" {{checked settings.hitPointAdvancement.methods.maximum}}> Maximum Hit Die</label>
+                  </div>
+                  <label class="cb-settings-block-option"><input type="checkbox" name="minimumAverageOnRoll" {{checked settings.hitPointAdvancement.minimumAverageOnRoll}}> Use the class average whenever a locked roll is lower.</label>
+                  <div class="form-group cb-settings-form-group">
+                    <label>Default Method</label>
+                    <select name="hpDefaultMethod">
+                      <option value="roll" {{#if (dnd5eCharacterBuilderEq settings.hitPointAdvancement.defaultMethod "roll")}}selected{{/if}}>Roll</option>
+                      <option value="average" {{#if (dnd5eCharacterBuilderEq settings.hitPointAdvancement.defaultMethod "average")}}selected{{/if}}>Average</option>
+                      <option value="maximum" {{#if (dnd5eCharacterBuilderEq settings.hitPointAdvancement.defaultMethod "maximum")}}selected{{/if}}>Maximum</option>
+                    </select>
+                  </div>
+                </fieldset>
 
-      <fieldset>
-        <legend>Character Keeper</legend>
-        <div class="cb-settings-toggle">
-          <label><input type="checkbox" name="allowSpellScrollScribing" {{checked settings.allowSpellScrollScribing}}> Allow Spell Scroll Scribing</label>
-          <p class="hint">Allow Wizards to copy eligible Spell Scrolls into their spellbooks through Character Keeper.</p>
         </div>
-        <div class="cb-settings-toggle">
-          <label><input type="checkbox" name="chargeWizardScribingCosts" {{checked settings.chargeWizardScribingCosts}}> Charge Wizard Scribing Costs</label>
-          <p class="hint">Deduct the official 50 GP per spell level. When disabled, the checkout still reports the rules cost but the effective cost is 0 GP.</p>
-        </div>
-        <div class="cb-settings-toggle">
-          <label><input type="checkbox" name="requireArcanaCheckForSpellScrollScribing" {{checked settings.requireArcanaCheckForSpellScrollScribing}}> Require Arcana Check for Spell Scroll Scribing</label>
-          <p class="hint">Require a public Intelligence (Arcana) check against DC 10 + spell level. When disabled, a confirmed eligible attempt succeeds automatically.</p>
-        </div>
-        <div class="cb-settings-toggle">
-          <label><input type="checkbox" name="chargeScribingCostOnFailedCheck" {{checked settings.chargeScribingCostOnFailedCheck}}> Charge Scribing Cost on Failed Check</label>
-          <p class="hint">When the Arcana check fails, consume the Spell Scroll and also charge the GP cost. When disabled, a failed check consumes the scroll but preserves the character's currency.</p>
-        </div>
+        <div class="cb-settings-column">
+          <fieldset>
+                  <legend>Level Up Availability</legend>
+                  <div class="form-group cb-settings-form-group">
+                    <label>Advancement Method</label>
+                    <select name="levelUpMode">
+                      <option value="xp" {{#if (dnd5eCharacterBuilderEq settings.levelUpMode "xp")}}selected{{/if}}>Experience Points</option>
+                      <option value="milestone" {{#if (dnd5eCharacterBuilderEq settings.levelUpMode "milestone")}}selected{{/if}}>Milestone — GM Grant Required</option>
+                    </select>
+                    <p class="hint">XP unlocks Level Up at the next character-level threshold. Milestone requires a GM grant.</p>
+                  </div>
+                  <div class="form-group cb-settings-form-group cb-level-up-ready-sound-setting">
+                    <label>Level Up Ready Sound</label>
+                    <div class="cb-settings-file-row">
+                      <input type="text" name="levelUpReadySound" value="{{settings.levelUpReadySound}}" placeholder="No sound configured">
+                      <button type="button" data-action="browse-level-up-sound" data-target="levelUpReadySound" data-type="audio">
+                        <i class="fa-solid fa-folder-open"></i> Browse
+                      </button>
+                      <button type="button" data-action="test-level-up-sound">
+                        <i class="fa-solid fa-volume-high"></i> Test
+                      </button>
+                    </div>
+                    <p class="hint">Played through Foundry's Interface Sounds channel when the selected Level Up method changes this Actor from not ready to ready: crossing the next XP threshold in XP mode, or receiving a GM Level Up grant in Milestone mode. Leave empty for no sound.</p>
+                  </div>
+                  <div class="cb-settings-toggle">
+                    <label><input type="checkbox" name="allowMulticlassing" {{checked settings.allowMulticlassing}}> Enable Multiclass</label>
+                    <p class="hint">Allow players to add a new Class during Level Up.</p>
+                  </div>
+                  <div class="cb-settings-toggle">
+                    <label><input type="checkbox" name="enforceMulticlassRequirements" {{checked settings.enforceMulticlassRequirements}}> Enforce Multiclass Requirements</label>
+                    <p class="hint">Apply official prerequisites. Disabling this option does not enable Multiclass by itself.</p>
+                  </div>
+                  <div class="cb-settings-policy-grid">
+                    <div class="cb-settings-toggle">
+                      <label><input type="checkbox" name="enableFeats" {{checked settings.enableFeats}}> Enable Feats</label>
+                      <p class="hint">Allow optional Feat choices, including Feats that grant a +1 Ability Score increase. Mandatory source grants remain unchanged.</p>
+                    </div>
+                    <div class="cb-settings-toggle">
+                      <label><input type="checkbox" name="enableAbilityScoreImprovement" {{checked settings.enableAbilityScoreImprovement}}> Enable Ability Score Improvement</label>
+                      <p class="hint">Allow the generic two-point Ability Score Improvement choice. Feat-granted +1 increases are controlled by Enable Feats.</p>
+                    </div>
+                    <div class="cb-settings-toggle">
+                      <label><input type="checkbox" name="enableEpicBoons" {{checked settings.enableEpicBoons}}> Enable Epic Boons</label>
+                      <p class="hint">Allow optional Epic Boon choices. Existing Epic Boons are never removed.</p>
+                    </div>
+                    <div class="cb-settings-toggle">
+                      <label><input type="checkbox" name="enableGrantEpicBoons" {{checked settings.enableGrantEpicBoons}}> Enable Grant Epic Boons</label>
+                      <p class="hint">Allow the GM to grant pending Epic Boon choices to eligible level 20 Player Characters. Requires Enable Epic Boons.</p>
+                    </div>
+                  </div>
+                  <p class="hint">Native D&amp;D5e choice lists remain untouched. Character Builder validates the returned choice before it is applied.</p>
+                </fieldset>
 
-        <hr>
-        <div class="cb-settings-toggle">
-          <label><input type="checkbox" name="gmManagedRestAccess" {{checked settings.gmManagedRestAccess}}> GM-Managed Rest Availability</label>
-          <p class="hint"><strong>Optional; disabled by default.</strong> When enabled, Short Rest and Long Rest remain visible on character sheets but are locked until the GM grants that rest from Character Builder Tool. Each completed native rest consumes its grant. Disable this option to leave rests fully available under normal D&amp;D5e behavior.</p>
-        </div>
+          <fieldset>
+                  <legend>Character Keeper</legend>
+                  <div class="cb-settings-toggle">
+                    <label><input type="checkbox" name="allowSpellScrollScribing" {{checked settings.allowSpellScrollScribing}}> Allow Spell Scroll Scribing</label>
+                    <p class="hint">Allow Wizards to copy eligible Spell Scrolls into their spellbooks through Character Keeper.</p>
+                  </div>
+                  <div class="cb-settings-toggle">
+                    <label><input type="checkbox" name="chargeWizardScribingCosts" {{checked settings.chargeWizardScribingCosts}}> Charge Wizard Scribing Costs</label>
+                    <p class="hint">Deduct the official 50 GP per spell level. When disabled, the checkout still reports the rules cost but the effective cost is 0 GP.</p>
+                  </div>
+                  <div class="cb-settings-toggle">
+                    <label><input type="checkbox" name="requireArcanaCheckForSpellScrollScribing" {{checked settings.requireArcanaCheckForSpellScrollScribing}}> Require Arcana Check for Spell Scroll Scribing</label>
+                    <p class="hint">Require a public Intelligence (Arcana) check against DC 10 + spell level. When disabled, a confirmed eligible attempt succeeds automatically.</p>
+                  </div>
+                  <div class="cb-settings-toggle">
+                    <label><input type="checkbox" name="chargeScribingCostOnFailedCheck" {{checked settings.chargeScribingCostOnFailedCheck}}> Charge Scribing Cost on Failed Check</label>
+                    <p class="hint">When the Arcana check fails, consume the Spell Scroll and also charge the GP cost. When disabled, a failed check consumes the scroll but preserves the character's currency.</p>
+                  </div>
 
-        <hr>
-        <div class="cb-player-sheet-integrity-setting">
-          <div>
-            <label class="cb-player-sheet-integrity-master-toggle">
-              <input type="checkbox" name="playerSheetIntegrity" {{checked settings.playerSheetIntegrity}}>
-              <strong>Player Character Sheet Integrity</strong>
-            </label>
-            <p class="hint"><strong>Optional; disabled by default.</strong> Restrict selected groups of direct player-sheet changes while preserving normal gameplay use. Configure each protection package individually.</p>
-            <p class="cb-player-sheet-integrity-count" data-player-sheet-integrity-summary>{{playerSheetIntegrityEnabledCount}} of {{playerSheetIntegrityRuleCount}} integrity protections enabled.</p>
-          </div>
-          <button type="button" data-action="configure-sheet-integrity">
-            <i class="fa-solid fa-shield-halved"></i> Configure Integrity Rules
-          </button>
-        </div>
+                  <hr>
+                  <div class="cb-settings-toggle">
+                    <label><input type="checkbox" name="gmManagedRestAccess" {{checked settings.gmManagedRestAccess}}> GM-Managed Rest Availability</label>
+                    <p class="hint"><strong>Optional; disabled by default.</strong> When enabled, Short Rest and Long Rest remain visible on character sheets but are locked until the GM grants that rest from Character Builder Tool. Each completed native rest consumes its grant. Disable this option to leave rests fully available under normal D&amp;D5e behavior.</p>
+                  </div>
 
-        <hr>
-        <div class="cb-settings-toggle">
-          <label><input type="checkbox" name="halfLongRestRecoveryOnShortRest" {{checked settings.halfLongRestRecoveryOnShortRest}}> Half Long-Rest Recovery on Short Rest</label>
-          <p class="hint"><strong>Optional homebrew; disabled by default.</strong> After the native Short Rest completes, recover half of each eligible Long-Rest-only reserve, rounded down. Native Hit Dice, Short-Rest recovery, Pact Magic, and all other D&amp;D5e rest behavior continue normally.</p>
-        </div>
-        <div class="form-group cb-settings-form-group">
-          <label>Short Rest Homebrew Cooldown</label>
-          <input type="number" name="shortRestHomebrewCooldownMinutes" value="{{settings.shortRestHomebrewCooldownMinutes}}" min="0" max="10080" step="1">
-          <p class="hint">Real server-time minutes before the additional homebrew recovery can occur again for the same Actor. The cooldown never blocks a native Short Rest. Set 0 to allow the homebrew recovery on every completed Short Rest; transaction locks still prevent duplicate clicks.</p>
-        </div>
-        <p class="hint">Eligible reserves include normal Long-Rest spell slots, Long-Rest-only Item or Activity uses, and Actor resources marked Long Rest but not Short Rest. HP, Hit Dice, temporary HP, Death Saves, Exhaustion, spell preparation, effects, consumables, daily/dawn recovery, and resources already recovered on a Short Rest are excluded. Recovery is listed in chat for auditing.</p>
+                  <hr>
+                  <div class="cb-player-sheet-integrity-setting">
+                    <div>
+                      <label class="cb-player-sheet-integrity-master-toggle">
+                        <input type="checkbox" name="playerSheetIntegrity" {{checked settings.playerSheetIntegrity}}>
+                        <strong>Player Character Sheet Integrity</strong>
+                      </label>
+                      <p class="hint"><strong>Optional; disabled by default.</strong> Restrict selected groups of direct player-sheet changes while preserving normal gameplay use. Configure each protection package individually.</p>
+                      <p class="cb-player-sheet-integrity-count" data-player-sheet-integrity-summary>{{playerSheetIntegrityEnabledCount}} of {{playerSheetIntegrityRuleCount}} integrity protections enabled.</p>
+                    </div>
+                    <button type="button" data-action="configure-sheet-integrity">
+                      <i class="fa-solid fa-shield-halved"></i> Configure Integrity Rules
+                    </button>
+                  </div>
 
-        <p class="hint">Optional Short Rest and Long Rest reconfiguration uses native D&amp;D5e recovery, then applies only the Character Keeper choices confirmed for that rest.</p>
-      </fieldset>
+                  <hr>
+                  <div class="cb-settings-toggle">
+                    <label><input type="checkbox" name="halfLongRestRecoveryOnShortRest" {{checked settings.halfLongRestRecoveryOnShortRest}}> Half Long-Rest Recovery on Short Rest</label>
+                    <p class="hint"><strong>Optional homebrew; disabled by default.</strong> After the native Short Rest completes, recover half of each eligible Long-Rest-only reserve, rounded down. Native Hit Dice, Short-Rest recovery, Pact Magic, and all other D&amp;D5e rest behavior continue normally.</p>
+                  </div>
+                  <div class="form-group cb-settings-form-group">
+                    <label>Short Rest Homebrew Cooldown</label>
+                    <input type="number" name="shortRestHomebrewCooldownMinutes" value="{{settings.shortRestHomebrewCooldownMinutes}}" min="0" max="10080" step="1">
+                    <p class="hint">Real server-time minutes before the additional homebrew recovery can occur again for the same Actor. The cooldown never blocks a native Short Rest. Set 0 to allow the homebrew recovery on every completed Short Rest; transaction locks still prevent duplicate clicks.</p>
+                  </div>
+                  <p class="hint">Eligible reserves include normal Long-Rest spell slots, Long-Rest-only Item or Activity uses, and Actor resources marked Long Rest but not Short Rest. HP, Hit Dice, temporary HP, Death Saves, Exhaustion, spell preparation, effects, consumables, daily/dawn recovery, and resources already recovered on a Short Rest are excluded. Recovery is listed in chat for auditing.</p>
 
-      <fieldset>
-        <legend>Rules Assistance</legend>
-        <div class="cb-rules-assistance-setting">
-          <div>
-            <label class="cb-rules-assistance-master-toggle">
-              <input type="checkbox" name="assistWithDiceAutomation" {{checked settings.assistWithDiceAutomation}}>
-              <strong>Rules Automation Assistance</strong>
-            </label>
-            <p class="hint">Helps automate selected rules and passive mechanics that are not fully handled by the D&amp;D5e system. Configure each assistance rule individually.</p>
-            <p class="cb-rules-assistance-count" data-rules-assistance-summary>{{rulesAssistanceEnabledCount}} of {{rulesAssistanceRuleCount}} assistance rules enabled.</p>
-          </div>
-          <button type="button" data-action="configure-assistance-rules">
-            <i class="fa-solid fa-sliders"></i> Configure Assistance Rules
-          </button>
-        </div>
-      </fieldset>
+                  <p class="hint">Optional Short Rest and Long Rest reconfiguration uses native D&amp;D5e recovery, then applies only the Character Keeper choices confirmed for that rest.</p>
+                </fieldset>
 
-      <fieldset>
-        <legend>Hit Point Advancement</legend>
-        <p class="hint">Choose the allowed methods. A Roll remains locked to the pending Actor and target level.</p>
-        <div class="cb-settings-inline-options">
-          <label><input type="checkbox" name="hpMethod.roll" {{checked settings.hitPointAdvancement.methods.roll}}> Roll Hit Die</label>
-          <label><input type="checkbox" name="hpMethod.average" {{checked settings.hitPointAdvancement.methods.average}}> Average</label>
-          <label><input type="checkbox" name="hpMethod.maximum" {{checked settings.hitPointAdvancement.methods.maximum}}> Maximum Hit Die</label>
+          <fieldset>
+                  <legend>Rules Assistance</legend>
+                  <div class="cb-rules-assistance-setting">
+                    <div>
+                      <label class="cb-rules-assistance-master-toggle">
+                        <input type="checkbox" name="assistWithDiceAutomation" {{checked settings.assistWithDiceAutomation}}>
+                        <strong>Rules Automation Assistance</strong>
+                      </label>
+                      <p class="hint">Helps automate selected rules and passive mechanics that are not fully handled by the D&amp;D5e system. Configure each assistance rule individually.</p>
+                      <p class="cb-rules-assistance-count" data-rules-assistance-summary>{{rulesAssistanceEnabledCount}} of {{rulesAssistanceRuleCount}} assistance rules enabled.</p>
+                    </div>
+                    <button type="button" data-action="configure-assistance-rules">
+                      <i class="fa-solid fa-sliders"></i> Configure Assistance Rules
+                    </button>
+                  </div>
+                </fieldset>
+
         </div>
-        <label class="cb-settings-block-option"><input type="checkbox" name="minimumAverageOnRoll" {{checked settings.hitPointAdvancement.minimumAverageOnRoll}}> Use the class average whenever a locked roll is lower.</label>
-        <div class="form-group cb-settings-form-group">
-          <label>Default Method</label>
-          <select name="hpDefaultMethod">
-            <option value="roll" {{#if (dnd5eCharacterBuilderEq settings.hitPointAdvancement.defaultMethod "roll")}}selected{{/if}}>Roll</option>
-            <option value="average" {{#if (dnd5eCharacterBuilderEq settings.hitPointAdvancement.defaultMethod "average")}}selected{{/if}}>Average</option>
-            <option value="maximum" {{#if (dnd5eCharacterBuilderEq settings.hitPointAdvancement.defaultMethod "maximum")}}selected{{/if}}>Maximum</option>
-          </select>
-        </div>
-      </fieldset>
+      </div>
 
       <fieldset class="cb-settings-wide cb-settings-creation-prompt">
-        <legend>Creation Prompt</legend>
-        <label><input type="checkbox" name="promptOnCreate" {{checked settings.promptOnCreate}}> Ask whether to use Character Builder when a new Player Character Actor is created.</label>
-        <p class="hint">World setting, enabled by default. Disabling it suppresses only the automatic creation prompt; the Builder can still be opened manually and existing Actors are not changed.</p>
-      </fieldset>
+              <legend>Creation Prompt</legend>
+              <label><input type="checkbox" name="promptOnCreate" {{checked settings.promptOnCreate}}> Ask whether to use Character Builder when a new Player Character Actor is created.</label>
+              <p class="hint">World setting, enabled by default. Disabling it suppresses only the automatic creation prompt; the Builder can still be opened manually and existing Actors are not changed.</p>
+            </fieldset>
 
       <fieldset class="cb-settings-wide cb-settings-maintenance">
-        <legend>Maintenance</legend>
-        <div class="cb-settings-maintenance-layout">
-          <div>
-            <h3>Restore Current Version Defaults</h3>
-            <p>Restore every Character Builder setting to the defaults declared by the currently installed version.</p>
-            <p class="hint">This does not delete or modify characters, Items, levels, progress records, transactions, Drafts, or campaign data.</p>
-          </div>
-          <button type="button" class="cb-settings-reset-button" data-action="restore-defaults">
-            <i class="fa-solid fa-rotate-left"></i> Restore Current Version Defaults
-          </button>
-        </div>
-      </fieldset>
+              <legend>Maintenance</legend>
+              <div class="cb-settings-maintenance-layout">
+                <div>
+                  <h3>Restore Current Version Defaults</h3>
+                  <p>Restore every Character Builder setting to the defaults declared by the currently installed version.</p>
+                  <p class="hint">This does not delete or modify characters, Items, levels, progress records, transactions, Drafts, or campaign data.</p>
+                </div>
+                <button type="button" class="cb-settings-reset-button" data-action="restore-defaults">
+                  <i class="fa-solid fa-rotate-left"></i> Restore Current Version Defaults
+                </button>
+              </div>
+            </fieldset>
+
       {{/if}}
     </div>
   </div>

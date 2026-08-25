@@ -30,6 +30,19 @@ The wrapper always continues the original call. It is used only to settle and cl
 - Document flags, settings, sockets, and transaction metadata use the `dnd5e-character-builder` namespace.
 - The public API is exposed through `game.modules.get("dnd5e-character-builder").api`.
 
+
+## Rest Recovery 5e
+
+Character Builder `0.9.9w1` includes an automatic compatibility adapter for the optional module **Rest Recovery 5e** (`rest-recovery`). It is not a dependency and no Character Builder setting is required.
+
+Character Keeper continues to own only its staged character-maintenance choices. When it asks D&D5e to execute the actual rest, Rest Recovery may intercept `dnd5e.preShortRest` / `dnd5e.preLongRest`, open its own workflow, and return `false` from the original `actor.initiateRest()` call while it completes asynchronously. Character Builder recognizes that handoff when the module is active and waits for the same Actor's authoritative `dnd5e.restCompleted` event.
+
+- Rest Recovery absent: the Character Builder rest path is unchanged.
+- Rest Recovery completed: Character Builder applies its post-native lifecycle and staged Keeper transaction once, then consumes any GM rest grant and closes the Keeper.
+- Rest Recovery cancelled: Character Builder leaves the Keeper session pending and interactive; staged choices remain uncommitted and the GM rest grant is retained.
+- Character Builder never calls Rest Recovery internals to calculate HP, Hit Dice, exhaustion, food/water, spell recovery, or variant-rest outcomes.
+- The adapter uses Rest Recovery's ApplicationV2 lifecycle only to distinguish an external workflow cancellation from a successful handoff which is still waiting for `dnd5e.restCompleted`.
+
 ## Conflict reports
 
 A useful report includes:

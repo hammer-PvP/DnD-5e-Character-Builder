@@ -8,6 +8,7 @@ import { ModalStackService } from "../services/modal-stack-service.mjs";
 import { ShortRestHomebrewService } from "../services/short-rest-homebrew-service.mjs";
 import { RestAccessService } from "../services/rest-access-service.mjs";
 import { LongRestLifecycleService } from "../services/long-rest-lifecycle-service.mjs";
+import { RestExecutionHandoffService } from "../services/rest-execution-handoff-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -148,16 +149,29 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
         session = await RestSessionService.getOrCreate(actor, type);
         ui.notifications.warn("A stale Character Keeper choice was discarded because its source feature is no longer present or eligible.");
       }
-      const result = await actor.initiateRest({
-        ...cloneRestConfig(restConfig),
-        type,
-        characterBuilderRestBypass: true
-      });
-      if (!result) {
-        await RestSessionService.clear(actor);
-        return result;
+      if (RestExecutionHandoffService.restRecoveryActive()) {
+        session = await RestSessionService.update(actor, {
+          status: "waiting-external-rest",
+          externalRestHandoff: {
+            provider: "rest-recovery",
+            sessionId: session.id,
+            restType: type,
+            startedAt: Date.now()
+          }
+        });
       }
-      session = await RestSessionService.markNativeRestCompleted(actor, result);
+      const execution = await RestExecutionHandoffService.execute(actor, type, cloneRestConfig(restConfig), {
+        sessionId: session.id
+      });
+      if (execution.failed) {
+        await RestSessionService.clear(actor);
+        throw new Error(execution.reason || `${execution.provider} could not complete the ${type === "short" ? "Short" : "Long"} Rest.`);
+      }
+      if (!execution.completed) {
+        await RestSessionService.clear(actor);
+        return false;
+      }
+      session = await RestSessionService.markNativeRestCompleted(actor, execution.result);
       session = await this.#applyPostNativeLongRestLifecycle(actor, type, session);
       session = await this.#applyAutomaticRestLifecycle(actor, type, session);
       const homebrewResult = type === "short"
@@ -166,7 +180,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
       await RestAccessService.consume(actor, type, { restSessionId: session.id });
       await RestSessionService.clear(actor);
       notifyRestCompletion(type === "short" ? "Short Rest" : "Long Rest", homebrewResult);
-      return result;
+      return execution.result;
     }
 
     const app = new this(actor, { restType: type, restConfig, registry, session });
@@ -495,19 +509,41 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
         }
       }
       if (!this.session?.nativeRestCompleted) {
-        const result = await this.actor.initiateRest({
-          ...cloneRestConfig(this.restConfig),
-          type: this.restType,
-          characterBuilderRestBypass: true
-        });
-        if (!result) {
-          this.session = await RestSessionService.update(this.actor, { status: "pending" });
+        if (RestExecutionHandoffService.restRecoveryActive()) {
+          this.session = await RestSessionService.update(this.actor, {
+            status: "waiting-external-rest",
+            externalRestHandoff: {
+              provider: "rest-recovery",
+              sessionId: this.session?.id ?? null,
+              restType: this.restType,
+              startedAt: Date.now()
+            }
+          });
+        }
+        const execution = await RestExecutionHandoffService.execute(
+          this.actor,
+          this.restType,
+          cloneRestConfig(this.restConfig),
+          { sessionId: this.session?.id ?? null }
+        );
+        if (execution.failed) {
+          this.session = await RestSessionService.update(this.actor, {
+            status: "pending",
+            externalRestHandoff: null
+          });
+          throw new Error(execution.reason || `${execution.provider} could not complete the ${this.restLabel}.`);
+        }
+        if (!execution.completed) {
+          this.session = await RestSessionService.update(this.actor, {
+            status: "pending",
+            externalRestHandoff: null
+          });
           this.#setBusy(false);
           this.operationToken = null;
           await this.render({ force: true });
           return;
         }
-        this.session = await RestSessionService.markNativeRestCompleted(this.actor, result);
+        this.session = await RestSessionService.markNativeRestCompleted(this.actor, execution.result);
       }
 
       this.session = await RestManagementApp.#applyPostNativeLongRestLifecycle(this.actor, this.restType, this.session);

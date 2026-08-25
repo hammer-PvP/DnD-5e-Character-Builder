@@ -43,7 +43,7 @@ Enable **Character Builder (DnD 5e)** in the world after installation.
 1. Create or open a Player Character Actor.
 2. Use the gold **Character Builder** button on an empty character sheet to begin guided creation.
 3. Grant Level Ups individually from Actor controls or in groups through **Character Builder Tool**.
-4. Optionally enable **GM-Managed Rest Availability** and grant Short or Long Rest access to selected characters from the same tool.
+4. Optionally enable **GM-Managed Rest Availability** and grant or revoke Short or Long Rest access for selected characters from the same tool.
 5. Configure content sources and campaign rules in **Character Builder Settings**.
 6. Allow players to complete Level Ups and class maintenance from their own character sheets. Character Builder delegates protected Draft and safety-backup creation/cleanup to an active GM, so players do not need Foundry's global Create Actor or Delete Actor permissions for these workflows.
 
@@ -207,7 +207,7 @@ The player may perform a change or continue the rest without changing anything. 
 
 ### Optional GM-Managed Rest Availability
 
-The GM may enable **GM-Managed Rest Availability** when the campaign needs explicit control over who can rest—for example, when different groups are adventuring in different locations. With the setting enabled, native Short Rest and Long Rest buttons stay visible but locked until the GM grants the corresponding rest to selected characters from **Character Builder Tool**. Short and Long Rest are independent permissions, and an available button is highlighted on the character sheet.
+The GM may enable **GM-Managed Rest Availability** when the campaign needs explicit control over who can rest—for example, when different groups are adventuring in different locations. With the setting enabled, native Short Rest and Long Rest buttons stay visible but locked until the GM grants the corresponding rest to selected characters from **Character Builder Tool**. The Tool automatically switches each rest control between Grant and Revoke: mixed selections are normalized to Granted first, while a selection in which every Actor already has that rest available can be revoked as a group. Short and Long Rest are independent permissions, and an available button is highlighted on the character sheet.
 
 The player still starts the rest from their own native D&D5e button. Character Builder only gates availability; it does not implement a second rest engine. The grant is consumed after the native rest and Character Keeper finish successfully. Disabling the setting returns rests to normal unrestricted D&D5e behavior.
 
@@ -220,6 +220,11 @@ With the recommended defaults, protected players can still **Use / Cast** Items 
 The **Prepared Spell Limit** package treats ordinary daily preparation as sheet-state integrity rather than Character Validator health. When the rule is activated, excess ordinary prepared spells are automatically unprepared from the highest spell level downward; ties are removed from the bottom of the current ordering first. Always Prepared and feature-granted spells are excluded. A player who later tries to prepare beyond the legal class limit receives a warning and must unprepare another spell first. Limited-list repertoire ownership (such as Bard, Sorcerer, or Warlock acquisition) remains structural Character Validation scope.
 
 The guard remains intentionally UI-path based rather than a global Document-update/create/delete restriction, so legitimate D&D5e gameplay automation, Character Builder/Level Up transactions, GM actions, and programmatic integrations are not intercepted. A GM can deliberately relax a package—for example Currency or Character Content—without disabling the protections they still want.
+
+
+### Optional Rest Recovery 5e compatibility
+
+When **Rest Recovery 5e** is active, Character Builder detects it automatically. Character Keeper still stages and validates its own rule-authorized maintenance choices first, then hands the actual Short/Long Rest back to D&D5e. If Rest Recovery opens its workflow, Character Builder waits for the authoritative `dnd5e.restCompleted` event before applying Keeper post-rest changes and consuming any GM rest grant. Cancelling the Rest Recovery window returns control to the pending Keeper session instead of leaving it unresponsive. No compatibility setting is required, and Character Builder does not import or reproduce Rest Recovery's HP, Hit Dice, food/water, exhaustion, spell recovery, or variant-rest rules.
 
 ### Optional Half Long-Rest Recovery on Short Rest
 

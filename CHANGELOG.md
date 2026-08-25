@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.9w1 — Internal Test Build
+
+- Added automatic **Rest Recovery 5e** compatibility for Character Keeper. When Rest Recovery claims a Short or Long Rest asynchronously, Character Builder now waits for the authoritative `dnd5e.restCompleted` event instead of treating the immediate `false` return from `actor.initiateRest()` as a cancelled rest.
+- Added Rest Recovery cancellation recovery. Closing the Rest Recovery workflow before completion returns control to the still-pending Character Keeper session without consuming the GM rest grant or applying staged Keeper choices. A successful external rest still runs exactly once.
+- Added a generic rest execution handoff boundary so the default D&D5e path remains unchanged when Rest Recovery is not active. Compatibility is detected automatically; there is no Character Builder setting or required dependency.
+- Added **Grant / Revoke Short Rest** and **Grant / Revoke Long Rest** semantics to Character Builder Tool. With mixed selected Actors, Grant normalizes the whole selection to available; once every selected Actor is granted, the same control becomes Revoke and removes the permission from all selected Actors.
+- Added optional **Level Up Ready Sound** under Level Up Availability. A GM can select an audio file with Foundry's native File Picker and test it locally. The configured cue uses Foundry's Interface Sounds channel and fires only on the transition to Level Up-ready under the active policy: crossing the next XP threshold in XP mode or receiving a Level Up grant in Milestone mode.
+- Reworked the Character Builder Settings layout into two independent vertical columns beneath the full-width global sections, removing large empty gaps caused by unequal fieldset heights while preserving the responsive single-column layout on smaller windows.
+- This `w1` package is an internal test build. Public GitHub release URLs intentionally remain on the last public `0.9.9w` line until the next lettered release is approved.
+
 ## 0.9.9w
 
 - Hardened the protected **Level Up** transaction lifecycle. A successful Milestone commit no longer forces a full Level Up context rebuild after the grant has been legitimately consumed, preventing the false post-commit “GM has not granted this Actor a Milestone Level Up” error.

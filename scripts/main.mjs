@@ -24,6 +24,7 @@ import { SharedRollResolutionQueueService } from "./services/shared-roll-resolut
 import { NativeFeatureCompatibilityService } from "./services/native-feature-compatibility-service.mjs";
 import { RestAccessService } from "./services/rest-access-service.mjs";
 import { PlayerSheetIntegrityService } from "./services/player-sheet-integrity-service.mjs";
+import { LevelUpReadySoundService } from "./services/level-up-ready-sound-service.mjs";
 
 let scribeIconPromise = null;
 
@@ -194,6 +195,14 @@ Hooks.on("dnd5e.preAdvancementManagerComplete", (manager, updates, toCreate, toU
 
 Hooks.on("dnd5e.preShortRest", (actor, config) => interceptRest(actor, "short", config));
 Hooks.on("dnd5e.preLongRest", (actor, config) => interceptRest(actor, "long", config));
+
+Hooks.on("preUpdateActor", (actor, changes, options) => {
+  LevelUpReadySoundService.captureTransition(actor, changes, options ?? {});
+});
+Hooks.on("updateActor", (actor, changes, options, userId) => {
+  if (userId !== game.user.id) return;
+  LevelUpReadySoundService.completeTransition(actor, changes, options ?? {});
+});
 
 Hooks.on("createActor", async (actor, _options, userId) => {
   if (userId !== game.user.id || !isCreationEligible(actor)) return;
