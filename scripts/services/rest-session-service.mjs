@@ -26,6 +26,7 @@ export class RestSessionService {
       createdBy: game.user.id,
       status: "pending",
       nativeRestCompleted: false,
+      restDecisionPreparation: null,
       longRestLifecycleApplied: false,
       keeperChangesApplied: false,
       activeActionId: null,
@@ -102,6 +103,7 @@ export class RestSessionService {
     const next = foundry.utils.deepClone(current);
     next.operations = {};
     next.completedActionIds = [];
+    next.restDecisionPreparation = null;
     next.rollLocks = preserveRollLocks
       ? foundry.utils.deepClone(current.rollLocks ?? {})
       : {};

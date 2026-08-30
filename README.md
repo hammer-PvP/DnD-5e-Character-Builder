@@ -205,6 +205,14 @@ Examples include:
 
 The player may perform a change or continue the rest without changing anything. Normal D&D5e recovery, spell preparation, slots, uses, dice, effects, and runtime activities remain the responsibility of the D&D5e system.
 
+### Rest Decision Assistance
+
+For Short Rests, Character Keeper also surfaces optional decisions that are easy to miss but should not become a second rest engine. The action list is eligibility-driven: if a character has more than one supported decision, all applicable actions appear together; automatic recovery that needs no player decision is not duplicated.
+
+- **Arcane Recovery** and Circle of the Land **Natural Recovery** share one spell-slot selection interface. It reads the Actor's actual derived level 1–5 spell-slot maximums, enforces the feature's combined-level budget, and consumes the native Item/Activity use tracker rather than creating a Character Builder resource.
+- **Sorcerous Restoration** stages the player's intent and, only after the authoritative Short Rest succeeds, invokes the native **Restore Sorcery Points** Activity. D&D5e remains responsible for the formula and Font of Magic consumption.
+- **Magical Cunning** is a direct shortcut to the native **Regain Pact Spell Slots** Activity. Because the rite is an independent feature use rather than a Keeper rest transaction, using it is not undone if the later Short Rest is cancelled.
+
 ### Optional GM-Managed Rest Availability
 
 The GM may enable **GM-Managed Rest Availability** when the campaign needs explicit control over who can rest—for example, when different groups are adventuring in different locations. With the setting enabled, native Short Rest and Long Rest buttons stay visible but locked until the GM grants the corresponding rest to selected characters from **Character Builder Tool**. The Tool automatically switches each rest control between Grant and Revoke: mixed selections are normalized to Granted first, while a selection in which every Actor already has that rest available can be revoked as a group. Short and Long Rest are independent permissions, and an available button is highlighted on the character sheet.
@@ -224,7 +232,7 @@ The guard remains intentionally UI-path based rather than a global Document-upda
 
 ### Optional Rest Recovery 5e compatibility
 
-When **Rest Recovery 5e** is active, Character Builder detects it automatically. Character Keeper still stages and validates its own rule-authorized maintenance choices first, then hands the actual Short/Long Rest back to D&D5e. If Rest Recovery opens its workflow, Character Builder waits for the authoritative `dnd5e.restCompleted` event before applying Keeper post-rest changes and consuming any GM rest grant. Cancelling the Rest Recovery window returns control to the pending Keeper session instead of leaving it unresponsive. No compatibility setting is required, and Character Builder does not import or reproduce Rest Recovery's HP, Hit Dice, food/water, exhaustion, spell recovery, or variant-rest rules.
+When **Rest Recovery 5e** is active, Character Builder detects it automatically. Character Keeper still stages and validates its own rule-authorized maintenance choices first, then hands the actual Short/Long Rest back to D&D5e. Arcane Recovery and Natural Recovery selections are prepared immediately before that handoff so their native use tracker is already spent and an external rest provider cannot apply the same feature a second time. If Rest Recovery opens its workflow, Character Builder waits for the authoritative `dnd5e.restCompleted` event before applying remaining Keeper post-rest changes and consuming any GM rest grant. Cancelling the Rest Recovery window restores the exact pre-rest spell-slot values and native recovery tracker, keeps the Keeper choices staged, and returns control to the pending session. No compatibility setting is required, and Character Builder does not import or reproduce Rest Recovery's HP, Hit Dice, food/water, exhaustion, or variant-rest rules.
 
 ### Optional Half Long-Rest Recovery on Short Rest
 
@@ -397,6 +405,8 @@ Character Builder is responsible for delivering the Items, spells, features, eff
 After those resources are correctly present on the Actor, normal mechanical execution—activities, damage, targets, effects, consumption, recovery, and standard spell preparation—is handled by Foundry VTT and the D&D5e system.
 
 ## Support and Bug Reports
+
+Foundry **Game Settings** includes a separate **Support the Creator** row with a **Buy Me a Coffee** button. Support/cross-promotion is intentionally kept outside the functional Character Builder Settings window.
 
 Report reproducible problems through the GitHub issue tracker:
 

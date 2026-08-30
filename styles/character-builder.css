@@ -5727,3 +5727,97 @@
   .character-builder .cb-settings-file-row { grid-template-columns: 1fr 1fr; }
   .character-builder .cb-settings-file-row input { grid-column: 1 / -1; }
 }
+
+/* v0.9.9w2 — Rest Decision Assistance */
+.character-builder .cb-spell-recovery .cb-choice-section-header {
+  align-items: center;
+  gap: 18px;
+}
+.character-builder .cb-spell-recovery-budget {
+  min-width: 150px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border-light-primary, rgba(255,255,255,.18));
+  border-radius: 8px;
+  text-align: right;
+}
+.character-builder .cb-spell-recovery-budget strong,
+.character-builder .cb-spell-recovery-budget small {
+  display: block;
+}
+.character-builder .cb-spell-recovery-budget strong {
+  font-size: 1.2rem;
+}
+.character-builder .cb-spell-recovery-levels {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.character-builder .cb-spell-recovery-level {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.4fr);
+  gap: 14px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border-light-primary, rgba(255,255,255,.14));
+  border-radius: 8px;
+}
+.character-builder .cb-spell-recovery-level-copy strong,
+.character-builder .cb-spell-recovery-level-copy small {
+  display: block;
+}
+.character-builder .cb-spell-recovery-level-copy small {
+  opacity: .72;
+  margin-top: 2px;
+}
+.character-builder .cb-spell-recovery-pips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+.character-builder .cb-spell-recovery-pip {
+  width: 30px;
+  height: 30px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--color-border-light-primary, rgba(255,255,255,.18));
+  border-radius: 50%;
+}
+.character-builder .cb-spell-recovery-pip.available {
+  opacity: .7;
+}
+.character-builder .cb-spell-recovery-pip.reserved {
+  opacity: .5;
+}
+.character-builder .cb-spell-recovery-pip.selectable {
+  position: relative;
+  cursor: pointer;
+}
+.character-builder .cb-spell-recovery-pip.selectable input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.character-builder .cb-spell-recovery-pip.selectable:has(input:disabled) {
+  opacity: .32;
+  cursor: not-allowed;
+}
+.character-builder .cb-spell-recovery-pip.selectable:has(input:disabled) input {
+  cursor: not-allowed;
+}
+.character-builder .cb-spell-recovery-pip.selectable.selected,
+.character-builder .cb-spell-recovery-pip.selectable:has(input:checked) {
+  box-shadow: inset 0 0 0 2px currentColor;
+}
+@media (max-width: 760px) {
+  .character-builder .cb-spell-recovery-level {
+    grid-template-columns: 1fr;
+  }
+  .character-builder .cb-spell-recovery-pips {
+    justify-content: flex-start;
+  }
+}

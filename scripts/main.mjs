@@ -1,5 +1,6 @@
 import { MODULE_BUILD, MODULE_ID, MODULE_VERSION, defaultSettings } from "./constants.mjs";
 import { CharacterBuilderSettingsApp } from "./apps/settings-app.mjs";
+import { SupportCreatorApp } from "./apps/support-creator-app.mjs";
 import { CharacterBuilderApp } from "./apps/character-builder-app.mjs";
 import { CharacterBuilderToolApp } from "./apps/character-builder-tool-app.mjs";
 import { CharacterValidationApp } from "./apps/character-validation-app.mjs";
@@ -78,6 +79,15 @@ Hooks.once("init", async () => {
     const localized = game.i18n.localize(key);
     return localized && localized !== key ? localized : fallback;
   };
+
+  game.settings.registerMenu(MODULE_ID, "supportCreator", {
+    name: "Support the Creator",
+    label: "Buy Me a Coffee",
+    hint: "Support continued development of Hammer-PvP Foundry VTT tools.",
+    icon: "fa-solid fa-mug-hot",
+    type: SupportCreatorApp,
+    restricted: false
+  });
 
   game.settings.registerMenu(MODULE_ID, "configuration", {
     name: localizedSettingText("CB.Settings.Title", "Character Builder Settings"),

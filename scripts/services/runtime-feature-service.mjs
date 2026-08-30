@@ -3,6 +3,7 @@ import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.
 import { PactOfTheTomeService } from "./pact-of-the-tome-service.mjs";
 import { RuntimeBadgeReconciliationService } from "./runtime-badge-reconciliation-service.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
+import { RestDecisionAssistanceService } from "./rest-decision-assistance-service.mjs";
 
 const LAND_LABELS = Object.freeze({ arid: "Arid", polar: "Polar", temperate: "Temperate", tropical: "Tropical" });
 const LAND_RESISTANCES = Object.freeze({ arid: "fire", polar: "cold", temperate: "lightning", tropical: "poison" });
@@ -30,6 +31,7 @@ export class RuntimeFeatureService {
   static async actions(actor, restType, registry, session = null) {
     const type = restType === "short" ? "short" : "long";
     const rows = [];
+    rows.push(...await RestDecisionAssistanceService.actions(actor, type, session));
     const add = (id, label, feature, kind, description, options = {}) => {
       if (rows.some(row => row.id === id)) return;
       rows.push({
@@ -126,6 +128,9 @@ export class RuntimeFeatureService {
   }
 
   static async actionContext(actor, action, registry, session = null) {
+    if (RestDecisionAssistanceService.isManagedAction(action?.id)) {
+      return RestDecisionAssistanceService.actionContext(actor, action, session);
+    }
     const operation = session?.operations?.[action.id]?.payload ?? null;
     switch (action.kind) {
       case "weapon-mastery": return { ...action, masteryGroups: await this.#masteryContext(actor, registry, operation) };
@@ -191,6 +196,9 @@ export class RuntimeFeatureService {
   }
 
   static async invokeNativeFeature(actor, actionId) {
+    if (actionId === "magical-cunning") {
+      return RestDecisionAssistanceService.invokeImmediateNative(actor, actionId);
+    }
     const feature = this.#feature(actor, actionId);
     if (!feature) throw new Error("The source-native feature could not be found on this Actor.");
     const activityNames = {
@@ -262,7 +270,10 @@ export class RuntimeFeatureService {
     return results;
   }
 
-  static async validateOperation(actor, registry, actionId, payload = {}) {
+  static async validateOperation(actor, registry, actionId, payload = {}, session = null) {
+    if (RestDecisionAssistanceService.isManagedAction(actionId)) {
+      return RestDecisionAssistanceService.validateOperation(actor, actionId, payload, session);
+    }
     switch (actionId) {
       case "pact-of-the-tome": {
         const cls = this.#class(actor, "warlock");
@@ -297,7 +308,13 @@ export class RuntimeFeatureService {
     }
   }
 
-  static async applyOperation(actor, registry, actionId, payload, transactionId) {
+  static async applyOperation(actor, registry, actionId, payload, transactionId, session = null) {
+    if (RestDecisionAssistanceService.isRecoveryAction(actionId)) {
+      return RestDecisionAssistanceService.applyPreparedRecovery(actor, actionId, payload, transactionId, session);
+    }
+    if (actionId === "sorcerous-restoration") {
+      return RestDecisionAssistanceService.applyPostRestNative(actor, actionId, transactionId);
+    }
     switch (actionId) {
       case "weapon-mastery": return this.#applyMastery(actor, registry, payload, transactionId);
       case "aspect-of-the-wilds":

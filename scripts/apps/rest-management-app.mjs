@@ -9,6 +9,7 @@ import { ShortRestHomebrewService } from "../services/short-rest-homebrew-servic
 import { RestAccessService } from "../services/rest-access-service.mjs";
 import { LongRestLifecycleService } from "../services/long-rest-lifecycle-service.mjs";
 import { RestExecutionHandoffService } from "../services/rest-execution-handoff-service.mjs";
+import { RestDecisionAssistanceService } from "../services/rest-decision-assistance-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -326,6 +327,10 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     root.querySelectorAll('[name="keeper.scribe.sourceItemId"]').forEach(input => {
       input.addEventListener("change", () => this.#refreshScribeCheckout());
     });
+    root.querySelectorAll("[data-recovery-level]").forEach(input => {
+      input.addEventListener("change", () => this.#refreshSpellRecoveryOptions());
+    });
+    this.#refreshSpellRecoveryOptions();
     root.querySelectorAll("input, select").forEach(input => {
       input.addEventListener("change", () => {
         this.#refreshApplyButton();
@@ -432,7 +437,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
         await this.close();
         return;
       }
-      await RuntimeFeatureService.validateOperation(this.actor, this.registry, action.id, payload);
+      await RuntimeFeatureService.validateOperation(this.actor, this.registry, action.id, payload, this.session);
       this.session = await RestSessionService.setOperation(this.actor, action.id, payload);
       ui.notifications.info(`${action.label} is ready to apply when the ${this.restLabel} completes.`);
     } finally {
@@ -466,7 +471,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     this.#setBusy(true, `Opening ${action.label}…`);
     try {
       const result = await RuntimeFeatureService.invokeNativeFeature(this.actor, action.id);
-      if (result !== false && result !== null) {
+      if (result !== false && result !== null && !action.immediateNative) {
         this.session = await RestSessionService.setOperation(this.actor, action.id, { native: true });
       }
     } finally {
@@ -504,11 +509,13 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
             this.actor,
             this.registry,
             operation.actionId,
-            operation.payload
+            operation.payload,
+            this.session
           );
         }
       }
       if (!this.session?.nativeRestCompleted) {
+        this.session = await RestDecisionAssistanceService.prepareBeforeRest(this.actor, this.session);
         if (RestExecutionHandoffService.restRecoveryActive()) {
           this.session = await RestSessionService.update(this.actor, {
             status: "waiting-external-rest",
@@ -527,6 +534,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
           { sessionId: this.session?.id ?? null }
         );
         if (execution.failed) {
+          this.session = await RestDecisionAssistanceService.rollbackPreparation(this.actor, this.session) ?? this.session;
           this.session = await RestSessionService.update(this.actor, {
             status: "pending",
             externalRestHandoff: null
@@ -534,6 +542,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
           throw new Error(execution.reason || `${execution.provider} could not complete the ${this.restLabel}.`);
         }
         if (!execution.completed) {
+          this.session = await RestDecisionAssistanceService.rollbackPreparation(this.actor, this.session) ?? this.session;
           this.session = await RestSessionService.update(this.actor, {
             status: "pending",
             externalRestHandoff: null
@@ -573,7 +582,8 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
               this.registry,
               operation.actionId,
               operation.payload,
-              transactionId
+              transactionId,
+              this.session
             ));
           }
           return results;
@@ -597,6 +607,10 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
       await this.close();
     } catch (error) {
       this.session = RestSessionService.get(this.actor) ?? this.session;
+      if (!this.session?.nativeRestCompleted && this.session?.restDecisionPreparation?.prepared) {
+        this.session = await RestDecisionAssistanceService.rollbackPreparation(this.actor, this.session) ?? this.session;
+        this.session = await RestSessionService.update(this.actor, { status: "pending", externalRestHandoff: null });
+      }
       throw error;
     } finally {
       if (this.operationToken === token) this.operationToken = null;
@@ -759,6 +773,18 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
         if (!oldItemId || !newItemId || oldItemId === newItemId) throw new Error("Choose one mastered spell and a different eligible spell of the same level.");
         return { oldItemId, newItemId };
       }
+      case "spell-slot-recovery": {
+        const slots = {};
+        for (const input of root.querySelectorAll('[data-recovery-level]:checked')) {
+          const slotKey = input.dataset.recoverySlot;
+          if (!slotKey) continue;
+          slots[slotKey] = Number(slots[slotKey] ?? 0) + 1;
+        }
+        if (!Object.values(slots).some(value => Number(value) > 0)) throw new Error("Choose at least one expended spell slot to recover.");
+        return { slots };
+      }
+      case "native-rest-feature":
+        return { native: true };
       case "scribe-spell": {
         const sourceItemId = checkedValues("keeper.scribe.sourceItemId")[0] ?? "";
         const escaped = globalThis.CSS?.escape ? CSS.escape(sourceItemId) : sourceItemId;
@@ -787,7 +813,9 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
       "roll-portent": "Roll Portent",
       "scribe-spell": "Scribe Spell to Spellbook",
       "war-bond-guide": "War Bond Instructions",
-      "native-feature": `Open ${action.label}`
+      "spell-slot-recovery": `Confirm ${action.label}`,
+      "native-rest-feature": `Confirm ${action.label}`,
+      "native-feature": action.immediateNative ? `Use ${action.label}` : `Open ${action.label}`
     };
     return {
       ...action,
@@ -805,6 +833,8 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
       isRoll: ["roll-cosmic-omen", "roll-portent"].includes(kind),
       isScribe: kind === "scribe-spell",
       isWarBondGuide: kind === "war-bond-guide",
+      isSpellSlotRecovery: kind === "spell-slot-recovery",
+      isNativeRestFeature: kind === "native-rest-feature",
       isNativeFeature: kind === "native-feature"
     };
   }
@@ -911,6 +941,35 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     this.#refreshApplyButton();
   }
 
+  #refreshSpellRecoveryOptions() {
+    const root = this.element;
+    if (!root) return;
+    const section = root.querySelector("[data-spell-recovery]");
+    if (!section) return;
+    const budget = Math.max(0, Number(section.dataset.recoveryBudget ?? 0));
+    const inputs = [...section.querySelectorAll("[data-recovery-level]")];
+    const spent = inputs.filter(input => input.checked)
+      .reduce((sum, input) => sum + Math.max(0, Number(input.dataset.recoveryLevel ?? 0)), 0);
+    const remaining = Math.max(0, budget - spent);
+    for (const input of inputs) {
+      const label = input.closest(".cb-spell-recovery-pip");
+      const icon = label?.querySelector?.("i");
+      label?.classList?.toggle?.("selected", input.checked);
+      icon?.classList?.toggle?.("fa-circle-check", input.checked);
+      icon?.classList?.toggle?.("fa-circle-plus", !input.checked);
+      if (input.checked) {
+        input.disabled = false;
+        continue;
+      }
+      input.disabled = Math.max(0, Number(input.dataset.recoveryLevel ?? 0)) > remaining;
+    }
+    const spentTarget = section.querySelector("[data-recovery-spent]");
+    const remainingTarget = section.querySelector("[data-recovery-remaining]");
+    if (spentTarget) spentTarget.textContent = String(spent);
+    if (remainingTarget) remainingTarget.textContent = String(remaining);
+    section.classList.toggle("complete", spent > 0 && spent <= budget);
+  }
+
   #refreshScribeCheckout() {
     const root = this.element;
     if (!root) return;
@@ -1014,7 +1073,10 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
       const copy = overlay.querySelector("strong");
       if (copy) copy.textContent = this.busyLabel || "Applying Character Keeper changes…";
     }
-    if (!this.busy) this.#refreshApplyButton();
+    if (!this.busy) {
+      this.#refreshSpellRecoveryOptions();
+      this.#refreshApplyButton();
+    }
     this.#refreshRestFlowState();
   }
 

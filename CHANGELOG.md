@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.9w2 — Internal Test Build
+
+- Added **Rest Decision Assistance** to Character Keeper for optional Short Rest choices that D&D5e does not fully resolve on its own. Only currently eligible decisions are shown, and multiple applicable actions can coexist in the same Short Rest.
+- Added one shared spell-slot recovery engine for **Arcane Recovery** and Circle of the Land **Natural Recovery**. It reads the Actor's derived slot maximums, supports level 1–5 slots only, honors each feature's class-level budget, preserves each native use tracker, and prevents multiclass recovery choices from reserving the same missing slot twice.
+- Arcane/Natural selections are prepared immediately before the authoritative Short Rest so **Rest Recovery 5e** sees the native use tracker as already spent and cannot apply the same feature twice. Cancelling an external rest restores the exact pre-rest spell-slot values and native tracker while retaining the staged Keeper choice for retry.
+- Added **Sorcerous Restoration** as a staged Short Rest decision that invokes the source-native `Restore Sorcery Points` Activity only after the authoritative rest succeeds. Character Builder does not reproduce its formula or Font of Magic consumption.
+- Added **Magical Cunning** as an immediate source-native shortcut to `Regain Pact Spell Slots`. It remains an independent feature use and is intentionally not rolled back if the player later cancels the Short Rest.
+- Automatic D&D5e recoveries remain native and are not surfaced merely because a feature refreshes on a rest.
+- Added a **Support the Creator** row directly to Foundry Game Settings, before Character Builder Settings, with a **Buy Me a Coffee** button. Promotional content is not added inside the functional Character Builder Settings application.
+- This `w2` package is an internal test build. Public GitHub release URLs intentionally remain on the last public `0.9.9w` line until the next lettered release is approved.
+
 ## 0.9.9w1 — Internal Test Build
 
 - Added automatic **Rest Recovery 5e** compatibility for Character Keeper. When Rest Recovery claims a Short or Long Rest asynchronously, Character Builder now waits for the authoritative `dnd5e.restCompleted` event instead of treating the immediate `false` return from `actor.initiateRest()` as a cancelled rest.
