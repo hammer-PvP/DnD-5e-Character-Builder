@@ -5784,7 +5784,9 @@
   border-radius: 50%;
 }
 .character-builder .cb-spell-recovery-pip.available {
-  opacity: .7;
+  border-color: rgba(128, 205, 255, .82);
+  background: rgba(93, 174, 230, .24);
+  box-shadow: inset 0 0 0 1px rgba(160, 220, 255, .12), 0 0 7px rgba(93, 174, 230, .10);
 }
 .character-builder .cb-spell-recovery-pip.reserved {
   opacity: .5;
@@ -5792,6 +5794,13 @@
 .character-builder .cb-spell-recovery-pip.selectable {
   position: relative;
   cursor: pointer;
+  background: rgba(255,255,255,.025);
+}
+.character-builder .cb-spell-recovery-pip.selectable > i {
+  font-size: 15px;
+  font-weight: 900;
+  color: rgba(255,255,255,.92);
+  text-shadow: 0 0 2px rgba(0,0,0,.75);
 }
 .character-builder .cb-spell-recovery-pip.selectable input {
   position: absolute;
@@ -5811,7 +5820,14 @@
 }
 .character-builder .cb-spell-recovery-pip.selectable.selected,
 .character-builder .cb-spell-recovery-pip.selectable:has(input:checked) {
-  box-shadow: inset 0 0 0 2px currentColor;
+  border-color: rgba(255,255,255,.96);
+  background: rgba(255,255,255,.96);
+  box-shadow: 0 0 8px rgba(255,255,255,.16);
+}
+.character-builder .cb-spell-recovery-pip.selectable.selected > i,
+.character-builder .cb-spell-recovery-pip.selectable:has(input:checked) > i {
+  color: #17191d;
+  text-shadow: none;
 }
 @media (max-width: 760px) {
   .character-builder .cb-spell-recovery-level {

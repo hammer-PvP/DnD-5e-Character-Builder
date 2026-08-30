@@ -2,7 +2,7 @@
   "id": "dnd5e-character-builder",
   "title": "Character Builder (DnD 5e)",
   "description": "Guided D&D 5e character creation, Level Up, multiclass, Epic Boon, Character Keeper with optional rest-time decision assistance, GM clone-first Character Validation, granular optional player-sheet integrity, GM-managed rest availability, optional Rest Recovery 5e handoff compatibility, Level Up-ready interface audio, rich subclass review, dynamic compendium sources, and granular rules automation for Foundry VTT 14.",
-  "version": "0.9.9w2",
+  "version": "0.9.9w3",
   "authors": [
     {
       "name": "Raphael Andrade"

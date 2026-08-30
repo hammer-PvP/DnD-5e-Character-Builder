@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.9w3 — Internal Test Build
+
+- Refined **Rest Decision Assistance spell-slot color coding** for compact/small-window readability without changing any recovery mechanics.
+- Spell slots that are already available now render as empty, light-blue-tinted pips with no checkmark or interior glyph.
+- Expended slots eligible for recovery now use a bold standalone `+` rather than a nested circle-plus icon, avoiding the visually cramped double-circle treatment.
+- Selecting a recovery pip now fills the pip white and inverts the `+` to dark, making pending recovery choices immediately distinct from both existing slots and unselected recoverable slots.
+- Arcane Recovery, Natural Recovery, multiclass reservation, budget validation, native tracker consumption, Rest Recovery handoff, and rollback behavior are unchanged from `0.9.9w2`.
+- This `w3` package is an internal test build. Public GitHub release URLs intentionally remain on the last public `0.9.9w` line until the next lettered release is approved.
+
 ## 0.9.9w2 — Internal Test Build
 
 - Added **Rest Decision Assistance** to Character Keeper for optional Short Rest choices that D&D5e does not fully resolve on its own. Only currently eligible decisions are shown, and multiple applicable actions can coexist in the same Short Rest.

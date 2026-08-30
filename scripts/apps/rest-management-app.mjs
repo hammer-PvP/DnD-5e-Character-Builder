@@ -953,10 +953,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     const remaining = Math.max(0, budget - spent);
     for (const input of inputs) {
       const label = input.closest(".cb-spell-recovery-pip");
-      const icon = label?.querySelector?.("i");
       label?.classList?.toggle?.("selected", input.checked);
-      icon?.classList?.toggle?.("fa-circle-check", input.checked);
-      icon?.classList?.toggle?.("fa-circle-plus", !input.checked);
       if (input.checked) {
         input.disabled = false;
         continue;

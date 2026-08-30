@@ -126,13 +126,13 @@
               <div class="cb-spell-recovery-pips" aria-label="{{label}} spell slots">
                 {{#each pips}}
                   {{#if available}}
-                  <span class="cb-spell-recovery-pip available" title="Already available"><i class="fa-solid fa-circle-check"></i></span>
+                  <span class="cb-spell-recovery-pip available" title="Already available"></span>
                   {{else if reserved}}
                   <span class="cb-spell-recovery-pip reserved" title="Reserved by another confirmed recovery"><i class="fa-solid fa-lock"></i></span>
                   {{else}}
                   <label class="cb-spell-recovery-pip selectable {{#if selected}}selected{{/if}}" title="Recover one {{../label}} spell slot">
                     <input type="checkbox" name="keeper.spellRecovery" value="{{../slotKey}}" data-recovery-level="{{../level}}" data-recovery-slot="{{../slotKey}}" {{#if selected}}checked{{/if}}>
-                    <i class="fa-solid {{#if selected}}fa-circle-check{{else}}fa-circle-plus{{/if}}"></i>
+                    <i class="fa-solid fa-plus"></i>
                   </label>
                   {{/if}}
                 {{/each}}
