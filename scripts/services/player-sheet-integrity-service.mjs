@@ -2,7 +2,7 @@ import { MODULE_ID } from "../constants.mjs";
 import { ClassProgressionGuard } from "./class-progression-guard.mjs";
 import { PlayerSheetIntegritySettingsService } from "./player-sheet-integrity-settings-service.mjs";
 import { PreparedSpellLimitService } from "./prepared-spell-limit-service.mjs";
-import { SpellPreparationCadenceService } from "./spell-preparation-cadence-service.mjs";
+import { LongRestSpellPreparationService } from "./long-rest-spell-preparation-service.mjs";
 
 const REFUND_ACTION = "refundResource";
 const RULES = Object.freeze({
@@ -103,6 +103,14 @@ export class PlayerSheetIntegrityService {
     // protects sheet buttons, hotbar usage, and macros without relocking the
     // ActivityUsageDialog itself.
     Hooks.on("dnd5e.preUseActivity", (activity, usageConfig) => this.guardUnpreparedSpellUse(activity, usageConfig));
+
+    // Keeper-managed Long Rest preparation is independent from the Sheet
+    // Integrity master switch. Block direct player Item updates as the
+    // authoritative boundary so alternate sheets and macros cannot bypass the
+    // preparation window. GM changes and authorized Character Builder
+    // transactions remain allowed.
+    Hooks.on("preUpdateItem", (item, changes, options, userId) =>
+      this.guardKeeperManagedPreparationUpdate(item, changes, options, userId));
   }
 
   static async ready() {
@@ -180,6 +188,26 @@ export class PlayerSheetIntegrityService {
     return false;
   }
 
+  static guardKeeperManagedPreparationUpdate(item, changes = {}, options = {}, userId = null) {
+    const actor = item?.actor ?? item?.parent ?? null;
+    if (!LongRestSpellPreparationService.enabled() || item?.type !== "spell" || !ClassProgressionGuard.isProtectedActor(actor)) return true;
+    if (ClassProgressionGuard.isAuthorized(options)) return true;
+    const user = userId ? globalThis.game?.users?.get?.(userId) ?? globalThis.game?.user : globalThis.game?.user;
+    if (!user || user.isGM) return true;
+    const owns = actor?.testUserPermission ? actor.testUserPermission(user, "OWNER") : actor?.isOwner;
+    if (!owns) return true;
+
+    const hasFlat = Object.prototype.hasOwnProperty.call(changes ?? {}, "system.prepared");
+    const hasNested = Object.prototype.hasOwnProperty.call(changes?.system ?? {}, "prepared");
+    if (!hasFlat && !hasNested) return true;
+    const next = Number(hasFlat ? changes["system.prepared"] : changes.system.prepared);
+    if (next === Number(item.system?.prepared ?? 0)) return true;
+    if (!LongRestSpellPreparationService.managesSpell(actor, item)) return true;
+
+    this.#warn(`${item.name} preparation is managed by Character Keeper. Make this change during a Long Rest, or ask the GM to edit the sheet.`);
+    return false;
+  }
+
   /**
    * Called after world settings are saved. Activating Prepared Spell Limit is
    * the only package that performs an immediate reconciliation. All other
@@ -199,9 +227,15 @@ export class PlayerSheetIntegrityService {
 
   /** Protect a live Actor sheet after each render. */
   static protectSheet(actor, root, app = null) {
-    if (!root || !this.protects(actor)) return;
-    if (this.#useGlobalStructuralLock()) this.#forcePlayMode(app);
-    this.#applySheetDomProtection(actor, root);
+    if (!root) return;
+    const integrityProtected = this.protects(actor);
+    const keeperPreparationProtected = this.#keeperPreparationProtects(actor);
+    if (!integrityProtected && !keeperPreparationProtected) return;
+
+    if (integrityProtected) {
+      if (this.#useGlobalStructuralLock()) this.#forcePlayMode(app);
+      this.#applySheetDomProtection(actor, root);
+    }
 
     if (root.dataset?.cbPlayerSheetIntegrity === "true") return;
     root.dataset.cbPlayerSheetIntegrity = "true";
@@ -220,13 +254,18 @@ export class PlayerSheetIntegrityService {
     // action parameters and must remain interactive for protected players.
     const item = app?.document;
     const actor = item?.actor ?? item?.parent;
-    if (!root || item?.documentName !== "Item" || !this.protects(actor)) return;
+    const integrityProtected = this.protects(actor);
+    const keeperPreparationProtected = this.#keeperPreparationProtects(actor)
+      && LongRestSpellPreparationService.managesSpell(actor, item);
+    if (!root || item?.documentName !== "Item" || (!integrityProtected && !keeperPreparationProtected)) return;
 
-    const itemRule = this.#itemProtectionRule(item);
-    const itemRuleProtected = itemRule && this.ruleEnabled(itemRule);
-    const hasIndependentCurrency = item?.system?.currency && !this.ruleEnabled(RULES.CURRENCY);
-    if (itemRuleProtected && !hasIndependentCurrency) this.#forcePlayMode(app);
-    this.#applyEmbeddedItemDomProtection(item, root);
+    if (integrityProtected) {
+      const itemRule = this.#itemProtectionRule(item);
+      const itemRuleProtected = itemRule && this.ruleEnabled(itemRule);
+      const hasIndependentCurrency = item?.system?.currency && !this.ruleEnabled(RULES.CURRENCY);
+      if (itemRuleProtected && !hasIndependentCurrency) this.#forcePlayMode(app);
+      this.#applyEmbeddedItemDomProtection(item, root);
+    }
 
     if (root.dataset?.cbPlayerItemIntegrity === "true") return;
     root.dataset.cbPlayerItemIntegrity = "true";
@@ -414,6 +453,17 @@ export class PlayerSheetIntegrityService {
     const name = String(input.name ?? input.dataset?.name ?? "");
     const item = this.#itemFromControl(actor, input);
 
+    if (item?.type === "spell" && ["system.prepared", "system.preparation.prepared"].includes(name)) {
+      const timing = this.#mayChangePreparationFromSheet(actor, item);
+      if (!timing.allowed) {
+        this.#restoreItemControl(input, item, name);
+        this.#stop(event);
+        this.#warn(timing.message);
+        return;
+      }
+      return;
+    }
+
     // Container currency is governed only by the Currency package, independent
     // of whether the rest of that inventory Item is structurally locked.
     if (item && /^system\.currency\.[^.]+$/.test(name)) {
@@ -480,6 +530,18 @@ export class PlayerSheetIntegrityService {
     const target = event.target;
     if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement)) return;
     const name = String(target.name ?? target.dataset?.name ?? "");
+
+    if (item?.type === "spell" && ["system.prepared", "system.preparation.prepared"].includes(name)) {
+      const actor = item?.actor ?? item?.parent;
+      const timing = this.#mayChangePreparationFromSheet(actor, item);
+      if (!timing.allowed) {
+        this.#restoreItemControl(target, item, name);
+        this.#stop(event);
+        this.#warn(timing.message);
+        return;
+      }
+      return;
+    }
 
     if (/^system\.currency\.[^.]+$/.test(name)) {
       if (!this.ruleEnabled(RULES.CURRENCY)) return;
@@ -626,29 +688,13 @@ export class PlayerSheetIntegrityService {
 
   static #mayChangePreparationFromSheet(actor, spell) {
     if (!actor || spell?.type !== "spell" || Number(spell.system?.level ?? 0) <= 0) return { allowed: true };
-    if (PreparedSpellLimitService.isExcludedGrant(spell)) return { allowed: true };
+    if (!this.#keeperPreparationProtects(actor)) return { allowed: true };
+    if (!LongRestSpellPreparationService.managesSpell(actor, spell)) return { allowed: true };
     const cls = PreparedSpellLimitService.owningClassForSpell(actor, spell);
-    if (!cls) return { allowed: true };
-    const mode = PlayerSheetIntegritySettingsService.unpreparedSpellUsageMode();
-    if (mode === "off") return { allowed: true };
-    if (mode === "combatOnly" && !this.#actorInCombat(actor)) return { allowed: true };
-
-    const cadence = SpellPreparationCadenceService.forClass(cls);
-    if (mode === "combatOnly") {
-      return {
-        allowed: false,
-        message: `${cls.name} prepared spells cannot be changed from the character sheet while this Actor is in combat.`
-      };
-    }
-    if (mode === "always") {
-      const message = cadence === SpellPreparationCadenceService.LONG_REST
-        ? `${cls.name} prepared spells are managed through Character Keeper during a Long Rest while Unprepared Spell Usage is set to Always.`
-        : cadence === SpellPreparationCadenceService.LEVEL_UP
-          ? `${cls.name} prepared spells are changed through Character Builder Level Up while Unprepared Spell Usage is set to Always.`
-          : `${cls.name} spell preparation cannot be changed directly from the sheet while Unprepared Spell Usage is set to Always.`;
-      return { allowed: false, message };
-    }
-    return { allowed: true };
+    return {
+      allowed: false,
+      message: `${cls?.name ?? "This class"} spell preparation is managed through Character Keeper during a Long Rest. The GM can still change preparation directly from the sheet.`
+    };
   }
 
   static #wouldBlockUnpreparedSpellUse(actor, spell, mode = PlayerSheetIntegritySettingsService.unpreparedSpellUsageMode()) {
@@ -692,6 +738,13 @@ export class PlayerSheetIntegrityService {
     if (String(cls?.system?.identifier ?? "").trim().toLowerCase() !== "wizard") return false;
     return [...(actor.items ?? [])].some(item => item?.type === "feat"
       && String(item.system?.identifier ?? "").trim().toLowerCase() === "ritual-adept");
+  }
+
+  static #keeperPreparationProtects(actor) {
+    return !game.user?.isGM
+      && ClassProgressionGuard.isProtectedActor(actor)
+      && actor?.isOwner
+      && LongRestSpellPreparationService.enabled();
   }
 
   static #actorInCombat(actor) {

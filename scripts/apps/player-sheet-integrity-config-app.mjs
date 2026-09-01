@@ -83,8 +83,8 @@ export class PlayerSheetIntegrityConfigApp extends HandlebarsApplicationMixin(Ap
     const enabled = inputs.filter(input => input.checked).length;
     const summary = this.element.querySelector("[data-integrity-rule-summary]");
     const usage = this.element.querySelector('[name="unpreparedSpellUsage"]');
-    const usageLabel = usage?.selectedOptions?.[0]?.textContent?.trim?.() ?? "Off";
-    if (summary) summary.innerHTML = `<strong>${enabled}</strong> of <strong>${inputs.length}</strong> integrity protections enabled. <span>Unprepared Spell Usage: <strong>${usageLabel}</strong>.</span>`;
+    const usageLabel = usage?.selectedOptions?.[0]?.textContent?.trim?.() ?? "On";
+    if (summary) summary.innerHTML = `<strong>${enabled}</strong> of <strong>${inputs.length}</strong> integrity protections enabled. <span>Allow Casting Unprepared Spells: <strong>${usageLabel}</strong>.</span>`;
   }
 
   async #save(event) {

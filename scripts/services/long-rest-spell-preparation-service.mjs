@@ -15,8 +15,24 @@ export class LongRestSpellPreparationService {
     return String(actionId ?? "").startsWith(ACTION_PREFIX);
   }
 
+  static enabled(candidate = null) {
+    const settings = candidate ?? globalThis.game?.settings?.get?.(MODULE_ID, "settings") ?? {};
+    return settings.manageSpellPreparationWithKeeper !== false;
+  }
+
+  static managesClass(cls, candidate = null) {
+    return this.enabled(candidate) && SpellPreparationCadenceService.allowsLongRest(cls);
+  }
+
+  static managesSpell(actor, spell, candidate = null) {
+    if (!this.enabled(candidate) || !actor || spell?.type !== "spell" || Number(spell.system?.level ?? 0) <= 0) return false;
+    if (PreparedSpellLimitService.isExcludedGrant(spell)) return false;
+    const cls = PreparedSpellLimitService.owningClassForSpell(actor, spell);
+    return Boolean(cls && this.managesClass(cls, candidate));
+  }
+
   static actions(actor, restType, session = null) {
-    if (restType !== "long") return [];
+    if (restType !== "long" || !this.enabled()) return [];
     const rows = [];
     for (const cls of PreparedSpellLimitService.preparedListClasses(actor)) {
       if (!SpellPreparationCadenceService.allowsLongRest(cls)) continue;
@@ -56,7 +72,7 @@ export class LongRestSpellPreparationService {
   static context(actor, action, operation = null) {
     const classItemId = action?.classItemId ?? this.classItemIdFromActionId(action?.id);
     const cls = actor?.items?.get?.(classItemId) ?? [...(actor?.items ?? [])].find(item => item?.id === classItemId);
-    if (!cls || cls.type !== "class" || !SpellPreparationCadenceService.allowsLongRest(cls)) {
+    if (!cls || cls.type !== "class" || !this.managesClass(cls)) {
       throw new Error("The class that owns this Long Rest spell-preparation choice is no longer eligible.");
     }
 
@@ -117,7 +133,7 @@ export class LongRestSpellPreparationService {
       throw new Error("The prepared-spell choice no longer matches its owning class.");
     }
     const cls = actor?.items?.get?.(classItemId) ?? [...(actor?.items ?? [])].find(item => item?.id === classItemId);
-    if (!cls || cls.type !== "class" || !SpellPreparationCadenceService.allowsLongRest(cls)) {
+    if (!cls || cls.type !== "class" || !this.managesClass(cls)) {
       throw new Error("This class can no longer change its prepared spells on a Long Rest.");
     }
     const limit = PreparedSpellLimitService.maxPrepared(cls);

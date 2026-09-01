@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.9x1 — Internal Test Hotfix
+
+- Added the visible **Manage Long Rest Spell Preparation with Character Keeper** world setting. It is enabled by default to preserve `0.9.9x` behavior. When enabled, Cleric/Druid/Paladin/Wizard Long Rest preparation remains in Character Keeper and direct player prepare/unprepare changes are blocked; GM edits and authorized Character Builder transactions remain allowed. Disabling it removes the Keeper preparation action and restores normal player preparation controls.
+- Added an authoritative `preUpdateItem` preparation guard so alternate sheet paths and macros cannot bypass Keeper-managed preparation. The guard is intentionally independent from the Player Sheet Integrity master switch.
+- Exposed **Allow Casting Unprepared Spells** directly in Character Builder Settings and kept it synchronized with Configure Integrity Rules. The three choices are **On**, **Out of Combat Only**, and **Off**. Internally the existing `0.9.9x` mode values are preserved for upgrade safety.
+- Decoupled spell-casting permission from preparation editing. Turning Keeper spell preparation off restores manual player preparation even if the unprepared-casting policy is restrictive; the casting policy controls casting only.
+- Preserved the Wizard **Ritual Adept** exception: with unprepared casting Off, a qualifying unprepared Wizard ritual from that Wizard's spellbook remains available outside combat as the slot-free ritual exception; it never bypasses combat.
+- Refined the **Prepare Spells** Keeper layout: removed the duplicate prepared-spells subheader, moved the prepared-count budget beside the top Confirm button, and reduced the dead vertical gap before the spell list.
+- Corrected the `0.9.9x1` internal and external `module.json` release URLs to target `v0.9.9x1`.
+
 ## 0.9.9x — Internal Test Build
 
 - Added **Unprepared Spell Usage** to Player Character Sheet Integrity as an independent three-state policy: **Off**, **Combat Only**, or **Always**. The install/update default remains Off; **Restore Recommended** selects Combat Only.

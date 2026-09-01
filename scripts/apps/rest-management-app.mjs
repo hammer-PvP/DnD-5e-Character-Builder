@@ -997,11 +997,13 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
       card?.classList?.toggle?.("selected", input.checked);
       card?.classList?.toggle?.("limit-disabled", input.disabled && !input.checked);
     }
-    const count = section.querySelector("[data-prepared-count]");
-    const remaining = section.querySelector("[data-prepared-remaining]");
+    const count = root.querySelector("[data-prepared-count]");
+    const remaining = root.querySelector("[data-prepared-remaining]");
+    const budget = root.querySelector("[data-prepared-budget]");
     if (count) count.textContent = String(selected);
     if (remaining) remaining.textContent = String(Math.max(0, limit - selected));
     section.classList.toggle("over-limit", selected > limit);
+    budget?.classList?.toggle?.("over-limit", selected > limit);
   }
 
   #refreshScribeCheckout() {

@@ -33,7 +33,7 @@ The wrapper always continues the original call. It is used only to settle and cl
 
 ## Rest Recovery 5e
 
-Character Builder `0.9.9x` includes an automatic compatibility adapter for the optional module **Rest Recovery 5e** (`rest-recovery`). It is not a dependency and no Character Builder setting is required.
+Character Builder `0.9.9x1` includes an automatic compatibility adapter for the optional module **Rest Recovery 5e** (`rest-recovery`). It is not a dependency and no Character Builder setting is required.
 
 Character Keeper continues to own only its staged character-maintenance choices. When it asks D&D5e to execute the actual rest, Rest Recovery may intercept `dnd5e.preShortRest` / `dnd5e.preLongRest`, open its own workflow, and return `false` from the original `actor.initiateRest()` call while it completes asynchronously. Character Builder recognizes that handoff when the module is active and waits for the same Actor's authoritative `dnd5e.restCompleted` event.
 

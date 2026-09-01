@@ -49,14 +49,14 @@ export class PlayerSheetIntegritySettingsService {
   static unpreparedSpellUsageOptions(candidate = null) {
     const current = this.unpreparedSpellUsageMode(candidate);
     return [
-      { value: UNPREPARED_SPELL_USAGE_MODES.off, label: "Off", description: "Do not restrict use of unprepared spells.", selected: current === UNPREPARED_SPELL_USAGE_MODES.off },
-      { value: UNPREPARED_SPELL_USAGE_MODES.combatOnly, label: "Combat Only", description: "While this Actor is in combat, unprepared spells cannot be used or manually prepared from the sheet.", selected: current === UNPREPARED_SPELL_USAGE_MODES.combatOnly },
-      { value: UNPREPARED_SPELL_USAGE_MODES.always, label: "Always", description: "Unprepared spells cannot be used at any time, and ordinary preparation changes must use their rule-authorized Character Keeper or Level Up window.", selected: current === UNPREPARED_SPELL_USAGE_MODES.always }
+      { value: UNPREPARED_SPELL_USAGE_MODES.off, label: "On", description: "Allow level 1+ unprepared spells to be cast normally.", selected: current === UNPREPARED_SPELL_USAGE_MODES.off },
+      { value: UNPREPARED_SPELL_USAGE_MODES.combatOnly, label: "Out of Combat Only", description: "Allow unprepared spells outside combat, but require preparation while the Actor is in combat.", selected: current === UNPREPARED_SPELL_USAGE_MODES.combatOnly },
+      { value: UNPREPARED_SPELL_USAGE_MODES.always, label: "Off", description: "Do not allow level 1+ unprepared spells to be cast, except the Wizard Ritual Adept ritual exception outside combat.", selected: current === UNPREPARED_SPELL_USAGE_MODES.always }
     ];
   }
 
   static unpreparedSpellUsageLabel(candidate = null) {
-    return this.unpreparedSpellUsageOptions(candidate).find(row => row.selected)?.label ?? "Off";
+    return this.unpreparedSpellUsageOptions(candidate).find(row => row.selected)?.label ?? "On";
   }
 
   static definition(ruleKey) {

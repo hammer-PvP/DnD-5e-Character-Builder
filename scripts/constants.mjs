@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.9x";
-export const MODULE_BUILD = "internal-099x-spell-preparation-integrity-r1";
+export const MODULE_VERSION = "0.9.9x1";
+export const MODULE_BUILD = "internal-099x1-spell-preparation-hotfix-r1";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -327,6 +327,7 @@ export function defaultSettings() {
     chargeWizardScribingCosts: true,
     requireArcanaCheckForSpellScrollScribing: true,
     chargeScribingCostOnFailedCheck: true,
+    manageSpellPreparationWithKeeper: true,
     halfLongRestRecoveryOnShortRest: false,
     shortRestHomebrewCooldownMinutes: 5,
     gmManagedRestAccess: false,

@@ -16,17 +16,17 @@
 
   <div class="cb-player-sheet-integrity-summary" data-integrity-rule-summary>
     <strong>{{enabledCount}}</strong> of <strong>{{totalCount}}</strong> integrity protections enabled.
-    <span>Unprepared Spell Usage: <strong>{{unpreparedSpellUsageLabel}}</strong>.</span>
+    <span>Allow Casting Unprepared Spells: <strong>{{unpreparedSpellUsageLabel}}</strong>.</span>
   </div>
 
   <div class="cb-player-sheet-integrity-list">
     <article class="cb-player-sheet-integrity-row cb-unprepared-spell-usage-setting">
       <div class="cb-player-sheet-integrity-mode-copy">
-        <strong>Unprepared Spell Usage</strong>
+        <strong>Allow Casting Unprepared Spells</strong>
         <small>Choose how strongly Sheet Integrity enforces prepared spells. The authoritative guard runs before D&amp;D5e configures or consumes the Activity, so sheet buttons, hotbar use, and macros follow the same rule.</small>
       </div>
       <label class="cb-player-sheet-integrity-mode-select">
-        <span>Restriction</span>
+        <span>Permission</span>
         <select name="unpreparedSpellUsage">
           {{#each unpreparedSpellUsageOptions}}
           <option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>
@@ -34,10 +34,10 @@
         </select>
       </label>
       <div class="cb-player-sheet-integrity-mode-help">
-        <p><strong>Off:</strong> normal D&amp;D5e usage.</p>
-        <p><strong>Combat Only:</strong> while the Actor is in combat, only prepared level 1+ spells can be cast and the prepared list cannot be changed from the sheet.</p>
-        <p><strong>Always:</strong> only prepared level 1+ spells can be cast; preparation changes use their authorized Long Rest or Level Up flow.</p>
-        <p><i class="fa-solid fa-book-open"></i> A Wizard with <strong>Ritual Adept</strong> may still use an unprepared ritual spell from that Wizard's spellbook outside combat; Character Builder forces that allowed use to be slot-free.</p>
+        <p><strong>On:</strong> unprepared level 1+ spells may be cast normally.</p>
+        <p><strong>Out of Combat Only:</strong> unprepared spells are allowed outside combat; while in combat, only prepared spells may be cast.</p>
+        <p><strong>Off:</strong> unprepared level 1+ spells cannot be cast inside or outside combat.</p>
+        <p><i class="fa-solid fa-book-open"></i> A Wizard with <strong>Ritual Adept</strong> may still cast an unprepared ritual spell from that Wizard's spellbook as a Ritual outside combat when this permission is Off; Character Builder keeps that exception slot-free.</p>
       </div>
     </article>
 

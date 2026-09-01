@@ -5992,3 +5992,57 @@
     text-align: left;
   }
 }
+
+/* v0.9.9x1 — Keeper spell-preparation settings + compact preparation header */
+.character-builder .cb-prepare-spells-header-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+.character-builder .cb-prepare-spells-header-controls .cb-prepare-spells-budget {
+  flex: 0 0 auto;
+  min-width: 155px;
+  padding: 8px 10px;
+}
+.character-builder .cb-prepare-spells-header-controls .cb-primary-confirm {
+  min-width: 250px;
+}
+.character-builder .cb-keeper-scroll-prepare-spells {
+  padding-top: 10px;
+}
+.character-builder .cb-prepare-spells-context {
+  margin-top: 0;
+}
+.character-builder .cb-prepare-spells-budget.over-limit,
+.character-builder .cb-prepare-spells.over-limit ~ .cb-prepare-spells-budget {
+  border-color: rgba(198, 75, 75, .8);
+  background: rgba(153, 50, 50, .12);
+}
+.cb-unprepared-casting-main-setting select {
+  min-width: 210px;
+}
+@media (max-width: 980px) {
+  .character-builder .cb-keeper-feature-header:has(.cb-prepare-spells-header-controls) {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .character-builder .cb-prepare-spells-header-controls {
+    justify-content: stretch;
+  }
+  .character-builder .cb-prepare-spells-header-controls .cb-primary-confirm {
+    flex: 1 1 auto;
+  }
+}
+@media (max-width: 700px) {
+  .character-builder .cb-prepare-spells-header-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .character-builder .cb-prepare-spells-header-controls .cb-prepare-spells-budget,
+  .character-builder .cb-prepare-spells-header-controls .cb-primary-confirm {
+    width: 100%;
+    min-width: 0;
+  }
+}

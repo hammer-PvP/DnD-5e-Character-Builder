@@ -69,6 +69,8 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       rulesAssistanceRuleCount: rulesAssistanceSummary.totalCount,
       playerSheetIntegrityEnabledCount: playerSheetIntegritySummary.enabledCount,
       playerSheetIntegrityRuleCount: playerSheetIntegritySummary.totalCount,
+      unpreparedSpellUsageLabel: playerSheetIntegritySummary.unpreparedSpellUsageLabel,
+      unpreparedSpellUsageOptions: PlayerSheetIntegritySettingsService.unpreparedSpellUsageOptions(settings),
       enabledSourceLabels: enabledSources
         .sort((a, b) => Number(a.priority) - Number(b.priority))
         .slice(0, 4)
@@ -170,7 +172,6 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     const shortRestHomebrewCooldownMinutes = Number.isFinite(rawShortRestCooldown)
       ? Math.min(10080, Math.max(0, Math.trunc(rawShortRestCooldown)))
       : 5;
-
     const hpMethods = {
       roll: form.querySelector('[name="hpMethod.roll"]')?.checked ?? false,
       average: form.querySelector('[name="hpMethod.average"]')?.checked ?? false,
@@ -185,6 +186,16 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       game.settings.get(MODULE_ID, "settings") ?? {},
       { inplace: false }
     );
+    const playerSheetIntegrityConfig = foundry.utils.deepClone(storedWorldSettings.playerSheetIntegrityConfig ?? defaultSettings().playerSheetIntegrityConfig);
+    const unpreparedSpellUsage = String(form.querySelector('[name="unpreparedSpellUsage"]')?.value ?? playerSheetIntegrityConfig.unpreparedSpellUsage ?? "off");
+    const allowedUnpreparedModes = new Set(PlayerSheetIntegritySettingsService.unpreparedSpellUsageOptions({
+      ...storedWorldSettings,
+      playerSheetIntegrityConfig
+    }).map(row => row.value));
+    playerSheetIntegrityConfig.unpreparedSpellUsage = allowedUnpreparedModes.has(unpreparedSpellUsage)
+      ? unpreparedSpellUsage
+      : "off";
+
     const settings = foundry.utils.mergeObject(storedWorldSettings, {
       promptOnCreate: form.querySelector('[name="promptOnCreate"]')?.checked ?? true,
       rulesMode: String(form.querySelector('[name="rulesMode"]')?.value ?? "modern2024"),
@@ -213,11 +224,12 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       chargeWizardScribingCosts: form.querySelector('[name="chargeWizardScribingCosts"]')?.checked ?? true,
       requireArcanaCheckForSpellScrollScribing: form.querySelector('[name="requireArcanaCheckForSpellScrollScribing"]')?.checked ?? true,
       chargeScribingCostOnFailedCheck: form.querySelector('[name="chargeScribingCostOnFailedCheck"]')?.checked ?? true,
+      manageSpellPreparationWithKeeper: form.querySelector('[name="manageSpellPreparationWithKeeper"]')?.checked ?? true,
       halfLongRestRecoveryOnShortRest: form.querySelector('[name="halfLongRestRecoveryOnShortRest"]')?.checked ?? false,
       shortRestHomebrewCooldownMinutes,
       gmManagedRestAccess: form.querySelector('[name="gmManagedRestAccess"]')?.checked ?? false,
       playerSheetIntegrity: form.querySelector('[name="playerSheetIntegrity"]')?.checked ?? false,
-      playerSheetIntegrityConfig: foundry.utils.deepClone(storedWorldSettings.playerSheetIntegrityConfig ?? defaultSettings().playerSheetIntegrityConfig),
+      playerSheetIntegrityConfig,
       assistWithDiceAutomation: form.querySelector('[name="assistWithDiceAutomation"]')?.checked ?? false,
       rulesAssistance: foundry.utils.deepClone(storedWorldSettings.rulesAssistance ?? defaultSettings().rulesAssistance),
       hitPointAdvancement: {
@@ -339,7 +351,9 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
   refreshPlayerSheetIntegritySummary(settings = null) {
     const summary = PlayerSheetIntegritySettingsService.summary(settings);
     const element = this.element?.querySelector?.("[data-player-sheet-integrity-summary]");
-    if (element) element.textContent = `${summary.enabledCount} of ${summary.totalCount} integrity protections enabled.`;
+    if (element) element.textContent = `${summary.enabledCount} of ${summary.totalCount} integrity protections enabled. Unprepared casting: ${summary.unpreparedSpellUsageLabel}.`;
+    const usage = this.element?.querySelector?.('[name="unpreparedSpellUsage"]');
+    if (usage) usage.value = summary.unpreparedSpellUsageMode;
   }
 
 

@@ -1,6 +1,6 @@
 # Character Builder Settings Reference
 
-This reference documents every visible Character Builder setting in v0.9.9o. Unless stated otherwise, settings are **world settings**, can be changed only by a Game Master, and do not require a server restart. Saving the settings window affects future Character Creation, Level Up, Character Keeper, or runtime-assistance operations; it does not retroactively delete character content.
+This reference documents every visible Character Builder setting in v0.9.9x1. Unless stated otherwise, settings are **world settings**, can be changed only by a Game Master, and do not require a server restart. Saving the settings window affects future Character Creation, Level Up, Character Keeper, or runtime-assistance operations; it does not retroactively delete character content.
 
 ## Splash Tutorial
 
@@ -177,6 +177,19 @@ At least one method must remain enabled.
 - **Enabled:** A failed check consumes the Spell Scroll and charges the GP cost.
 - **Disabled:** A failed check consumes the Spell Scroll but preserves currency.
 
+## Character Keeper — Long Rest Spell Preparation
+
+### Manage Long Rest Spell Preparation with Character Keeper
+
+- **Scope:** World, GM-only.
+- **Default:** **On**.
+- **Enabled:** Cleric, Druid, Paladin, and Wizard ordinary level 1+ preparation is handled through Character Keeper at Long Rest. Players cannot prepare or unprepare those managed spells directly from the Actor sheet.
+- **Disabled:** Character Keeper no longer offers the Long Rest preparation action and players regain normal manual preparation controls.
+- **GM:** GM sheet edits remain allowed in either state.
+- **Authorized transactions:** Character Creation, Level Up, Character Keeper commits, grants, and other Character Builder-authorized updates bypass the player guard.
+- **Commit timing:** Keeper selections remain staged until the authoritative Long Rest finishes; cancelling D&D5e or Rest Recovery leaves the live prepared list unchanged.
+- **Class cadence:** Ranger, Bard, Sorcerer, and Warlock do not gain Long Rest preparation from this option because their ordinary preparation/repertoire timing is Level Up.
+
 ## Character Keeper — GM-Managed Rest Availability
 
 ### GM-Managed Rest Availability
@@ -207,7 +220,8 @@ At least one method must remain enabled.
 - **Character Content & Progression:** Restricts direct spell/feat/species/background/class-feature editing, Active Effect changes, external character-content drops, and unauthorized native Advancement changes. Normal casting and feature use remain available. When the GM explicitly disables this package while the master switch is enabled, Character Builder's direct class/subclass progression guard is relaxed for that intentionally permissive configuration.
 - **Resources & Spell Slots:** Restricts manual spell-slot pips, Actor resources, Heroic Inspiration, and chat-card **Refund Resource**. Normal Activity consumption, rest recovery, and automated resource changes remain available.
 - **Currency:** Restricts manual currency values on the Actor and containers. The native D&D5e Currency Manager remains available for Convert/Transfer, and Item Piles/API transactions remain supported.
-- **Prepared Spell Limit:** Players may prepare/unprepare ordinary eligible spells, but cannot exceed the class's canonical normal preparation limit. Always Prepared and feature-granted spells are excluded from the count.
+- **Prepared Spell Limit:** When manual preparation is available, players cannot exceed the class's canonical normal preparation limit. When **Manage Long Rest Spell Preparation with Character Keeper** is enabled, the Keeper owns those Long Rest preparation changes instead. Always Prepared and feature-granted spells are excluded from the count.
+- **Allow Casting Unprepared Spells:** Visible directly in Character Builder Settings and in Configure Integrity Rules. **On** allows ordinary unprepared level 1+ spells; **Out of Combat Only** permits them only outside a started Combat; **Off** requires preparation everywhere. This casting policy is independent from the Character Keeper preparation-edit lock. Wizard Ritual Adept retains the qualifying out-of-combat ritual exception when casting is Off.
 - **Prepared-limit activation:** When this package becomes active, any existing excess normal prepared spells on player-owned protected Actors are automatically unprepared from highest spell level to lowest. Within the same level, bottom-most entries are removed first. The GM is never asked to choose those excess spells one-by-one.
 - **Prepared-limit warning:** A player attempting to prepare beyond the limit receives a normal Foundry warning such as `Paladin prepared spell limit reached (6/6). Unprepare another spell before preparing this one.` Despreparing is always allowed.
 - **Character Validator boundary:** Ordinary daily prepared-count mismatch is no longer a Character Validation issue. The Validator still checks structural spell grants, Always Prepared state, full-list access, limited-list repertoire ownership, Wizard spellbook entitlements, and spell provenance.

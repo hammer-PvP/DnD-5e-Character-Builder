@@ -209,6 +209,12 @@
 
                   <hr>
                   <div class="cb-settings-toggle">
+                    <label><input type="checkbox" name="manageSpellPreparationWithKeeper" {{checked settings.manageSpellPreparationWithKeeper}}> Manage Long Rest Spell Preparation with Character Keeper</label>
+                    <p class="hint"><strong>Enabled by default.</strong> Cleric, Druid, Paladin, and Wizard prepare their ordinary level 1+ spells through Character Keeper at Long Rest. While enabled, players cannot prepare or unprepare those spells directly from the sheet; the GM and authorized Character Builder transactions remain allowed. Disable this option to return manual sheet preparation to players and remove the Keeper preparation action.</p>
+                  </div>
+
+                  <hr>
+                  <div class="cb-settings-toggle">
                     <label><input type="checkbox" name="gmManagedRestAccess" {{checked settings.gmManagedRestAccess}}> GM-Managed Rest Availability</label>
                     <p class="hint"><strong>Optional; disabled by default.</strong> When enabled, Short Rest and Long Rest remain visible on character sheets but are locked until the GM grants that rest from Character Builder Tool. Each completed native rest consumes its grant. Disable this option to leave rests fully available under normal D&amp;D5e behavior.</p>
                   </div>
@@ -221,11 +227,20 @@
                         <strong>Player Character Sheet Integrity</strong>
                       </label>
                       <p class="hint"><strong>Optional; disabled by default.</strong> Restrict selected groups of direct player-sheet changes while preserving normal gameplay use. Configure each protection package individually.</p>
-                      <p class="cb-player-sheet-integrity-count" data-player-sheet-integrity-summary>{{playerSheetIntegrityEnabledCount}} of {{playerSheetIntegrityRuleCount}} integrity protections enabled.</p>
+                      <p class="cb-player-sheet-integrity-count" data-player-sheet-integrity-summary>{{playerSheetIntegrityEnabledCount}} of {{playerSheetIntegrityRuleCount}} integrity protections enabled. Unprepared casting: {{unpreparedSpellUsageLabel}}.</p>
                     </div>
                     <button type="button" data-action="configure-sheet-integrity">
                       <i class="fa-solid fa-shield-halved"></i> Configure Integrity Rules
                     </button>
+                  </div>
+                  <div class="form-group cb-settings-form-group cb-unprepared-casting-main-setting">
+                    <label>Allow Casting Unprepared Spells</label>
+                    <select name="unpreparedSpellUsage">
+                      {{#each unpreparedSpellUsageOptions}}
+                      <option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>
+                      {{/each}}
+                    </select>
+                    <p class="hint"><strong>Requires Player Character Sheet Integrity.</strong> <strong>On</strong> allows unprepared spells normally; <strong>Out of Combat Only</strong> blocks them only while the Actor is in combat; <strong>Off</strong> blocks them everywhere. Wizard Ritual Adept still permits a true ritual cast from that Wizard's spellbook outside combat when casting is Off.</p>
                   </div>
 
                   <hr>

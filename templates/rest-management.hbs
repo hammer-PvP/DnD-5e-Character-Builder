@@ -84,10 +84,16 @@
             <span><strong>{{selected.applyLabel}}</strong><small>Prepare the selected recovery for this Short Rest</small></span>
           </button>
           {{else if selected.isPrepareSpells}}
-          <button type="button" class="cb-primary-confirm" data-action="apply-current-action" {{#if busy}}disabled{{/if}}>
-            <i class="fa-solid fa-book-open-reader"></i>
-            <span><strong>{{selected.applyLabel}}</strong><small>Apply this prepared list only after the Long Rest completes</small></span>
-          </button>
+          <div class="cb-prepare-spells-header-controls">
+            <div class="cb-prepare-spells-budget" data-prepared-budget>
+              <strong><span data-prepared-count>{{selected.preparation.selectedCount}}</span> / {{selected.preparation.limit}}</strong>
+              <small>ordinary prepared spells · <span data-prepared-remaining>{{selected.preparation.remaining}}</span> remaining</small>
+            </div>
+            <button type="button" class="cb-primary-confirm" data-action="apply-current-action" {{#if busy}}disabled{{/if}}>
+              <i class="fa-solid fa-book-open-reader"></i>
+              <span><strong>{{selected.applyLabel}}</strong><small>Apply this prepared list only after the Long Rest completes</small></span>
+            </button>
+          </div>
           {{else if selected.isScribe}}
           <button type="button" class="cb-primary-confirm" data-action="apply-current-action" {{#if busy}}disabled{{/if}}>
             <i class="fa-solid fa-book"></i>
@@ -103,7 +109,7 @@
         {{/unless}}
       </header>
 
-      <div class="cb-keeper-scroll">
+      <div class="cb-keeper-scroll {{#if selected.isPrepareSpells}}cb-keeper-scroll-prepare-spells{{/if}}">
         <p class="cb-notice warning cb-keeper-unconfirmed-notice" data-keeper-unconfirmed-notice hidden><i class="fa-solid fa-triangle-exclamation"></i> These edits are not confirmed. Confirm them above or use <strong>{{#if nativeRestCompleted}}Discard Pending Changes{{else}}Discard Rest Changes{{/if}}</strong> before continuing.</p>
         {{#if selected.complete}}
         <p class="cb-notice success"><i class="fa-solid fa-circle-check"></i> This action has a confirmed choice ready for the current {{restLabel}}. You can reopen it and replace that pending choice before continuing.</p>
@@ -151,17 +157,7 @@
 
         {{#if selected.isPrepareSpells}}
         <section class="cb-keeper-section cb-prepare-spells" data-spell-preparation data-class-item-id="{{selected.preparation.classItemId}}" data-prepared-limit="{{selected.preparation.limit}}">
-          <header class="cb-choice-section-header">
-            <div>
-              <h3>{{selected.preparation.className}} Prepared Spells</h3>
-              <p>{{selected.preparation.accessLabel}} · Level {{selected.preparation.classLevel}} · Changes become authoritative only after this Long Rest succeeds.</p>
-            </div>
-            <div class="cb-prepare-spells-budget">
-              <strong><span data-prepared-count>{{selected.preparation.selectedCount}}</span> / {{selected.preparation.limit}}</strong>
-              <small>ordinary prepared spells · <span data-prepared-remaining>{{selected.preparation.remaining}}</span> remaining</small>
-            </div>
-          </header>
-          <p class="cb-notice"><i class="fa-solid fa-circle-info"></i> Cantrips are always available and are not part of this list. Always Prepared and feature-granted spells remain locked and do not count against the class limit.</p>
+          <p class="cb-notice cb-prepare-spells-context"><i class="fa-solid fa-circle-info"></i> {{selected.preparation.accessLabel}} · {{selected.preparation.className}} level {{selected.preparation.classLevel}}. Cantrips are always available and are not part of this list. Always Prepared and feature-granted spells remain locked and do not count against the class limit. Changes become authoritative only after this Long Rest succeeds.</p>
           <input type="search" placeholder="Search {{selected.preparation.className}} spells" data-filter-target="#cb-prepare-spells-{{selected.preparation.classItemId}}">
           <div id="cb-prepare-spells-{{selected.preparation.classItemId}}" class="cb-prepare-spells-groups">
             {{#each selected.preparation.groups}}
