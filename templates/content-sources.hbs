@@ -1,0 +1,69 @@
+<section class="cb-content-sources">
+  <header class="cb-app-header cb-content-sources-header">
+    <i class="fa-solid fa-books"></i>
+    <div>
+      <h1>Content Sources</h1>
+      <p>Select every compatible Item-compendium package Character Builder may use, then arrange source priority.</p>
+    </div>
+  </header>
+
+  <div class="cb-content-sources-toolbar">
+    <label class="cb-content-source-search">
+      <i class="fa-solid fa-magnifying-glass"></i>
+      <input type="search" data-source-filter placeholder="Filter sources, modules, or content types">
+    </label>
+    <div class="cb-content-source-actions">
+      <button type="button" data-action="enable-all"><i class="fa-solid fa-square-check"></i> Enable All</button>
+      <button type="button" data-action="disable-all"><i class="fa-regular fa-square"></i> Disable All</button>
+      <button type="button" data-action="refresh" {{#if busy}}disabled{{/if}}><i class="fa-solid fa-rotate"></i> Scan Again</button>
+    </div>
+  </div>
+
+  <div class="cb-content-sources-summary">
+    <strong>{{enabledCount}}</strong> of <strong>{{totalCount}}</strong> discovered sources enabled.
+    New active modules and world Item compendiums appear here after a scan.
+  </div>
+
+  <div class="cb-content-source-list">
+    {{#each sources}}
+    <article class="cb-content-source-row {{#if unavailable}}unavailable{{/if}}"
+      data-source-id="{{id}}"
+      data-search="{{label}} {{packageLabel}} {{contentSummary}}">
+      <label class="cb-content-source-toggle">
+        <input type="checkbox" {{checked enabled}} {{#if unavailable}}disabled{{/if}}>
+        <span class="cb-content-source-title">
+          <strong>{{label}}</strong>
+          <small>{{packageLabel}}</small>
+        </span>
+      </label>
+
+      <div class="cb-content-source-details">
+        <span>{{contentSummary}}</span>
+        {{#if legacy}}<span class="cb-badge warning">Legacy Rules Content</span>{{/if}}
+        {{#if unavailable}}<span class="cb-badge warning">Not Available</span>{{/if}}
+      </div>
+
+      <div class="cb-order-buttons">
+        <button type="button" data-action="move-source" data-direction="up" aria-label="Move Up">
+          <i class="fa-solid fa-arrow-up"></i>
+        </button>
+        <button type="button" data-action="move-source" data-direction="down" aria-label="Move Down">
+          <i class="fa-solid fa-arrow-down"></i>
+        </button>
+      </div>
+    </article>
+    {{else}}
+    <div class="cb-empty-state">
+      <i class="fa-solid fa-box-open"></i>
+      <p>No compatible Item compendiums were discovered.</p>
+    </div>
+    {{/each}}
+  </div>
+
+  <footer class="cb-footer cb-content-sources-footer">
+    <button type="button" data-action="cancel"><i class="fa-solid fa-arrow-left"></i> Back</button>
+    <button type="button" class="gold-button" data-action="save" {{#if busy}}disabled{{/if}}>
+      <i class="fa-solid fa-floppy-disk"></i> Save Content Sources
+    </button>
+  </footer>
+</section>
