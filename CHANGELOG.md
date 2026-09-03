@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.9.9x4 — Internal Test Build
+
+### Managed Summons
+- Added a generic **Managed Summons Core** that runs after native D&D5e Summon Activities. Native placement, quantity, profiles, statistics, attacks, damage, and concentration remain system-owned.
+- Each native summon invocation is tracked as one summon instance and may contain multiple managed Actors/Tokens. Generic summons are not treated as mutually exclusive.
+- Managed summon Actors inherit ownership from the summoning Actor rather than only from the user who clicked the Activity.
+- Added optional per-summoner Actor folders named `<FirstName> - Companions`.
+- Refactored **Ranger — Primal Companion** into the first source policy for Managed Summons. It preserves the native finalized Actor snapshot, initializes current HP to the native maximum when needed, and remains an exclusive-companion policy without making exclusivity a global summon rule.
+- Concentration-linked managed summons are cleaned only after D&D5e emits its confirmed concentration-end lifecycle.
+
+### Concentration
+- Final failed Concentration checks no longer call `Actor.endConcentration()` automatically. After all shared roll-resolution providers finish, Character Builder posts a Chat decision for GMs.
+- Added **Keep Concentration** and **Drop Concentration** decisions. Only **Drop Concentration** calls native D&D5e concentration ending; **Keep Concentration** preserves the effect and any linked managed summons.
+- The decision snapshots the concentration effects involved in the failed check so a later/new concentration is not accidentally removed by an old Chat card.
+
+### Player Sheet Integrity
+- Extended **Hit Point Fields** protection to the Token HUD. Protected players cannot manually edit an HP resource bar through the HUD, while native damage, healing, rests, Activities, automation, and GM edits remain available.
+
+### Character Keeper
+- Made the Long Rest spell-preparation search toolbar sticky while scrolling long spell lists.
+- Added **All / Prepared** filtering and kept the Prepared filter synchronized with live checkbox changes.
+
+### Healing Potions
+- Made **Configure Assistance Rules** and **Configure Maximum-Healing Potions** non-modal configuration surfaces so GMs can browse Item Directory and Compendiums while dragging potion Items into the selector.
+- Activity choice after an Item is dropped remains a focused modal selection when needed.
+
 ## 0.9.9x3 — Internal Test Build
 
 - Rebased this build directly on the canonical/live-tested `0.9.9x1` package rather than carrying forward the failed `0.9.9x2` Primal Companion and duplicate-proficiency implementations.

@@ -157,15 +157,21 @@
         {{/if}}
 
         {{#if selected.isPrepareSpells}}
-        <section class="cb-keeper-section cb-prepare-spells" data-spell-preparation data-class-item-id="{{selected.preparation.classItemId}}" data-prepared-limit="{{selected.preparation.limit}}">
-          <input type="search" placeholder="Search {{selected.preparation.className}} spells" data-filter-target="#cb-prepare-spells-{{selected.preparation.classItemId}}">
+        <section class="cb-keeper-section cb-prepare-spells" data-spell-preparation data-class-item-id="{{selected.preparation.classItemId}}" data-prepared-limit="{{selected.preparation.limit}}" data-prepared-filter="all">
+          <div class="cb-prepare-spells-filterbar">
+            <input type="search" placeholder="Search {{selected.preparation.className}} spells" data-filter-target="#cb-prepare-spells-{{selected.preparation.classItemId}}" data-prepare-spells-search>
+            <div class="cb-prepare-spells-filter-buttons" role="group" aria-label="Prepared spell filter">
+              <button type="button" class="active" data-action="filter-prepare-spells" data-filter-mode="all">All</button>
+              <button type="button" data-action="filter-prepare-spells" data-filter-mode="prepared">Prepared</button>
+            </div>
+          </div>
           <div id="cb-prepare-spells-{{selected.preparation.classItemId}}" class="cb-prepare-spells-groups">
             {{#each selected.preparation.groups}}
             <section class="cb-source-group cb-prepare-spell-level">
               <header><strong>{{label}}</strong><small>Ordinary preparation</small></header>
               <div class="cb-keeper-card-list">
                 {{#each spells}}
-                <article class="cb-keeper-radio-card cb-prepare-spell-card {{#if selected}}selected{{/if}}" data-search="{{search}}">
+                <article class="cb-keeper-radio-card cb-prepare-spell-card {{#if selected}}selected{{/if}}" data-search="{{search}}" data-prepared-selected="{{#if selected}}true{{else}}false{{/if}}">
                   <label class="cb-keeper-select-zone" title="{{#if selected}}Unprepare {{name}}{{else}}Prepare {{name}}{{/if}}">
                     <input type="checkbox" name="keeper.prepareSpells" value="{{id}}" {{#if selected}}checked{{/if}}>
                   </label>

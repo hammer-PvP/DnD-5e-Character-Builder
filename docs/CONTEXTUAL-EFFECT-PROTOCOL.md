@@ -73,7 +73,7 @@ When concentration ends, D&D5e remains authoritative for deleting its dependents
 
 ## Post-roll concentration resolution
 
-D&D5e 5.3.3 rolls a Concentration save but does not automatically call `Actor.endConcentration()` on failure. Character Builder marks the roll pending and keeps the shared batch open with an inert lifecycle barrier long enough for asynchronous Character and Item providers triggered by the same roll to register. Concentration is ended only from the queue's finalized snapshot, using the final `currentTotal` against the save DC.
+D&D5e 5.3.3 rolls a Concentration save but does not automatically call `Actor.endConcentration()` on failure. Character Builder marks the roll pending and keeps the shared batch open with an inert lifecycle barrier long enough for asynchronous Character and Item providers triggered by the same roll to register. When the queue's finalized snapshot still fails against the save DC, Character Builder leaves concentration active and creates a GM decision card in Chat. Only an explicit **Drop Concentration** decision calls native `Actor.endConcentration()`; **Keep Concentration** leaves the effect untouched.
 
 This ordering allows Bardic Inspiration or an Item-origin post-roll bonus to rescue concentration before any dependent effect is removed. The runtime also preserves request affinity: if a native concentration request card belongs to a concentrating Actor but the click would roll a different non-concentrating Actor because of current target selection, Character Builder cancels that mismatched roll and reissues the Concentration save for the request owner.
 

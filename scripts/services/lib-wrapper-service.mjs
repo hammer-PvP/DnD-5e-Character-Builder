@@ -6,6 +6,7 @@ const ACTOR_SHEET_ADD_TARGET = "dnd5e.applications.actor.BaseActorSheet.prototyp
 const ACTOR_SHEET_DROP_ITEM_TARGET = "dnd5e.applications.actor.BaseActorSheet.prototype._onDropItem";
 const ACTOR_SHEET_DROP_TARGET = "dnd5e.applications.actor.BaseActorSheet.prototype._onDropCreateItems";
 const ACTOR_DIRECTORY_CONTEXT_TARGET = "foundry.applications.sidebar.tabs.ActorDirectory.prototype._getEntryContextOptions";
+const DND5E_ACTOR_MODIFY_TOKEN_ATTRIBUTE_TARGET = "dnd5e.documents.Actor5e.prototype.modifyTokenAttribute";
 /**
  * Central libWrapper integration point.
  *
@@ -93,6 +94,15 @@ export class LibWrapperService {
           const allowed = PlayerSheetIntegrityService.filterNativeDropItems(this, items ?? []);
           if (!allowed.length) return [];
           return wrapped(event, allowed, behavior, ...args);
+        },
+        "WRAPPER"
+      );
+      api.register(
+        MODULE_ID,
+        DND5E_ACTOR_MODIFY_TOKEN_ATTRIBUTE_TARGET,
+        async function (wrapped, attribute, value, isDelta, isBar, ...args) {
+          if (!PlayerSheetIntegrityService.mayModifyTokenAttribute(this, attribute)) return this;
+          return wrapped(attribute, value, isDelta, isBar, ...args);
         },
         "WRAPPER"
       );

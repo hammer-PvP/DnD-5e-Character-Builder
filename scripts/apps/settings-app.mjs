@@ -110,10 +110,7 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     root.querySelector('[data-action="configure-assistance-rules"]')?.addEventListener("click", event => {
       event.preventDefault();
       const assistanceApp = new RulesAssistanceConfigApp(this);
-      ModalStackService.renderChild(this, assistanceApp, { force: true }, {
-        label: "Configure Assistance Rules",
-        message: "Save or close Configure Assistance Rules to return to Character Builder Settings."
-      });
+      assistanceApp.render({ force: true });
     });
     root.querySelector('[data-action="configure-sheet-integrity"]')?.addEventListener("click", event => {
       event.preventDefault();

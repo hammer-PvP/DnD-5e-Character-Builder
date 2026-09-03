@@ -159,7 +159,7 @@ dnd5e.rollConcentration
 → external claims/providers remain authoritative
 ```
 
-`Actor.endConcentration()` is called only from the shared queue's finalized event and only when the **final `currentTotal`** still fails the Concentration target.
+A final failed Concentration result creates a GM decision in Chat. `Actor.endConcentration()` is called only after the shared queue has finalized **and** a GM explicitly chooses **Drop Concentration**. Choosing **Keep Concentration** leaves the native effect active.
 
 When terminal finalization is requested, protocol v3 arms the terminal close on the next **microtask**, not in the middle of the current synchronous D&D5e hook dispatch. This is not a millisecond discovery delay: it simply lets modules whose listeners run later on the same hook synchronously call `claim()` before the batch can close. Any asynchronous work after that point still requires an explicit claim.
 

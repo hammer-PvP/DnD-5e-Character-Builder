@@ -33,6 +33,11 @@ export class RulesAssistanceSettingsService {
     return this.masterEnabled(candidate) && this.configuredRuleEnabled(ruleIdOrKey, candidate);
   }
 
+  static managedSummonFoldersEnabled(candidate = null) {
+    const settings = this.settings(candidate);
+    return settings.rulesAssistance?.managedSummons?.organizeFolders !== false;
+  }
+
   static definition(ruleIdOrKey) {
     const value = String(ruleIdOrKey ?? "");
     return RULES_ASSISTANCE_DEFINITIONS.find(rule => rule.ruleId === value || rule.key === value) ?? null;

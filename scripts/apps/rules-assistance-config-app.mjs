@@ -1,5 +1,4 @@
 import { MODULE_ID, defaultSettings } from "../constants.mjs";
-import { ModalStackService } from "../services/modal-stack-service.mjs";
 import { RulesAssistanceService } from "../services/rules-assistance-service.mjs";
 import { RulesAssistanceSettingsService } from "../services/rules-assistance-settings-service.mjs";
 import { HealingPotionConfigApp } from "./healing-potion-config-app.mjs";
@@ -10,7 +9,6 @@ export class RulesAssistanceConfigApp extends HandlebarsApplicationMixin(Applica
   constructor(parentApp = null, options = {}) {
     super(options);
     this.parentApp = parentApp;
-    this.modalStackToken = null;
     this.busy = false;
   }
 
@@ -19,7 +17,7 @@ export class RulesAssistanceConfigApp extends HandlebarsApplicationMixin(Applica
     classes: ["dnd5e-character-builder", "character-builder", "rules-assistance-app"],
     tag: "form",
     position: { width: 760, height: 650 },
-    window: { title: "Configure Assistance Rules", resizable: true, modal: true }
+    window: { title: "Configure Assistance Rules", resizable: true, modal: false }
   };
 
   static PARTS = {
@@ -37,17 +35,12 @@ export class RulesAssistanceConfigApp extends HandlebarsApplicationMixin(Applica
       masterEnabled,
       enabledCount: summary.enabledCount,
       totalCount: summary.totalCount,
-      rules: summary.rows
+      rules: summary.rows,
+      organizeManagedSummonFolders: RulesAssistanceSettingsService.managedSummonFoldersEnabled(settings)
     };
   }
 
   _onRender() {
-    this.modalStackToken ??= ModalStackService.beginRoot(this, {
-      ownerApp: this.parentApp,
-      ownerElement: this.parentApp?.element,
-      label: "Configure Assistance Rules",
-      message: "Save or close this window to return to Character Builder Settings."
-    });
     this.element.querySelector('[data-action="cancel"]')?.addEventListener("click", event => {
       event.preventDefault();
       this.close();
@@ -60,21 +53,11 @@ export class RulesAssistanceConfigApp extends HandlebarsApplicationMixin(Applica
       button.addEventListener("click", event => {
         event.preventDefault();
         const app = new HealingPotionConfigApp(this);
-        ModalStackService.renderChild(this, app, { force: true }, {
-          label: "Configure Maximum-Healing Potions",
-          message: "Save or close Maximum-Healing Potions to return to Configure Assistance Rules."
-        });
+        app.render({ force: true });
       });
     });
   }
 
-  async _onClose(options = {}) {
-    if (this.modalStackToken) {
-      ModalStackService.end(this.modalStackToken, { closeDescendants: true });
-      this.modalStackToken = null;
-    }
-    return super._onClose(options);
-  }
 
 
   #refreshSummary() {
@@ -93,6 +76,10 @@ export class RulesAssistanceConfigApp extends HandlebarsApplicationMixin(Applica
       const settings = foundry.utils.mergeObject(defaultSettings(), stored, { inplace: false });
       settings.rulesAssistance ??= {};
       settings.rulesAssistance.rules ??= {};
+      settings.rulesAssistance.managedSummons ??= {};
+      settings.rulesAssistance.managedSummons.organizeFolders = Boolean(
+        this.element.querySelector('[name="managedSummons.organizeFolders"]')?.checked
+      );
       for (const row of this.element.querySelectorAll("[data-rule-key]")) {
         const key = String(row.dataset.ruleKey ?? "");
         if (!RulesAssistanceSettingsService.definition(key)) continue;

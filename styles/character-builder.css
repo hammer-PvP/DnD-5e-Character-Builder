@@ -6185,3 +6185,116 @@
 @media (max-width: 850px) {
   .cb-rules-assistance-row-actions { justify-content: flex-start; margin-left: 30px; }
 }
+
+/* v0.9.9x4 — sticky Keeper spell search + prepared-only filter */
+.character-builder .cb-prepare-spells-filterbar {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -2px 0 10px;
+  padding: 4px 0 8px;
+  background: var(--cb-panel);
+  backdrop-filter: blur(4px);
+}
+.character-builder .cb-prepare-spells-filterbar > input[type="search"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+.character-builder .cb-prepare-spells-filter-buttons {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+.character-builder .cb-prepare-spells-filter-buttons button {
+  width: auto;
+  min-width: 78px;
+  margin: 0;
+  padding: 5px 9px;
+}
+.character-builder .cb-prepare-spells-filter-buttons button.active {
+  box-shadow: inset 0 0 0 1px currentColor;
+  font-weight: 700;
+}
+@media (max-width: 700px) {
+  .character-builder .cb-prepare-spells-filterbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .character-builder .cb-prepare-spells-filter-buttons button { flex: 1 1 50%; }
+}
+
+/* v0.9.9x4 — Managed Summons sub-settings */
+.character-builder .cb-rules-assistance-subsettings {
+  flex: 0 0 auto;
+  padding: 10px 14px;
+  border-top: 1px solid var(--cb-border);
+  border-bottom: 1px solid var(--cb-border);
+  background: rgba(209, 176, 107, .035);
+}
+.character-builder .cb-rules-assistance-subsettings .cb-rules-assistance-toggle {
+  width: 100%;
+}
+.character-builder .cb-managed-summons-folder-toggle small {
+  display: block;
+  margin-top: 2px;
+}
+
+/* v0.9.9x4 — GM Concentration decision Chat card */
+.cb-concentration-decision-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--cb-border, rgba(209, 176, 107, .55));
+  border-radius: 6px;
+  background: rgba(20, 20, 22, .94);
+}
+.cb-concentration-decision-card > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cb-concentration-decision-card > header > i {
+  font-size: 20px;
+  color: var(--cb-gold, #d1b06b);
+}
+.cb-concentration-decision-card > header > div {
+  display: grid;
+  line-height: 1.2;
+}
+.cb-concentration-decision-card > header small { opacity: .78; }
+.cb-concentration-decision-card p { margin: 0; }
+.cb-concentration-decision-summary {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.cb-concentration-decision-summary > span {
+  padding: 3px 7px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 4px;
+  background: rgba(255,255,255,.035);
+}
+.cb-concentration-decision-status {
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: rgba(255,255,255,.04);
+}
+.cb-concentration-decision-status.pending { border-left: 3px solid #d1b06b; }
+.cb-concentration-decision-status.kept { border-left: 3px solid #7fbf7f; }
+.cb-concentration-decision-status.dropped { border-left: 3px solid #c56f6f; }
+.cb-concentration-decision-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.cb-concentration-decision-actions button {
+  width: 100%;
+  min-width: 0;
+}
+.cb-concentration-decision-actions button.danger {
+  border-color: rgba(197,111,111,.65);
+}

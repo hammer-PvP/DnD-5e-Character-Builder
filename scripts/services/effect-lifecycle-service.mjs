@@ -1,6 +1,7 @@
 import { MODULE_ID } from "../constants.mjs";
 import { RulesAssistanceSettingsService } from "./rules-assistance-settings-service.mjs";
 import { SharedRollResolutionQueueService } from "./shared-roll-resolution-queue-service.mjs";
+import { ConcentrationDecisionService } from "./concentration-decision-service.mjs";
 
 const RULE_ID = "concentration-effect-lifecycle";
 const FLAG_KEY = "contextualEffect";
@@ -16,10 +17,11 @@ const CONCENTRATION_GATE_PROVIDER = `${MODULE_ID}:${RULE_ID}:resolution-gate`;
  *      `flags.dnd5e.dependentOn` relationship;
  *   2. keep concentration request rolls attached to the concentrating Actor;
  *   3. open a shared-queue resolution gate before a Concentration roll is
- *      evaluated and end native concentration only after every claimed
- *      Character/Item provider has released that roll.
+ *      evaluated and, after every claimed Character/Item provider releases
+ *      that roll, send a final failure to an explicit GM Chat decision.
  *
- * D&D5e then deletes concentration dependents through its own registry.
+ * Only the GM decision calls D&D5e's native endConcentration(); D&D5e then
+ * deletes bound dependents through its own registry.
  */
 export class EffectLifecycleService {
   static #initialized = false;
@@ -32,6 +34,8 @@ export class EffectLifecycleService {
   static initialize() {
     if (this.#initialized) return;
     this.#initialized = true;
+
+    ConcentrationDecisionService.initialize();
 
     Hooks.on("preCreateActiveEffect", (effect, data) => {
       try {
@@ -362,13 +366,21 @@ export class EffectLifecycleService {
 
     const maintained = this.#concentrationEffects(actor).length;
     if (!maintained) return;
-    const ended = await actor.endConcentration();
-    this.#recordAudit(actor, {
-      action: "Ended native concentration after final failed Concentration save",
+    const message = await ConcentrationDecisionService.request({
+      actor,
+      rollKey: payload.rollKey,
       originalTotal: pending.originalTotal,
       finalTotal: currentTotal,
       target,
-      endedCount: Array.isArray(ended) ? ended.length : maintained,
+      rollId: roll?.id ?? null
+    });
+    this.#recordAudit(actor, {
+      action: "Deferred failed Concentration save to explicit GM Chat decision",
+      originalTotal: pending.originalTotal,
+      finalTotal: currentTotal,
+      target,
+      maintainedCount: maintained,
+      decisionMessageId: message?.id ?? null,
       rollKey: payload.rollKey,
       rollId: roll?.id ?? null
     });

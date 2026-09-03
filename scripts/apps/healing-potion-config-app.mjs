@@ -1,5 +1,4 @@
 import { MODULE_ID, defaultSettings } from "../constants.mjs";
-import { ModalStackService } from "../services/modal-stack-service.mjs";
 import { HealingPotionAssistanceService } from "../services/healing-potion-assistance-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
@@ -8,7 +7,6 @@ export class HealingPotionConfigApp extends HandlebarsApplicationMixin(Applicati
   constructor(parentApp = null, options = {}) {
     super(options);
     this.parentApp = parentApp;
-    this.modalStackToken = null;
     this.rows = foundry.utils.deepClone(HealingPotionAssistanceService.customPotions());
     this.busy = false;
   }
@@ -18,7 +16,7 @@ export class HealingPotionConfigApp extends HandlebarsApplicationMixin(Applicati
     classes: ["dnd5e-character-builder", "character-builder", "healing-potion-config-app"],
     tag: "form",
     position: { width: 720, height: 620 },
-    window: { title: "Configure Maximum-Healing Potions", resizable: true, modal: true }
+    window: { title: "Configure Maximum-Healing Potions", resizable: true, modal: false }
   };
 
   static PARTS = {
@@ -39,12 +37,6 @@ export class HealingPotionConfigApp extends HandlebarsApplicationMixin(Applicati
   }
 
   _onRender() {
-    this.modalStackToken ??= ModalStackService.beginRoot(this, {
-      ownerApp: this.parentApp,
-      ownerElement: this.parentApp?.element,
-      label: "Configure Maximum-Healing Potions",
-      message: "Save or close this window to return to Configure Assistance Rules."
-    });
     this.element.querySelector('[data-action="cancel"]')?.addEventListener("click", event => {
       event.preventDefault();
       this.close();
@@ -67,13 +59,6 @@ export class HealingPotionConfigApp extends HandlebarsApplicationMixin(Applicati
     drop?.addEventListener("drop", event => void this.#drop(event));
   }
 
-  async _onClose(options = {}) {
-    if (this.modalStackToken) {
-      ModalStackService.end(this.modalStackToken, { closeDescendants: true });
-      this.modalStackToken = null;
-    }
-    return super._onClose(options);
-  }
 
   async #drop(event) {
     event.preventDefault();

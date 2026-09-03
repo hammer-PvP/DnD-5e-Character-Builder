@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.9x3";
-export const MODULE_BUILD = "internal-099x3-rebased-assistance-fixes-r1";
+export const MODULE_VERSION = "0.9.9x4";
+export const MODULE_BUILD = "internal-099x4-managed-summons-concentration-r1";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -148,7 +148,7 @@ export const RULES_ASSISTANCE_DEFINITIONS = Object.freeze([
     key: "concentrationEffectLifecycle",
     ruleId: "concentration-effect-lifecycle",
     label: "Concentration & Dependent Effects",
-    description: "Keeps Concentration checks attached to the concentrating Actor, resolves them after post-roll bonuses, ends native concentration on final failure, and lets D&D5e remove only bound dependent effects.",
+    description: "Keeps Concentration checks attached to the concentrating Actor, resolves them after post-roll bonuses, and on final failure waits for an explicit GM Chat decision before native concentration can be dropped.",
     tag: "Effect Lifecycle"
   }),
   Object.freeze({
@@ -173,11 +173,18 @@ export const RULES_ASSISTANCE_DEFINITIONS = Object.freeze([
     tag: "Chat Assistance"
   }),
   Object.freeze({
+    key: "managedSummons",
+    ruleId: "managed-summons",
+    label: "Managed Summons",
+    description: "Materializes native D&D5e summons as managed linked Actors, inherits ownership from the summoner, tracks summon instances, and cleans concentration-bound summons only after concentration has truly ended.",
+    tag: "Summon Lifecycle"
+  }),
+  Object.freeze({
     key: "rangerPrimalCompanion",
     ruleId: "ranger-primal-companion",
     label: "Ranger — Primal Companion",
-    description: "Completes native Primal Companion materialization by setting a newly summoned Beast to its derived maximum HP, inheriting the Ranger's player ownership, and replacing that Ranger's previous managed companion.",
-    tag: "Summon Lifecycle"
+    description: "Managed Summons policy for Primal Companion: fixes fresh current HP to the native derived maximum and replaces only that Ranger's previous Primal Companion instance.",
+    tag: "Source Policy"
   }),
   Object.freeze({
     key: "healingPotionMaximumAction",
@@ -364,6 +371,9 @@ export function defaultSettings() {
     assistWithDiceAutomation: false,
     rulesAssistance: {
       rules: defaultRulesAssistanceRules(),
+      managedSummons: {
+        organizeFolders: true
+      },
       healingPotionMaximumAction: {
         customPotions: []
       }

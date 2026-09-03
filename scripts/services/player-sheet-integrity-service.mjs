@@ -98,6 +98,7 @@ export class PlayerSheetIntegrityService {
 
     Hooks.on("renderChatMessageHTML", (message, element) => this.#protectChat(message, element));
     Hooks.on("renderChatMessage", (message, html) => this.#protectChat(message, html));
+    Hooks.on("renderTokenHUD", (app, html) => this.#protectTokenHud(app, html));
 
     // Usage Guard authority lives at the Activity boundary, before D&D5e opens
     // an upcast/configuration dialog or consumes spell slots/resources. This
@@ -153,6 +154,37 @@ export class PlayerSheetIntegrityService {
 
   static ruleProtects(actor, ruleKey) {
     return this.protects(actor) && this.ruleEnabled(ruleKey);
+  }
+
+  /**
+   * Token HUD authority boundary. D&D5e routes editable resource-bar changes
+   * through Actor5e#modifyTokenAttribute; normal damage/healing Activities use
+   * applyDamage instead and therefore remain untouched by this guard.
+   */
+  static mayModifyTokenAttribute(actor, attribute) {
+    const path = String(attribute ?? "").replace(/^system\./, "");
+    if (!this.ruleProtects(actor, RULES.HIT_POINTS) || path !== "attributes.hp") return true;
+    this.#warn("Hit Point editing from the Token HUD is GM-only while Hit Point Fields protection is enabled. Normal damage, healing, rests, and authorized gameplay automation remain available.");
+    return false;
+  }
+
+  static #protectTokenHud(app, html) {
+    const HTMLElementCtor = globalThis.HTMLElement;
+    const root = HTMLElementCtor && html instanceof HTMLElementCtor ? html : html?.[0] ?? null;
+    const token = app?.object?.document ?? app?.object ?? null;
+    const actor = app?.actor ?? app?.object?.actor ?? token?.actor ?? null;
+    if (!root || !this.ruleProtects(actor, RULES.HIT_POINTS)) return;
+
+    for (const barName of ["bar1", "bar2"]) {
+      const attribute = String(token?.[barName]?.attribute ?? token?._source?.[barName]?.attribute ?? "").replace(/^system\./, "");
+      if (attribute !== "attributes.hp") continue;
+      const input = root.querySelector(`input[name="${barName}"]`);
+      if (!input) continue;
+      input.disabled = true;
+      input.readOnly = true;
+      input.title = "Hit Point editing is protected by Character Builder. Use normal damage/healing gameplay or ask the GM for a manual adjustment.";
+      input.classList.add("cb-token-hud-hp-protected");
+    }
   }
 
   /**

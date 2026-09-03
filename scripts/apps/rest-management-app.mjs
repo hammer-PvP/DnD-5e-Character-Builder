@@ -386,6 +386,9 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
         case "open-document":
           await this.#openDocument(target.dataset.uuid);
           break;
+        case "filter-prepare-spells":
+          this.#setPreparedSpellFilter(target.dataset.filterMode);
+          break;
       }
     } catch (error) {
       console.error(`${MODULE_ID} | Character Keeper action failed.`, error);
@@ -856,11 +859,45 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
 
   #filterCards(event) {
     const input = event.currentTarget;
+    if (input?.matches?.("[data-prepare-spells-search]")) {
+      this.#applyPreparedSpellFilters();
+      return;
+    }
     const target = this.element.querySelector(input.dataset.filterTarget);
     if (!target) return;
     const query = String(input.value ?? "").trim().toLowerCase();
     for (const row of target.querySelectorAll("[data-search]")) {
       row.hidden = Boolean(query && !String(row.dataset.search ?? row.textContent ?? "").toLowerCase().includes(query));
+    }
+    for (const group of target.querySelectorAll(".cb-source-group")) {
+      group.hidden = ![...group.querySelectorAll("[data-search]")].some(row => !row.hidden);
+    }
+  }
+
+  #setPreparedSpellFilter(mode) {
+    const section = this.element?.querySelector?.("[data-spell-preparation]");
+    if (!section) return;
+    section.dataset.preparedFilter = mode === "prepared" ? "prepared" : "all";
+    for (const button of section.querySelectorAll('[data-action="filter-prepare-spells"]')) {
+      button.classList.toggle("active", button.dataset.filterMode === section.dataset.preparedFilter);
+    }
+    this.#applyPreparedSpellFilters();
+  }
+
+  #applyPreparedSpellFilters() {
+    const section = this.element?.querySelector?.("[data-spell-preparation]");
+    if (!section) return;
+    const target = section.querySelector(".cb-prepare-spells-groups");
+    if (!target) return;
+    const query = String(section.querySelector("[data-prepare-spells-search]")?.value ?? "").trim().toLowerCase();
+    const mode = section.dataset.preparedFilter === "prepared" ? "prepared" : "all";
+
+    for (const row of target.querySelectorAll("[data-search]")) {
+      const searchMatch = !query || String(row.dataset.search ?? row.textContent ?? "").toLowerCase().includes(query);
+      const input = row.querySelector('[name="keeper.prepareSpells"]');
+      const preparedMatch = mode !== "prepared" || Boolean(input?.checked);
+      row.hidden = !(searchMatch && preparedMatch);
+      row.dataset.preparedSelected = input?.checked ? "true" : "false";
     }
     for (const group of target.querySelectorAll(".cb-source-group")) {
       group.hidden = ![...group.querySelectorAll("[data-search]")].some(row => !row.hidden);
@@ -1004,6 +1041,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     if (remaining) remaining.textContent = String(Math.max(0, limit - selected));
     section.classList.toggle("over-limit", selected > limit);
     budget?.classList?.toggle?.("over-limit", selected > limit);
+    this.#applyPreparedSpellFilters();
   }
 
   #refreshScribeCheckout() {

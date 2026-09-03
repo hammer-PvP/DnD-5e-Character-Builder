@@ -15,7 +15,7 @@ import { ResourceEventService } from "./resource-event-service.mjs";
 import { TransformationActorCleanupService } from "./transformation-actor-cleanup-service.mjs";
 import { SummonProfileLevelGuardService } from "./summon-profile-level-guard-service.mjs";
 import { WeaponMasteryAssistanceService } from "./weapon-mastery-assistance-service.mjs";
-import { PrimalCompanionAssistanceService } from "./primal-companion-assistance-service.mjs";
+import { ManagedSummonsService } from "./managed-summons-service.mjs";
 import { HealingPotionAssistanceService } from "./healing-potion-assistance-service.mjs";
 
 const RULES = Object.freeze({
@@ -55,7 +55,7 @@ export class RulesAssistanceService {
     TransformationActorCleanupService.initialize();
     SummonProfileLevelGuardService.initialize();
     WeaponMasteryAssistanceService.initialize();
-    PrimalCompanionAssistanceService.initialize();
+    ManagedSummonsService.initialize();
     HealingPotionAssistanceService.initialize();
 
     Hooks.on("dnd5e.preUseActivity", (activity, usageConfig, dialogConfig, messageConfig) =>
@@ -82,7 +82,7 @@ export class RulesAssistanceService {
     await NativeSaveGatedEffectService.ready();
     CuttingWordsAssistanceService.ready();
     TransformationActorCleanupService.ready();
-    PrimalCompanionAssistanceService.ready();
+    ManagedSummonsService.ready();
     await HealingPotionAssistanceService.ready();
   }
 
