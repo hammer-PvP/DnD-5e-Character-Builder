@@ -2,7 +2,7 @@
   "id": "dnd5e-character-builder",
   "title": "Character Builder (DnD 5e)",
   "description": "Guided D&D 5e character creation, Level Up, multiclass, Epic Boon, Character Keeper with rest-time decisions and rule-timed spell preparation, GM clone-first Character Validation, granular player-sheet integrity with unprepared-spell usage guards, GM-managed rest availability, optional Rest Recovery 5e handoff compatibility, Level Up-ready interface audio, rich subclass review, dynamic compendium sources, and granular rules automation for Foundry VTT 14.",
-  "version": "0.9.9x1",
+  "version": "0.9.9x2",
   "authors": [
     {
       "name": "Raphael Andrade"
@@ -59,8 +59,8 @@
   "readme": "README.md",
   "url": "https://github.com/hammer-PvP/DnD-5e-Character-Builder",
   "manifest": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/latest/download/module.json",
-  "download": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/download/v0.9.9x1/dnd5e-character-builder.zip",
+  "download": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/download/v0.9.9x2/dnd5e-character-builder.zip",
   "bugs": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/issues",
-  "changelog": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/tag/v0.9.9x1",
+  "changelog": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/tag/v0.9.9x2",
   "socket": true
 }

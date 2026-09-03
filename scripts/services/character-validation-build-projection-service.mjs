@@ -796,8 +796,12 @@ export class CharacterValidationBuildProjectionService {
       });
     };
 
-    // Reservation is layered. Rank-1 proficiency and rank-2 Expertise are
-    // distinct entitlements and may legitimately use the same skill.
+    // Fixed grants are non-exclusive entitlements: two independent sources may
+    // legitimately grant the same mechanical proficiency. Human choice slots,
+    // however, remain exclusive and may not silently reuse a fixed grant or a
+    // choice already proven for another entitlement. Rank is part of the key so
+    // proficiency and Expertise remain distinct.
+    const fixedGranted = new Set();
     const reserved = new Set();
     for (const entitlement of entitlements) {
       for (const token of entitlement.grants) {
@@ -806,7 +810,7 @@ export class CharacterValidationBuildProjectionService {
           noteUnsupported(token, entitlement);
           continue;
         }
-        reserved.add(this.#traitReservationKey(token, entitlement.requiredRank));
+        fixedGranted.add(this.#traitReservationKey(token, entitlement.requiredRank));
         if (present) continue;
         issues.push({
           id: `trait-grant-missing:${entitlement.owner.id}:${entitlement.sourceAdvancementId}:${token}`,
@@ -921,7 +925,8 @@ export class CharacterValidationBuildProjectionService {
     for (const row of unresolved) {
       for (const token of mechanicalTokens) {
         if (!this.#traitTokenMatchesPools(token, row.entitlement.pools)) continue;
-        if (reserved.has(this.#traitReservationKey(token, row.entitlement.requiredRank))) continue;
+        const reservationKey = this.#traitReservationKey(token, row.entitlement.requiredRank);
+        if (fixedGranted.has(reservationKey) || reserved.has(reservationKey)) continue;
         if (this.#mechanicalTraitPresent(actor, token, row.entitlement.requiredRank) !== true) continue;
         const key = this.#traitReservationKey(token, row.entitlement.requiredRank);
         const claimers = candidateClaims.get(key) ?? new Set();
@@ -931,9 +936,12 @@ export class CharacterValidationBuildProjectionService {
     }
 
     for (const { entitlement, proven, deficit } of unresolved) {
-      const candidates = mechanicalTokens.filter(token => this.#traitTokenMatchesPools(token, entitlement.pools)
-        && !reserved.has(this.#traitReservationKey(token, entitlement.requiredRank))
-        && this.#mechanicalTraitPresent(actor, token, entitlement.requiredRank) === true);
+      const candidates = mechanicalTokens.filter(token => {
+        if (!this.#traitTokenMatchesPools(token, entitlement.pools)) return false;
+        const reservationKey = this.#traitReservationKey(token, entitlement.requiredRank);
+        if (fixedGranted.has(reservationKey) || reserved.has(reservationKey)) return false;
+        return this.#mechanicalTraitPresent(actor, token, entitlement.requiredRank) === true;
+      });
       const exclusive = candidates.filter(token => (candidateClaims.get(this.#traitReservationKey(token, entitlement.requiredRank))?.size ?? 0) === 1);
 
       if (exclusive.length === deficit && candidates.length === deficit) {

@@ -522,12 +522,19 @@ export class NativeAdvancementModalGuard {
       }
     }
 
-    // Trait Advancements store fixed grants and user choices together in
-    // value.chosen. When a choice pool exists, require every configured slot.
+    // Trait fixed grants are mechanically idempotent and can be supplied by
+    // more than one source (for example Criminal and Rogue both granting
+    // Thieves' Tools). Only genuine human choice slots must be represented in
+    // value.chosen for this navigation gate; the final projection validates the
+    // deterministic grants against the Actor's actual mechanical state.
     if (Array.isArray(config.choices) && config.choices.length && value.chosen !== undefined) {
-      const grants = this.#collectionSize(config.grants);
-      const required = grants + config.choices.reduce((sum, choice) => sum + Number(choice?.count ?? 0), 0);
-      if (required > 0) return this.#collectionSize(value.chosen) >= required;
+      const requiredChoices = config.choices.reduce((sum, choice) => sum + Number(choice?.count ?? 0), 0);
+      if (requiredChoices > 0) {
+        const grantKeys = new Set(this.#collectionValues(config.grants).map(token => this.#traitSemanticKey(token)));
+        const chosenChoices = this.#collectionValues(value.chosen)
+          .filter(token => !grantKeys.has(this.#traitSemanticKey(token)));
+        return new Set(chosenChoices.map(token => this.#traitSemanticKey(token))).size >= requiredChoices;
+      }
     }
 
     // Multi-size Species Advancements must contain an explicit selection.
@@ -554,6 +561,21 @@ export class NativeAdvancementModalGuard {
     if (Array.isArray(value)) return value.length;
     if (typeof value === "object") return Object.keys(value).length;
     return 0;
+  }
+
+  static #collectionValues(value) {
+    if (value == null) return [];
+    if (Array.isArray(value)) return value;
+    if (value instanceof Set || value instanceof Map) return [...value.values()];
+    if (typeof value?.values === "function") {
+      try { return [...value.values()]; } catch (_error) { /* fall through */ }
+    }
+    if (typeof value === "object") return Object.values(value);
+    return [value];
+  }
+
+  static #traitSemanticKey(token) {
+    return String(token ?? "").trim().toLowerCase();
   }
 
   static #flowElement(flow) {

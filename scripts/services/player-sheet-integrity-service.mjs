@@ -11,7 +11,8 @@ const RULES = Object.freeze({
   CONTENT: "characterContentProgression",
   RESOURCES: "resourcesSpellSlots",
   CURRENCY: "currency",
-  PREPARED: "preparedSpellLimit"
+  PREPARED: "preparedSpellLimit",
+  HIT_POINTS: "hitPointFields"
 });
 
 const SAFE_INVENTORY_ACTIONS = new Set([
@@ -416,7 +417,9 @@ export class PlayerSheetIntegrityService {
         this.#stop(event);
         this.#warn(rule === RULES.RESOURCES
           ? "Spell-slot and resource configuration is GM-only while Resources & Spell Slots protection is enabled."
-          : "Character data and proficiency configuration is GM-only while Character Data & Proficiencies protection is enabled.");
+          : rule === RULES.HIT_POINTS
+            ? "Hit Point configuration is GM-only while Hit Point Fields protection is enabled."
+            : "Character data and proficiency configuration is GM-only while Character Data & Proficiencies protection is enabled.");
         return;
       }
     }
@@ -471,6 +474,13 @@ export class PlayerSheetIntegrityService {
       this.#restoreDocumentControl(input, item, name);
       this.#stop(event);
       this.#warn("Currency amounts in containers are read-only. Use the native Currency Manager or an approved gameplay transfer.");
+      return;
+    }
+
+    if (!item && this.ruleEnabled(RULES.HIT_POINTS) && this.#hitPointPath(name)) {
+      this.#restoreDocumentControl(input, actor, name);
+      this.#stop(event);
+      this.#warn("Hit Point fields are read-only for players while Hit Point Fields protection is enabled. Use normal damage, healing, rests, and Activities, or ask the GM to edit the values directly.");
       return;
     }
 
@@ -598,7 +608,8 @@ export class PlayerSheetIntegrityService {
         if (rule && this.ruleEnabled(rule)) this.#setControlReadOnly(control);
         continue;
       }
-      if (this.ruleEnabled(RULES.RESOURCES) && this.#managedActorResourcePath(name)) this.#setControlReadOnly(control);
+      if (this.ruleEnabled(RULES.HIT_POINTS) && this.#hitPointPath(name)) this.#setControlReadOnly(control);
+      else if (this.ruleEnabled(RULES.RESOURCES) && this.#managedActorResourcePath(name)) this.#setControlReadOnly(control);
       else if (this.ruleEnabled(RULES.CURRENCY) && /^system\.currency\.[^.]+$/.test(name)) this.#setControlReadOnly(control);
       else if (this.ruleEnabled(RULES.CONTENT) && this.#progressionActorPath(name)) this.#setControlReadOnly(control);
       else if (this.ruleEnabled(RULES.CHARACTER_DATA) && this.#characterDataPath(name)) this.#setControlReadOnly(control);
@@ -783,6 +794,8 @@ export class PlayerSheetIntegrityService {
   }
 
   static #useGlobalStructuralLock(candidate = null) {
+    // HP editing is an independent optional field-level protection and must
+    // not weaken or strengthen the pre-existing structural global lock.
     return [RULES.CHARACTER_DATA, RULES.INVENTORY, RULES.CONTENT, RULES.RESOURCES, RULES.CURRENCY]
       .every(rule => this.ruleEnabled(rule, candidate));
   }
@@ -807,8 +820,9 @@ export class PlayerSheetIntegrityService {
     if (element?.dataset?.trait) return RULES.CHARACTER_DATA;
     const config = String(element?.dataset?.config ?? "");
     if (["spellSlots", "hitDice"].includes(config)) return RULES.RESOURCES;
+    if (config === "hitPoints") return RULES.HIT_POINTS;
     if (["ability", "armorClass", "creatureType", "initiative", "movement", "senses", "skill", "tool", "skills",
-      "source", "hitPoints", "death", "concentration"].includes(config)) return RULES.CHARACTER_DATA;
+      "source", "death", "concentration"].includes(config)) return RULES.CHARACTER_DATA;
     // Unknown Actor configuration panels are structural by default. This keeps
     // the Character Data package fail-closed as D&D5e adds new configuration
     // actions without forcing the entire sheet back into global locked mode.
@@ -822,6 +836,11 @@ export class PlayerSheetIntegrityService {
     if (/^system\.(abilities|skills|tools|traits|bonuses|bastion)(\.|$)/.test(path)) return true;
     if (/^system\.details\.(?!xp(?:\.|$))/.test(path)) return true;
     return /^system\.attributes\.(ac|init|movement|senses|attunement|concentration|loyalty|spellcasting)(\.|$)/.test(path);
+  }
+
+  static #hitPointPath(path) {
+    path = String(path ?? "");
+    return /^system\.attributes\.hp\.(value|max|temp|tempmax)$/.test(path);
   }
 
   static #progressionActorPath(path) {

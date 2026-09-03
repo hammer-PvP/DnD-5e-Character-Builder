@@ -28,7 +28,12 @@
           <small>{{description}}</small>
         </span>
       </label>
-      <span class="cb-badge">{{tag}}</span>
+      <div class="cb-rules-assistance-row-actions">
+        {{#if configureAction}}
+        <button type="button" class="cb-rules-assistance-configure" data-action="{{configureAction}}"><i class="fa-solid fa-sliders"></i> {{configureLabel}}</button>
+        {{/if}}
+        <span class="cb-badge">{{tag}}</span>
+      </div>
     </article>
     {{/each}}
   </div>

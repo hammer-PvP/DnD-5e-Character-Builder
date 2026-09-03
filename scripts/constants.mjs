@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.9x1";
-export const MODULE_BUILD = "internal-099x1-spell-preparation-hotfix-r1";
+export const MODULE_VERSION = "0.9.9x2";
+export const MODULE_BUILD = "internal-099x2-keeper-assistance-integrity-r1";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -171,11 +171,28 @@ export const RULES_ASSISTANCE_DEFINITIONS = Object.freeze([
     label: "Weapon Mastery Chat Assistance",
     description: "Adds compact native-card mastery links plus deterministic Graze/Cleave damage and Topple DC assistance, without target, turn, or Action Economy tracking.",
     tag: "Chat Assistance"
+  }),
+  Object.freeze({
+    key: "rangerPrimalCompanion",
+    ruleId: "ranger-primal-companion",
+    label: "Ranger — Primal Companion",
+    description: "Completes native Primal Companion materialization by setting a newly summoned Beast to its derived maximum HP, inheriting the Ranger's player ownership, and replacing that Ranger's previous managed companion.",
+    tag: "Summon Lifecycle"
+  }),
+  Object.freeze({
+    key: "healingPotionMaximumAction",
+    ruleId: "healing-potion-maximum-action",
+    label: "Homebrew — Healing Potion: Maximum Healing as Action",
+    description: "Adds an Action option to eligible Healing Potions that uses the native healing roll with every numeric die maximized. Official potions are recognized automatically; custom potions can be registered by drag and drop.",
+    tag: "Homebrew",
+    defaultEnabled: false,
+    configureAction: "configure-potions",
+    configureLabel: "Configure Potions"
   })
 ]);
 
 export function defaultRulesAssistanceRules() {
-  return Object.fromEntries(RULES_ASSISTANCE_DEFINITIONS.map(rule => [rule.key, true]));
+  return Object.fromEntries(RULES_ASSISTANCE_DEFINITIONS.map(rule => [rule.key, rule.defaultEnabled !== false]));
 }
 
 export const PLAYER_SHEET_INTEGRITY_DEFINITIONS = Object.freeze([
@@ -208,11 +225,17 @@ export const PLAYER_SHEET_INTEGRITY_DEFINITIONS = Object.freeze([
     key: "preparedSpellLimit",
     label: "Prepared Spell Limit",
     description: "Enforce each eligible class's normal prepared-spell count. This numeric cap is independent from Unprepared Spell Usage and preparation timing. Always Prepared and feature-granted spells do not count against this limit."
+  }),
+  Object.freeze({
+    key: "hitPointFields",
+    label: "Hit Point Fields",
+    description: "Prevent players from directly editing Current HP, Maximum HP, Temporary HP, and Temporary HP Maximum on the character sheet. Native damage, healing, rests, Activities, automation, and GM edits remain available.",
+    defaultEnabled: false
   })
 ]);
 
 export function defaultPlayerSheetIntegrityRules() {
-  return Object.fromEntries(PLAYER_SHEET_INTEGRITY_DEFINITIONS.map(rule => [rule.key, true]));
+  return Object.fromEntries(PLAYER_SHEET_INTEGRITY_DEFINITIONS.map(rule => [rule.key, rule.defaultEnabled !== false]));
 }
 
 
@@ -340,7 +363,10 @@ export function defaultSettings() {
     },
     assistWithDiceAutomation: false,
     rulesAssistance: {
-      rules: defaultRulesAssistanceRules()
+      rules: defaultRulesAssistanceRules(),
+      healingPotionMaximumAction: {
+        customPotions: []
+      }
     },
     hitPointAdvancement: {
       methods: {

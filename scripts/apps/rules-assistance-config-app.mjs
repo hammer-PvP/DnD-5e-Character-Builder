@@ -2,6 +2,7 @@ import { MODULE_ID, defaultSettings } from "../constants.mjs";
 import { ModalStackService } from "../services/modal-stack-service.mjs";
 import { RulesAssistanceService } from "../services/rules-assistance-service.mjs";
 import { RulesAssistanceSettingsService } from "../services/rules-assistance-settings-service.mjs";
+import { HealingPotionConfigApp } from "./healing-potion-config-app.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -54,6 +55,16 @@ export class RulesAssistanceConfigApp extends HandlebarsApplicationMixin(Applica
     this.element.querySelector('[data-action="save"]')?.addEventListener("click", event => this.#save(event));
     this.element.querySelectorAll('[data-rule-key] input[type="checkbox"]').forEach(input => {
       input.addEventListener("change", () => this.#refreshSummary());
+    });
+    this.element.querySelectorAll('[data-action="configure-potions"]').forEach(button => {
+      button.addEventListener("click", event => {
+        event.preventDefault();
+        const app = new HealingPotionConfigApp(this);
+        ModalStackService.renderChild(this, app, { force: true }, {
+          label: "Configure Maximum-Healing Potions",
+          message: "Save or close Maximum-Healing Potions to return to Configure Assistance Rules."
+        });
+      });
     });
   }
 

@@ -233,16 +233,6 @@
                       <i class="fa-solid fa-shield-halved"></i> Configure Integrity Rules
                     </button>
                   </div>
-                  <div class="form-group cb-settings-form-group cb-unprepared-casting-main-setting">
-                    <label>Allow Casting Unprepared Spells</label>
-                    <select name="unpreparedSpellUsage">
-                      {{#each unpreparedSpellUsageOptions}}
-                      <option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>
-                      {{/each}}
-                    </select>
-                    <p class="hint"><strong>Requires Player Character Sheet Integrity.</strong> <strong>On</strong> allows unprepared spells normally; <strong>Out of Combat Only</strong> blocks them only while the Actor is in combat; <strong>Off</strong> blocks them everywhere. Wizard Ritual Adept still permits a true ritual cast from that Wizard's spellbook outside combat when casting is Off.</p>
-                  </div>
-
                   <hr>
                   <div class="cb-settings-toggle">
                     <label><input type="checkbox" name="halfLongRestRecoveryOnShortRest" {{checked settings.halfLongRestRecoveryOnShortRest}}> Half Long-Rest Recovery on Short Rest</label>

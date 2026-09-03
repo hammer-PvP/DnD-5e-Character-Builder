@@ -49,16 +49,18 @@
 
     <main class="cb-keeper-main">
       {{#if selected}}
-      <header class="cb-keeper-feature-header">
+      <header class="cb-keeper-feature-header {{#if selected.isPrepareSpells}}cb-keeper-feature-header-compact{{/if}}">
         <div class="cb-keeper-feature-title">
           <span class="cb-keeper-feature-icons" aria-hidden="true">
             <img src="{{selected.img}}" alt="" draggable="false">
             {{#if selected.secondaryImg}}<img class="cb-keeper-feature-icon-secondary" src="{{selected.secondaryImg}}" alt="" draggable="false">{{/if}}
           </span>
           <div>
+            {{#unless selected.isPrepareSpells}}
             <span class="cb-kicker" data-keeper-feature-kicker>{{#if selected.complete}}Choice Ready{{else}}Optional Rest Action{{/if}}</span>
+            {{/unless}}
             <h2>{{selected.label}}</h2>
-            <p>{{selected.description}}</p>
+            {{#unless selected.isPrepareSpells}}<p>{{selected.description}}</p>{{/unless}}
           </div>
         </div>
         {{#unless selected.isWarBondGuide}}
@@ -87,11 +89,10 @@
           <div class="cb-prepare-spells-header-controls">
             <div class="cb-prepare-spells-budget" data-prepared-budget>
               <strong><span data-prepared-count>{{selected.preparation.selectedCount}}</span> / {{selected.preparation.limit}}</strong>
-              <small>ordinary prepared spells · <span data-prepared-remaining>{{selected.preparation.remaining}}</span> remaining</small>
             </div>
-            <button type="button" class="cb-primary-confirm" data-action="apply-current-action" {{#if busy}}disabled{{/if}}>
+            <button type="button" class="cb-primary-confirm" data-action="apply-current-action" title="{{selected.applyLabel}}" {{#if busy}}disabled{{/if}}>
               <i class="fa-solid fa-book-open-reader"></i>
-              <span><strong>{{selected.applyLabel}}</strong><small>Apply this prepared list only after the Long Rest completes</small></span>
+              <span><strong>Confirm</strong></span>
             </button>
           </div>
           {{else if selected.isScribe}}
@@ -157,7 +158,6 @@
 
         {{#if selected.isPrepareSpells}}
         <section class="cb-keeper-section cb-prepare-spells" data-spell-preparation data-class-item-id="{{selected.preparation.classItemId}}" data-prepared-limit="{{selected.preparation.limit}}">
-          <p class="cb-notice cb-prepare-spells-context"><i class="fa-solid fa-circle-info"></i> {{selected.preparation.accessLabel}} · {{selected.preparation.className}} level {{selected.preparation.classLevel}}. Cantrips are always available and are not part of this list. Always Prepared and feature-granted spells remain locked and do not count against the class limit. Changes become authoritative only after this Long Rest succeeds.</p>
           <input type="search" placeholder="Search {{selected.preparation.className}} spells" data-filter-target="#cb-prepare-spells-{{selected.preparation.classItemId}}">
           <div id="cb-prepare-spells-{{selected.preparation.classItemId}}" class="cb-prepare-spells-groups">
             {{#each selected.preparation.groups}}

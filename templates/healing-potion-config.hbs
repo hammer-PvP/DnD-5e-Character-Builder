@@ -1,0 +1,44 @@
+<section class="cb-healing-potion-config">
+  <header class="cb-app-header">
+    <i class="fa-solid fa-flask"></i>
+    <div>
+      <h1>Maximum-Healing Potions</h1>
+      <p>Official Healing Potions are recognized automatically. Register third-party or homebrew potions by dragging them here.</p>
+    </div>
+  </header>
+
+  <div class="cb-healing-potion-config-body">
+    <section class="cb-healing-potion-official">
+      <h2>Official — Auto Detected</h2>
+      {{#each officialPotions}}<p><i class="fa-solid fa-circle-check"></i> {{this}}</p>{{/each}}
+    </section>
+
+    <section>
+      <h2>Custom Potions</h2>
+      <div class="cb-potion-drop-zone" data-potion-drop-zone>
+        <i class="fa-solid fa-arrow-down-to-bracket"></i>
+        <strong>Drag an Item here from a Compendium or the World</strong>
+        <small>The Item must contain at least one Healing Activity with numeric dice.</small>
+      </div>
+      <div class="cb-potion-custom-list">
+        {{#each customPotions}}
+        <article class="cb-potion-custom-row">
+          <img src="{{img}}" alt="">
+          <div>
+            <strong>{{name}}</strong>
+            <small>{{activityName}} · {{formula}} → {{maximumFormula}}</small>
+          </div>
+          <button type="button" data-action="remove-potion" data-source-uuid="{{sourceUuid}}" title="Remove"><i class="fa-solid fa-trash"></i></button>
+        </article>
+        {{else}}
+        <p class="hint">No custom potions registered.</p>
+        {{/each}}
+      </div>
+    </section>
+  </div>
+
+  <footer class="cb-footer">
+    <button type="button" data-action="cancel"><i class="fa-solid fa-arrow-left"></i> Back</button>
+    <button type="button" class="gold-button" data-action="save" {{#if busy}}disabled{{/if}}><i class="fa-solid fa-floppy-disk"></i> Save Potions</button>
+  </footer>
+</section>

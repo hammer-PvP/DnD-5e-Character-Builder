@@ -15,6 +15,8 @@ import { ResourceEventService } from "./resource-event-service.mjs";
 import { TransformationActorCleanupService } from "./transformation-actor-cleanup-service.mjs";
 import { SummonProfileLevelGuardService } from "./summon-profile-level-guard-service.mjs";
 import { WeaponMasteryAssistanceService } from "./weapon-mastery-assistance-service.mjs";
+import { PrimalCompanionAssistanceService } from "./primal-companion-assistance-service.mjs";
+import { HealingPotionAssistanceService } from "./healing-potion-assistance-service.mjs";
 
 const RULES = Object.freeze({
   GREAT_WEAPON_FIGHTING: "great-weapon-fighting",
@@ -53,6 +55,8 @@ export class RulesAssistanceService {
     TransformationActorCleanupService.initialize();
     SummonProfileLevelGuardService.initialize();
     WeaponMasteryAssistanceService.initialize();
+    PrimalCompanionAssistanceService.initialize();
+    HealingPotionAssistanceService.initialize();
 
     Hooks.on("dnd5e.preUseActivity", (activity, usageConfig, dialogConfig, messageConfig) =>
       this.#prepareCast(activity, usageConfig, dialogConfig, messageConfig)
@@ -78,6 +82,8 @@ export class RulesAssistanceService {
     await NativeSaveGatedEffectService.ready();
     CuttingWordsAssistanceService.ready();
     TransformationActorCleanupService.ready();
+    PrimalCompanionAssistanceService.ready();
+    await HealingPotionAssistanceService.ready();
   }
 
   static enabled() {
@@ -94,6 +100,7 @@ export class RulesAssistanceService {
       await AgonizingBlastBindingService.ready();
     }
     WeaponMasteryAssistanceService.refreshRenderedMessages();
+    await HealingPotionAssistanceService.reconcileWorld();
   }
 
   static async reconcileActor(actor) {
