@@ -522,19 +522,30 @@ export class NativeAdvancementModalGuard {
       }
     }
 
-    // Trait fixed grants are mechanically idempotent and can be supplied by
-    // more than one source (for example Criminal and Rogue both granting
-    // Thieves' Tools). Only genuine human choice slots must be represented in
-    // value.chosen for this navigation gate; the final projection validates the
-    // deterministic grants against the Actor's actual mechanical state.
-    if (Array.isArray(config.choices) && config.choices.length && value.chosen !== undefined) {
-      const requiredChoices = config.choices.reduce((sum, choice) => sum + Number(choice?.count ?? 0), 0);
+    // Trait fixed grants are mechanically idempotent. A fixed grant may already
+    // be satisfied by another source and therefore never be repeated in this
+    // Advancement's value.chosen (Criminal + Rogue Thieves' Tools is the
+    // canonical example). Only non-empty choice pools represent human choices.
+    if (Array.isArray(config.choices) && value.chosen !== undefined) {
+      const chosenValues = this.#collectionValues(value.chosen);
+      const chosenKeys = new Set(chosenValues.map(token => this.#traitSemanticKey(token)));
+      const grantValues = this.#collectionValues(config.grants);
+      const grantKeys = new Set(grantValues.map(token => this.#traitSemanticKey(token)));
+      const actor = advancement.actor ?? flow?.actor ?? active?.actor ?? null;
+      const grantsSatisfied = grantValues.every(token =>
+        chosenKeys.has(this.#traitSemanticKey(token)) || this.#traitGrantMechanicallyPresent(actor, token)
+      );
+      if (!grantsSatisfied) return false;
+
+      const requiredChoices = config.choices.reduce((sum, choice) => {
+        const pool = this.#collectionValues(choice?.pool).map(String).filter(Boolean);
+        return pool.length ? sum + Math.max(0, Number(choice?.count ?? 0)) : sum;
+      }, 0);
       if (requiredChoices > 0) {
-        const grantKeys = new Set(this.#collectionValues(config.grants).map(token => this.#traitSemanticKey(token)));
-        const chosenChoices = this.#collectionValues(value.chosen)
-          .filter(token => !grantKeys.has(this.#traitSemanticKey(token)));
+        const chosenChoices = chosenValues.filter(token => !grantKeys.has(this.#traitSemanticKey(token)));
         return new Set(chosenChoices.map(token => this.#traitSemanticKey(token))).size >= requiredChoices;
       }
+      return true;
     }
 
     // Multi-size Species Advancements must contain an explicit selection.
@@ -563,6 +574,7 @@ export class NativeAdvancementModalGuard {
     return 0;
   }
 
+
   static #collectionValues(value) {
     if (value == null) return [];
     if (Array.isArray(value)) return value;
@@ -576,6 +588,34 @@ export class NativeAdvancementModalGuard {
 
   static #traitSemanticKey(token) {
     return String(token ?? "").trim().toLowerCase();
+  }
+
+  static #traitGrantMechanicallyPresent(actor, token) {
+    if (!actor) return false;
+    const parts = String(token ?? "").trim().toLowerCase().split(":").filter(Boolean);
+    const family = parts.shift();
+    const key = parts.at(-1);
+    if (!family || !key) return false;
+
+    if (family === "skills") return Number(actor.system?.skills?.[key]?.value ?? 0) >= 1;
+    if (family === "saves") return Number(actor.system?.abilities?.[key]?.proficient ?? 0) >= 1;
+    if (family === "tool" || family === "tools") return Number(actor.system?.tools?.[key]?.value ?? 0) >= 1;
+
+    const includes = (value, candidate) => {
+      const rows = value instanceof Set ? [...value] : Array.isArray(value) ? value : Object.values(value ?? {});
+      return rows.map(row => String(row ?? "").toLowerCase()).includes(String(candidate ?? "").toLowerCase());
+    };
+    if (family === "weapon") return includes(actor.system?.traits?.weaponProf?.value, key);
+    if (family === "armor") return includes(actor.system?.traits?.armorProf?.value, key);
+    if (family === "languages" || family === "language") {
+      return includes(actor.system?.traits?.languages?.value, key)
+        || includes(actor.system?.traits?.languages?.value, parts.join(":"));
+    }
+
+    // Unknown families remain under the final source-driven projection gate.
+    // Do not claim mechanical completion here unless the native ledger itself
+    // contains the grant.
+    return false;
   }
 
   static #flowElement(flow) {

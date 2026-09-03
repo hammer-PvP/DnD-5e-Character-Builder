@@ -3,21 +3,26 @@ import { RulesAssistanceSettingsService } from "./rules-assistance-settings-serv
 
 const RULE_ID = "ranger-primal-companion";
 const SOCKET_CHANNEL = `module.${MODULE_ID}`;
-const SOCKET_REQUEST = "primalCompanionAssistanceRequest";
+const SOCKET_REQUEST = "primalCompanionAssistanceRequestV3";
 const MANAGED_KIND = "primal-companion";
 const FOLDER_NAME = "Character Builder Companions";
 
 /**
  * Completes only the lifecycle gaps observed in D&D5e 5.3.3's native Primal
- * Companion summon. Native D&D5e remains authoritative for PB, AC, attacks,
- * damage, and maximum HP. Character Builder snapshots the finalized synthetic
- * summon into a Ranger-specific Actor, gives that Actor the Ranger's owners,
- * starts a newly summoned Beast at its already-derived maximum HP, and removes
- * only the previous managed companion belonging to that Ranger.
+ * Companion summon. D&D5e remains authoritative for the summon profile, PB,
+ * AC, attacks, damage, effects, and derived maximum HP.
+ *
+ * X3 deliberately never writes a partial ActorDelta back to a Token. Instead,
+ * after the native summon is fully materialized, it snapshots the finalized
+ * synthetic Actor into a Ranger-specific linked Actor, sets only that new
+ * Actor's current HP to the already-derived maximum, inherits ownership from
+ * the Ranger, rebinds the new Token to that Actor, and then removes the prior
+ * companion belonging to the same Ranger.
  */
 export class PrimalCompanionAssistanceService {
   static #initialized = false;
   static #socketReady = false;
+  static #executing = new Set();
 
   static initialize() {
     if (this.#initialized) return;
@@ -25,6 +30,7 @@ export class PrimalCompanionAssistanceService {
     Hooks.on("dnd5e.postSummon", (activity, profile, createdTokens) => {
       void this.#afterSummon(activity, profile, createdTokens).catch(error => {
         console.warn(`${MODULE_ID} | Primal Companion assistance failed.`, error);
+        ui.notifications?.error?.(`Primal Companion assistance failed: ${error.message}`);
       });
     });
   }
@@ -47,17 +53,19 @@ export class PrimalCompanionAssistanceService {
   static async #afterSummon(activity, profile, createdTokens) {
     if (!this.enabled() || !this.#isPrimalCompanionActivity(activity)) return;
     const ranger = activity?.actor ?? activity?.item?.actor;
-    const tokens = [...(createdTokens ?? [])].filter(token => token?.id && token?.parent?.id);
+    const tokens = [...(createdTokens ?? [])].filter(token => token?.id && token?.parent?.id && token?.actor);
     if (!ranger?.id || !tokens.length) return;
 
+    const profileSourceUuids = this.#profileSourceUuids(activity);
     const payload = {
       rangerActorId: ranger.id,
       requesterId: game.user?.id ?? null,
       tokenUuids: tokens.map(token => token.uuid),
       sourceFeatureUuid: activity?.item?.uuid ?? null,
-      activityId: activity?.id ?? null,
-      profileId: profile?.id ?? profile?._id ?? null,
-      companionType: this.#companionType(profile, tokens[0])
+      activityId: String(activity?.id ?? ""),
+      profileId: String(profile?.id ?? profile?._id ?? ""),
+      companionType: this.#companionType(profile, tokens[0]),
+      profileSourceUuids
     };
 
     if (game.user?.isGM) return this.#execute(payload);
@@ -70,35 +78,88 @@ export class PrimalCompanionAssistanceService {
   }
 
   static async #execute(request) {
-    if (!this.enabled()) return;
-    const ranger = game.actors?.get?.(String(request?.rangerActorId ?? ""));
-    const requester = game.users?.get?.(String(request?.requesterId ?? ""));
-    if (!ranger || !requester) throw new Error("The Ranger or requesting user could not be resolved.");
-    if (!requester.isGM && !ranger.testUserPermission?.(requester, "OWNER")) {
-      throw new Error("The requesting user does not own the Ranger that created this companion.");
-    }
+    if (!this.enabled() || !this.#isActiveGM()) return;
+    const requestKey = `${request?.rangerActorId ?? ""}:${(request?.tokenUuids ?? []).join(",")}`;
+    if (!requestKey || this.#executing.has(requestKey)) return;
+    this.#executing.add(requestKey);
+    try {
+      const ranger = game.actors?.get?.(String(request?.rangerActorId ?? ""));
+      const requester = game.users?.get?.(String(request?.requesterId ?? ""));
+      if (!ranger || !requester) throw new Error("The Ranger or requesting user could not be resolved.");
+      if (!requester.isGM && !ranger.testUserPermission?.(requester, "OWNER")) {
+        throw new Error("The requesting user does not own the Ranger that created this companion.");
+      }
 
-    const tokenDocs = [];
-    for (const uuid of request?.tokenUuids ?? []) {
-      const token = await fromUuid(uuid);
-      if (token?.documentName === "Token" && token.actor) tokenDocs.push(token);
-    }
-    if (!tokenDocs.length) return;
+      const tokenDocs = [];
+      for (const uuid of request?.tokenUuids ?? []) {
+        const token = await fromUuid(uuid);
+        if (token?.documentName === "Token" && token.actor) tokenDocs.push(token);
+      }
+      if (!tokenDocs.length) return;
 
-    // Create the replacement first. If anything fails, the native summon stays
-    // usable rather than being deleted as part of a partial cleanup.
-    const sourceToken = tokenDocs[0];
-    const synthetic = sourceToken.actor;
-    // Clone the native summon base Actor, not the synthetic Actor. The native
-    // ActorDelta already contains the summon-time PB/AC/HP/attack changes and
-    // is preserved on the Token; cloning the synthetic Actor would bake those
-    // changes into the base and risk applying them twice.
-    const baseActor = game.actors?.get?.(sourceToken.actorId) ?? sourceToken.baseActor ?? synthetic;
-    const data = baseActor.toObject();
+      // Primal Companion creates one Beast. If a future system version creates
+      // more than one token, each receives its own managed Actor so linked-token
+      // state cannot bleed between summons.
+      const keepActorIds = new Set();
+      const keepTokenUuids = new Set(tokenDocs.map(token => String(token.uuid)));
+      const nativeBases = new Set();
+      for (const token of tokenDocs) {
+        const synthetic = token.actor;
+        const baseActor = game.actors?.get?.(String(token.actorId ?? "")) ?? token.baseActor ?? null;
+        if (baseActor?.id) nativeBases.add(baseActor);
+
+        const managed = await this.#createManagedActor({ ranger, synthetic, request });
+        keepActorIds.add(managed.id);
+
+        // Critical X3 change: do not send a reconstructed/partial `delta` to
+        // TokenDocument.update(). Foundry 14 validates ActorDelta as a complete
+        // embedded schema and X2's partial delta caused _id/items/effects/flags
+        // validation failures. A linked Token needs only the new Actor id.
+        await token.update({
+          actorId: managed.id,
+          actorLink: true
+        }, { characterBuilderPrimalCompanion: true });
+      }
+
+      await this.#removePrevious({
+        ranger,
+        keepActorIds,
+        keepTokenUuids,
+        sourceFeatureUuid: request?.sourceFeatureUuid
+      });
+
+      for (const baseActor of nativeBases) {
+        await this.#removeOrphanedNativeBase(baseActor);
+      }
+      await this.#removeOrphanedProfileImports(request?.profileSourceUuids ?? []);
+    } finally {
+      this.#executing.delete(requestKey);
+    }
+  }
+
+  static async #createManagedActor({ ranger, synthetic, request }) {
+    // Synthetic Actor source contains the native summon-time ActorDelta already
+    // applied (effects, item changes, PB matching, attack modifications, etc.).
+    // Materializing this resolved source once and linking the token means those
+    // changes are not re-applied by a second ActorDelta.
+    const data = synthetic.toObject?.() ?? foundry.utils.deepClone(synthetic?._source ?? {});
     delete data._id;
     delete data.folder;
+    delete data.sort;
+    delete data._stats;
     data.name = synthetic.name;
     data.ownership = this.#ownershipFromRanger(ranger);
+    data.prototypeToken ??= {};
+    data.prototypeToken.actorLink = true;
+
+    const hpMax = Number(synthetic.system?.attributes?.hp?.max ?? 0);
+    const hpValue = Number(synthetic.system?.attributes?.hp?.value ?? 0);
+    if (Number.isFinite(hpMax) && hpMax > 0 && hpValue !== hpMax) {
+      // SET, never add. If D&D5e later fixes fresh-summon current HP itself,
+      // this becomes a no-op and can never produce 2x maximum HP.
+      foundry.utils.setProperty(data, "system.attributes.hp.value", hpMax);
+    }
+
     data.flags ??= {};
     data.flags[MODULE_ID] = {
       ...(data.flags[MODULE_ID] ?? {}),
@@ -112,17 +173,6 @@ export class PrimalCompanionAssistanceService {
       createdAt: Date.now()
     };
 
-    // Capture the exact native summon delta. D&D5e has already derived hp.max
-    // on the synthetic Actor. X2 only SETS current HP to that maximum for this
-    // newly summoned Beast; it never adds HP and never heals an existing Beast.
-    const deltaData = sourceToken.delta?.toObject?.()
-      ?? foundry.utils.deepClone(sourceToken.toObject?.().delta ?? {});
-    const hpMax = Number(synthetic.system?.attributes?.hp?.max ?? 0);
-    const hpValue = Number(synthetic.system?.attributes?.hp?.value ?? 0);
-    if (Number.isFinite(hpMax) && hpMax > 0 && hpValue < hpMax) {
-      foundry.utils.setProperty(deltaData, "system.attributes.hp.value", hpMax);
-    }
-
     const folder = await this.#folder();
     data.folder = folder?.id ?? null;
     const managed = await Actor.create(data, {
@@ -131,75 +181,98 @@ export class PrimalCompanionAssistanceService {
       rangerActorId: ranger.id
     });
     if (!managed) throw new Error("Character Builder could not create the Ranger-specific Primal Companion Actor.");
-
-    try {
-      for (const token of tokenDocs) {
-        const tokenDelta = token.id === sourceToken.id
-          ? foundry.utils.deepClone(deltaData)
-          : foundry.utils.deepClone(token.delta?.toObject?.() ?? token.toObject?.().delta ?? {});
-        const tokenMax = Number(token.actor?.system?.attributes?.hp?.max ?? 0);
-        const tokenValue = Number(token.actor?.system?.attributes?.hp?.value ?? 0);
-        if (Number.isFinite(tokenMax) && tokenMax > 0 && tokenValue < tokenMax) {
-          foundry.utils.setProperty(tokenDelta, "system.attributes.hp.value", tokenMax);
-        }
-        await token.update({
-          actorId: managed.id,
-          actorLink: false,
-          delta: tokenDelta
-        }, { characterBuilderPrimalCompanion: true });
-      }
-    } catch (error) {
-      await managed.delete({ characterBuilderPrimalCompanionRollback: true }).catch(() => {});
-      throw error;
-    }
-
-    await this.#removePrevious(ranger, managed.id);
-    await this.#removeOrphanedNativeBase(baseActor, managed.id);
+    return managed;
   }
 
-  static async #removePrevious(ranger, keepActorId) {
-    const previous = [...(game.actors ?? [])].filter(actor => actor?.id !== keepActorId
-      && actor.getFlag?.(MODULE_ID, "managedKind") === MANAGED_KIND
-      && String(actor.getFlag?.(MODULE_ID, "rangerActorId") ?? "") === String(ranger.id));
-    if (!previous.length) return;
-    const ids = new Set(previous.map(actor => actor.id));
+  static async #removePrevious({ ranger, keepActorIds, keepTokenUuids, sourceFeatureUuid }) {
+    const previousManaged = [...(game.actors ?? [])].filter(actor =>
+      !keepActorIds.has(actor?.id)
+      && actor?.getFlag?.(MODULE_ID, "managedKind") === MANAGED_KIND
+      && String(actor.getFlag?.(MODULE_ID, "rangerActorId") ?? "") === String(ranger.id)
+    );
+    const previousManagedIds = new Set(previousManaged.map(actor => String(actor.id)));
+
     for (const scene of game.scenes ?? []) {
-      const tokenIds = [...(scene.tokens ?? [])].filter(token => ids.has(token.actorId)).map(token => token.id);
-      if (tokenIds.length) await scene.deleteEmbeddedDocuments("Token", tokenIds, { characterBuilderPrimalCompanion: true });
+      const tokenIds = [];
+      for (const token of scene.tokens ?? []) {
+        if (keepTokenUuids.has(String(token.uuid))) continue;
+        if (previousManagedIds.has(String(token.actorId ?? ""))) {
+          tokenIds.push(token.id);
+          continue;
+        }
+        // Also clean up a native pre-X3 Primal Companion token belonging to
+        // this exact Ranger feature. The native summon origin is unique to the
+        // embedded Primal Companion Item on that Ranger.
+        if (sourceFeatureUuid && this.#tokenSummonOrigin(token) === String(sourceFeatureUuid)) tokenIds.push(token.id);
+      }
+      if (tokenIds.length) {
+        await scene.deleteEmbeddedDocuments("Token", [...new Set(tokenIds)], {
+          characterBuilderPrimalCompanion: true,
+          rangerActorId: ranger.id
+        });
+      }
     }
-    await Actor.implementation.deleteDocuments([...ids], {
-      characterBuilderPrimalCompanion: true,
-      rangerActorId: ranger.id
-    });
+
+    if (previousManagedIds.size) {
+      await Actor.implementation.deleteDocuments([...previousManagedIds], {
+        characterBuilderPrimalCompanion: true,
+        rangerActorId: ranger.id
+      });
+    }
+  }
+
+  static #tokenSummonOrigin(token) {
+    const direct = token?.actor?.getFlag?.("dnd5e", "summon")?.origin;
+    if (direct) return String(direct);
+    const delta = token?.delta?.toObject?.() ?? token?.toObject?.().delta ?? token?.delta ?? {};
+    return String(foundry.utils.getProperty(delta, "flags.dnd5e.summon.origin") ?? "");
   }
 
   static #ownershipFromRanger(ranger) {
-    // Inherit the Ranger's complete ownership map. In ordinary worlds this
-    // means the same player OWNER entries gain full control of the companion;
-    // preserving lower explicit levels/default also avoids silently changing a
-    // table's existing sharing policy.
     const ownership = foundry.utils.deepClone(ranger?.ownership ?? { default: 0 });
     ownership.default ??= 0;
     return ownership;
   }
 
-  static async #removeOrphanedNativeBase(baseActor, keepActorId) {
-    if (!baseActor?.id || baseActor.id === keepActorId) return;
+  static async #removeOrphanedNativeBase(baseActor) {
+    if (!baseActor?.id || baseActor.getFlag?.(MODULE_ID, "managedKind") === MANAGED_KIND) return;
     const autoImported = baseActor.getFlag?.("dnd5e", "isAutoImported") === true
       || baseActor.getFlag?.("dnd5e", "summonedCopy") === true;
-    if (!autoImported) return;
-
-    // D&D5e imports/reuses summon templates in the World. Once every token has
-    // been rebound to a Ranger-specific managed Actor, remove only an orphaned
-    // auto-import. If another summon still references it, leave it alone.
-    const referenced = [...(game.scenes ?? [])].some(scene =>
-      [...(scene.tokens ?? [])].some(token => String(token.actorId ?? "") === String(baseActor.id))
-    );
-    if (referenced) return;
+    if (!autoImported || this.#actorReferencedByAnyToken(baseActor.id)) return;
     await baseActor.delete({
       characterBuilderPrimalCompanion: true,
-      reason: "orphaned-native-summon-template"
+      reason: "orphaned-native-primal-companion-template"
     });
+  }
+
+  static async #removeOrphanedProfileImports(profileSourceUuids) {
+    const sources = new Set((profileSourceUuids ?? []).map(value => String(value ?? "")).filter(Boolean));
+    if (!sources.size) return;
+    const candidates = [...(game.actors ?? [])].filter(actor => {
+      if (actor.getFlag?.(MODULE_ID, "managedKind") === MANAGED_KIND) return false;
+      const autoImported = actor.getFlag?.("dnd5e", "isAutoImported") === true
+        || actor.getFlag?.("dnd5e", "summonedCopy") === true;
+      if (!autoImported || this.#actorReferencedByAnyToken(actor.id)) return false;
+      const source = String(actor?._stats?.compendiumSource ?? actor?._stats?.duplicateSource ?? "");
+      return sources.has(source);
+    });
+    for (const actor of candidates) {
+      await actor.delete({
+        characterBuilderPrimalCompanion: true,
+        reason: "orphaned-primal-companion-profile-import"
+      });
+    }
+  }
+
+  static #actorReferencedByAnyToken(actorId) {
+    return [...(game.scenes ?? [])].some(scene =>
+      [...(scene.tokens ?? [])].some(token => String(token.actorId ?? "") === String(actorId))
+    );
+  }
+
+  static #profileSourceUuids(activity) {
+    const profiles = activity?.profiles?.values ? [...activity.profiles.values()] : [...(activity?.profiles ?? [])];
+    return [...new Set(profiles.map(profile => String(profile?.uuid ?? "")).filter(Boolean))];
   }
 
   static #isPrimalCompanionActivity(activity) {

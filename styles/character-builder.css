@@ -6043,7 +6043,7 @@
   }
 }
 
-/* v0.9.9x2 — compact Long Rest spell-preparation header */
+/* v0.9.9x3 — compact Long Rest spell-preparation header */
 .character-builder .cb-keeper-feature-header.cb-keeper-feature-header-compact {
   min-height: 72px;
   padding: 8px 14px;
@@ -6103,7 +6103,7 @@
   }
 }
 
-/* v0.9.9x2 — Assistance rule sub-configuration + custom Healing Potions */
+/* v0.9.9x3 — Assistance rule sub-configuration + custom Healing Potions */
 .cb-rules-assistance-row-actions {
   display: flex;
   align-items: center;

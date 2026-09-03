@@ -796,11 +796,11 @@ export class CharacterValidationBuildProjectionService {
       });
     };
 
-    // Fixed grants are non-exclusive entitlements: two independent sources may
-    // legitimately grant the same mechanical proficiency. Human choice slots,
-    // however, remain exclusive and may not silently reuse a fixed grant or a
-    // choice already proven for another entitlement. Rank is part of the key so
-    // proficiency and Expertise remain distinct.
+    // Fixed grants are non-exclusive entitlements: independent sources may
+    // legitimately grant the same mechanical proficiency (for example,
+    // Criminal and Rogue both granting Thieves' Tools). Human choice slots
+    // remain exclusive so a proficiency already supplied by a fixed grant
+    // cannot silently satisfy an unrelated choice entitlement.
     const fixedGranted = new Set();
     const reserved = new Set();
     for (const entitlement of entitlements) {
@@ -1756,7 +1756,16 @@ export class CharacterValidationBuildProjectionService {
   }
 
   static #traitChoiceCapacity(advancement) {
-    return (advancement.configuration?.choices ?? []).reduce((sum, choice) => sum + Math.max(0, Number(choice?.count ?? 0)), 0);
+    // D&D5e may preserve zero-option Trait choice rows alongside deterministic
+    // grants. Those rows do not represent a human choice: native TraitFlow has
+    // nothing to present for an empty pool. Counting them made a duplicated
+    // fixed grant (e.g. Criminal + Rogue Thieves' Tools) look permanently
+    // incomplete even though the Actor already satisfied the entitlement.
+    return (advancement.configuration?.choices ?? []).reduce((sum, choice) => {
+      const pool = this.#collectionValues(choice?.pool).map(String).filter(Boolean);
+      if (!pool.length) return sum;
+      return sum + Math.max(0, Number(choice?.count ?? 0));
+    }, 0);
   }
 
   static #traitTokenMatchesPools(token, pools) {
