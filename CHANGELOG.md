@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.9x5 — Internal Test Build
+
+### Managed Summons lifecycle
+- Added a source-specific **Find Familiar** policy. A successful new Find Familiar summon now replaces all previous Character Builder-managed Find Familiar Tokens/Actors belonging to the same summoner, regardless of familiar form. The replacement key is the summoner/source policy, not the profile or Actor name.
+- Added a source-specific **Mage Hand** policy so recasting Mage Hand no longer accumulates managed hands for the same summoner. Generic native summons remain non-exclusive by default.
+- The first X5 recast also recognizes X4 generic managed Actors created from the same embedded source Item UUID, allowing existing Find Familiar/Mage Hand leftovers from X4 testing to be cleaned without name matching.
+- Preserved the already live-validated Primal Companion, Summon Elemental, ownership inheritance, folder organization, concentration cleanup, and generic multi-summon behavior unchanged.
+
+### Concentration Chat polish
+- Kept the validated GM **Keep Concentration / Drop Concentration** behavior unchanged.
+- Reworked only the decision card presentation to a readable parchment-style surface with explicit dark text and more compact, single-line action buttons.
+
 ## 0.9.9x4 — Internal Test Build
 
 ### Managed Summons

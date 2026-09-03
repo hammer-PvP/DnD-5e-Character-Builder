@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.9x4";
-export const MODULE_BUILD = "internal-099x4-managed-summons-concentration-r1";
+export const MODULE_VERSION = "0.9.9x5";
+export const MODULE_BUILD = "internal-099x5-managed-summons-lifecycle-r1";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {

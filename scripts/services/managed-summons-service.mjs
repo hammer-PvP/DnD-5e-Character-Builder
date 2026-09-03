@@ -10,6 +10,45 @@ const MANAGED_KIND = "managed-summon";
 const FLAG_KEY = "managedSummon";
 const DEFAULT_POLICY = Object.freeze({ policyId: "native-summon", exclusive: false });
 
+function normalizedSourceIdentity(value) {
+  return String(value ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function sourceIdentityMatches(activity, expected) {
+  const item = activity?.item ?? null;
+  if (!item) return false;
+  const identities = new Set([
+    item?.system?.identifier,
+    item?.identifier,
+    item?.name
+  ].map(normalizedSourceIdentity).filter(Boolean));
+  return expected.some(value => identities.has(normalizedSourceIdentity(value)));
+}
+
+// Source-specific policies are intentionally narrow. Generic native summons
+// remain non-exclusive unless their D&D rule explicitly requires one active
+// instance per caster/source. This avoids turning Managed Summons into a
+// replacement for D&D5e's own quantity and concentration lifecycle.
+const FIND_FAMILIAR_POLICY = Object.freeze({
+  policyId: "find-familiar",
+  exclusive: true,
+  enabled: () => true,
+  matches: activity => sourceIdentityMatches(activity, ["find-familiar", "Find Familiar"])
+});
+
+const MAGE_HAND_POLICY = Object.freeze({
+  policyId: "mage-hand",
+  exclusive: true,
+  enabled: () => true,
+  matches: activity => sourceIdentityMatches(activity, ["mage-hand", "Mage Hand"])
+});
+
 /**
  * Generic administrative lifecycle for native D&D5e Summon Activities.
  *
@@ -250,11 +289,20 @@ export class ManagedSummonsService {
     const previousManaged = [...(game.actors ?? [])].filter(actor => {
       if (keepActorIds.has(actor?.id)) return false;
       const metadata = actor?.getFlag?.(MODULE_ID, FLAG_KEY) ?? {};
-      const modernMatch = String(metadata.policyId ?? "") === String(policyId)
-        && String(metadata.summonerActorId ?? "") === String(summoner.id);
+      const sameSummoner = String(metadata.summonerActorId ?? "") === String(summoner.id);
+      const modernMatch = String(metadata.policyId ?? "") === String(policyId) && sameSummoner;
+      // X4 created Find Familiar and Mage Hand under the generic native-summon
+      // policy. The first X5 recast must absorb and clean those already-managed
+      // instances rather than leaving test/live leftovers behind. Source UUID is
+      // the canonical embedded spell/feature identity; profile/form names are
+      // deliberately ignored.
+      const previousGenericSourceMatch = sameSummoner
+        && String(metadata.policyId ?? "") === DEFAULT_POLICY.policyId
+        && Boolean(sourceFeatureUuid)
+        && String(metadata.sourceItemUuid ?? "") === String(sourceFeatureUuid);
       const legacyMatch = actor?.getFlag?.(MODULE_ID, "managedKind") === "primal-companion"
         && String(actor.getFlag?.(MODULE_ID, "rangerActorId") ?? "") === String(summoner.id);
-      return modernMatch || legacyMatch;
+      return modernMatch || previousGenericSourceMatch || legacyMatch;
     });
     const previousManagedIds = new Set(previousManaged.map(actor => String(actor.id)));
 
@@ -332,7 +380,11 @@ export class ManagedSummonsService {
   }
 
   static #policyForActivity(activity) {
-    const policies = [PrimalCompanionAssistanceService];
+    const policies = [
+      PrimalCompanionAssistanceService,
+      FIND_FAMILIAR_POLICY,
+      MAGE_HAND_POLICY
+    ];
     return policies.find(policy => policy.enabled?.() && policy.matches?.(activity)) ?? DEFAULT_POLICY;
   }
 
@@ -341,6 +393,8 @@ export class ManagedSummonsService {
     if (id === PrimalCompanionAssistanceService.policyId && PrimalCompanionAssistanceService.enabled()) {
       return PrimalCompanionAssistanceService;
     }
+    if (id === FIND_FAMILIAR_POLICY.policyId) return FIND_FAMILIAR_POLICY;
+    if (id === MAGE_HAND_POLICY.policyId) return MAGE_HAND_POLICY;
     return DEFAULT_POLICY;
   }
 

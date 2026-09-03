@@ -6243,14 +6243,15 @@
   margin-top: 2px;
 }
 
-/* v0.9.9x4 — GM Concentration decision Chat card */
+/* v0.9.9x5 — GM Concentration decision Chat card visual polish */
 .cb-concentration-decision-card {
   display: grid;
-  gap: 8px;
-  padding: 10px;
-  border: 1px solid var(--cb-border, rgba(209, 176, 107, .55));
+  gap: 7px;
+  padding: 9px;
+  border: 1px solid color-mix(in srgb, var(--dnd5e-color-gold, #9f9275) 68%, transparent);
   border-radius: 6px;
-  background: rgba(20, 20, 22, .94);
+  background: color-mix(in srgb, var(--dnd5e-color-parchment, #f1ebe8) 94%, transparent);
+  color: var(--color-text-dark-primary, #191813);
 }
 .cb-concentration-decision-card > header {
   display: flex;
@@ -6258,43 +6259,48 @@
   gap: 8px;
 }
 .cb-concentration-decision-card > header > i {
-  font-size: 20px;
-  color: var(--cb-gold, #d1b06b);
+  font-size: 19px;
+  color: var(--dnd5e-color-note-warn, #9b6903);
 }
 .cb-concentration-decision-card > header > div {
   display: grid;
   line-height: 1.2;
 }
-.cb-concentration-decision-card > header small { opacity: .78; }
+.cb-concentration-decision-card > header small { opacity: .72; }
 .cb-concentration-decision-card p { margin: 0; }
 .cb-concentration-decision-summary {
   display: flex;
-  gap: 8px;
+  gap: 7px;
   flex-wrap: wrap;
 }
 .cb-concentration-decision-summary > span {
   padding: 3px 7px;
-  border: 1px solid rgba(255,255,255,.12);
+  border: 1px solid rgba(25,24,19,.18);
   border-radius: 4px;
-  background: rgba(255,255,255,.035);
+  background: rgba(25,24,19,.045);
 }
 .cb-concentration-decision-status {
   padding: 6px 8px;
   border-radius: 4px;
-  background: rgba(255,255,255,.04);
+  background: rgba(25,24,19,.055);
 }
-.cb-concentration-decision-status.pending { border-left: 3px solid #d1b06b; }
-.cb-concentration-decision-status.kept { border-left: 3px solid #7fbf7f; }
-.cb-concentration-decision-status.dropped { border-left: 3px solid #c56f6f; }
+.cb-concentration-decision-status.pending { border-left: 3px solid #9b6903; }
+.cb-concentration-decision-status.kept { border-left: 3px solid #3f7f3f; }
+.cb-concentration-decision-status.dropped { border-left: 3px solid #9d4949; }
 .cb-concentration-decision-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: 7px;
 }
 .cb-concentration-decision-actions button {
   width: 100%;
   min-width: 0;
+  min-height: 28px;
+  padding: 3px 5px;
+  font-size: var(--font-size-10, .625rem);
+  line-height: 1.1;
+  white-space: nowrap;
 }
 .cb-concentration-decision-actions button.danger {
-  border-color: rgba(197,111,111,.65);
+  border-color: rgba(157,73,73,.72);
 }
