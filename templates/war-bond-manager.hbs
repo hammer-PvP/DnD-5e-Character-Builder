@@ -1,0 +1,85 @@
+<section class="cb-war-bond-manager {{#if busy}}busy{{/if}}">
+  <header class="cb-app-header cb-war-bond-header">
+    <img src="{{featureImg}}" alt="" draggable="false">
+    <div>
+      <span class="cb-kicker">Eldritch Knight Feature Maintenance</span>
+      <h1>War Bond</h1>
+      <p>Manage the source-native weapon bonds on {{actorName}}. D&amp;D5e still validates which weapons can receive the War Bond enchantment.</p>
+    </div>
+    <div class="cb-war-bond-capacity">
+      <span>Bond Capacity</span>
+      <strong>{{capacityLabel}}</strong>
+    </div>
+  </header>
+
+  <div class="cb-war-bond-body">
+    {{#if outOfSync}}
+    <p class="cb-notice warning"><i class="fa-solid fa-triangle-exclamation"></i> More valid War Bond enchantments exist than the feature currently records as spent uses. The next explicit bond change will reconcile the native counter to the visible bonds.</p>
+    {{/if}}
+
+    <section class="cb-war-bond-slots-section">
+      <header class="cb-choice-section-header">
+        <div><h2>Bound Weapons</h2><p>Drag an eligible inventory weapon onto a Free or Broken Bond slot. Break Bond removes the native enchantment and returns that capacity.</p></div>
+      </header>
+      <div class="cb-war-bond-slots">
+        {{#each slots}}
+        <article class="cb-war-bond-slot {{kind}}" data-war-bond-slot data-slot-kind="{{kind}}" data-slot-index="{{index}}">
+          {{#if bound}}
+            <img src="{{img}}" alt="">
+            <div class="cb-war-bond-slot-copy">
+              <span>War Bond {{dnd5eCharacterBuilderAdd index 1}}</span>
+              <strong>{{name}}</strong>
+              <small>Native enchantment active</small>
+            </div>
+            <button type="button" data-action="break-war-bond" data-effect-uuid="{{effectUuid}}" {{#if ../busy}}disabled{{/if}}>
+              <i class="fa-solid fa-link-slash"></i> Break Bond
+            </button>
+          {{else if broken}}
+            <div class="cb-war-bond-slot-icon blocked"><i class="fa-solid fa-ban"></i></div>
+            <div class="cb-war-bond-slot-copy">
+              <span>War Bond {{dnd5eCharacterBuilderAdd index 1}}</span>
+              <strong>Broken Bond</strong>
+              <small>A native use is spent, but no valid bonded weapon remains in this inventory.</small>
+            </div>
+            <button type="button" data-action="release-broken-war-bond" {{#if ../busy}}disabled{{/if}}>
+              <i class="fa-solid fa-unlock"></i> Release Bond
+            </button>
+            <div class="cb-war-bond-drop-hint"><i class="fa-solid fa-arrow-down"></i> Drop a weapon here to replace the broken bond</div>
+          {{else}}
+            <div class="cb-war-bond-slot-icon"><i class="fa-solid fa-link"></i></div>
+            <div class="cb-war-bond-slot-copy">
+              <span>War Bond {{dnd5eCharacterBuilderAdd index 1}}</span>
+              <strong>Free Slot</strong>
+              <small>No weapon is currently bound to this capacity.</small>
+            </div>
+            <div class="cb-war-bond-drop-hint"><i class="fa-solid fa-arrow-down"></i> Drop an eligible weapon here</div>
+          {{/if}}
+        </article>
+        {{/each}}
+      </div>
+    </section>
+
+    <section class="cb-war-bond-weapons-section">
+      <header class="cb-choice-section-header">
+        <div><h2>Available Weapons</h2><p>Only weapons accepted by the source-native <strong>Bond with Weapon</strong> Activity are listed.</p></div>
+        <label class="cb-war-bond-search"><i class="fa-solid fa-magnifying-glass"></i><input type="search" data-war-bond-search placeholder="Search weapons"></label>
+      </header>
+      <div class="cb-war-bond-weapon-list">
+        {{#each availableWeapons}}
+        <article class="cb-war-bond-weapon" draggable="true" data-war-bond-weapon data-weapon-id="{{id}}" data-search="{{search}}">
+          <img src="{{img}}" alt="">
+          <div><strong>{{name}}</strong><small>{{typeLabel}}{{#if magical}} · Magical{{/if}}</small></div>
+          <span class="cb-war-bond-drag"><i class="fa-solid fa-grip-vertical"></i> Drag</span>
+        </article>
+        {{else}}
+        <p class="cb-notice"><i class="fa-solid fa-circle-info"></i> No additional eligible inventory weapon is available for the source-native War Bond Activity.</p>
+        {{/each}}
+      </div>
+    </section>
+  </div>
+
+  <footer class="cb-footer cb-war-bond-footer">
+    <p><i class="fa-solid fa-hourglass-half"></i> War Bond's one-hour ritual timing remains a rules requirement; this manager only maintains the Actor's native bond state.</p>
+    <button type="button" data-action="close-war-bond-manager" {{#if busy}}disabled{{/if}}><i class="fa-solid fa-check"></i> Done</button>
+  </footer>
+</section>
