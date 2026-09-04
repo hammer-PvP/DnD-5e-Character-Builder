@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.9x7a";
-export const MODULE_BUILD = "internal-099x7a-war-bond-distribution-sanitize-r1";
+export const MODULE_VERSION = "0.9.9x8";
+export const MODULE_BUILD = "internal-099x8-druid-wildshape-stabilization-r1";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -157,6 +157,13 @@ export const RULES_ASSISTANCE_DEFINITIONS = Object.freeze([
     label: "Temporary Transformation Actor Cleanup",
     description: "After a player returns from a native D&D5e transformation, asks the active GM to remove only the temporary Actor documents proven to belong to that transformation chain. Original characters and source-form Actors are never removed.",
     tag: "Maintenance"
+  }),
+  Object.freeze({
+    key: "druidWildShapeRestoreLifecycle",
+    ruleId: "druid-wild-shape-restore-lifecycle",
+    label: "Druid — Wild Shape Restore Lifecycle",
+    description: "Keeps D&D5e's native Wild Shape transformation and restore mechanics, but clears remaining Wild Shape Temporary HP when the form is restored and invokes native Restore Transformation after native damage reduces the transformed Druid's real HP to 0. Losing only Temporary HP does not end the form.",
+    tag: "Source Policy"
   }),
   Object.freeze({
     key: "summonProfileLevelGuard",

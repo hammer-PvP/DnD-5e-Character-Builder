@@ -1854,9 +1854,37 @@ export class RuntimeFeatureService {
   }
 
   static async #setRuntimeBadge(item, kind, category, values, icon, transactionId) {
-    const current = foundry.utils.deepClone(item.getFlag(MODULE_ID, "advancementChoiceBadges") ?? []);
-    const filtered = current.filter(badge => badge.kind !== kind && !(kind === "circle-land" && badge.kind === "circle-land") && !(kind === "known-forms" && badge.kind === "known-forms"));
     const distinct = [...new Set(values.filter(Boolean))];
+
+    if (kind === "known-forms" && item.actor) {
+      const druidLevel = Number(this.#class(item.actor, "druid")?.system?.levels ?? 0);
+      const knownFormCount = (item.getFlag(MODULE_ID, "knownWildShapeForms") ?? []).length;
+      const badge = RuntimeBadgeReconciliationService.runtimeBadge({
+        targetItem: item,
+        category: "Known Forms",
+        values: distinct,
+        kind: "known-forms",
+        icon,
+        transactionId,
+        classIdentifier: "druid",
+        classLevel: druidLevel,
+        sourceItemId: item.id,
+        advancementId: "known-wild-shape-forms",
+        advancementType: "ManagedActorChoice",
+        advancementTitle: "Known Forms",
+        label: `Known Forms: ${knownFormCount}`,
+        tooltip: `Known Wild Shape Forms: ${distinct.join(", ")}`
+      });
+      await RuntimeBadgeReconciliationService.reconcile(item.actor, {
+        matches: (_candidate, existing) => existing?.kind === "known-forms"
+          || existing?.advancementId === "known-wild-shape-forms",
+        additions: [{ itemId: item.id, badge }]
+      });
+      return;
+    }
+
+    const current = foundry.utils.deepClone(item.getFlag(MODULE_ID, "advancementChoiceBadges") ?? []);
+    const filtered = current.filter(badge => badge.kind !== kind && !(kind === "circle-land" && badge.kind === "circle-land"));
     const label = distinct.length <= 2 ? `${category} [${distinct.join(", ")}]` : `${category} [${distinct.slice(0, 2).join(", ")} +${distinct.length - 2}]`;
     filtered.push({
       advancementId: item.id, advancementType: "RuntimeManagement", advancementTitle: category,

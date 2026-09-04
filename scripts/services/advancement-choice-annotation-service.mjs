@@ -152,6 +152,13 @@ export class AdvancementChoiceAnnotationService {
       }
     }
 
+    // Known Wild Shape Forms are current Actor state, not historical Level Up
+    // choices. Collapse every legacy per-transaction badge to one canonical
+    // badge whenever annotations are otherwise refreshed. Character Keeper also
+    // performs the same reconciliation when a known form is replaced, giving
+    // older Actors a lazy repair path without a world-wide migration.
+    this.#normalizeKnownFormsCurrentState(actor, byItem);
+
     const updates = [];
     const changed = [];
     for (const item of actor.items) {
@@ -301,32 +308,6 @@ export class AdvancementChoiceAnnotationService {
             }
           });
         }
-      }
-
-      const forms = feature.getFlag(MODULE_ID, "knownWildShapeForms") ?? [];
-      if (forms.length && selectedClassIdentifier === "druid") {
-        rows.push({
-          targetItemId: feature.id,
-          badge: {
-            advancementId: "known-wild-shape-forms",
-            advancementType: "ManagedActorChoice",
-            advancementTitle: "Known Forms",
-            level: targetClassLevel,
-            kind: "known-forms",
-            icon: "fa-solid fa-paw",
-            category: "Known Forms",
-            values: forms.map(row => row.name),
-            label: `Known Forms: ${forms.length}`,
-            tooltip: `Known Wild Shape Forms: ${forms.map(row => row.name).join(", ")}`,
-            context,
-            transactionId: scope.transactionId ?? (context === "creation" ? "character-creation" : null),
-            characterLevel: Number(scope.targetCharacterLevel ?? 0),
-            classIdentifier: "druid",
-            classLevel: targetClassLevel,
-            sourceItemId: feature.id,
-            targetItemId: feature.id
-          }
-        });
       }
 
       const land = feature.getFlag(MODULE_ID, "circleLand");
@@ -597,6 +578,52 @@ export class AdvancementChoiceAnnotationService {
       return Object.values(value);
     }
     return [];
+  }
+
+  static #normalizeKnownFormsCurrentState(actor, byItem) {
+    if (!actor?.items || !(byItem instanceof Map)) return;
+
+    for (const [itemId, badges] of byItem) {
+      byItem.set(itemId, (badges ?? []).filter(badge =>
+        badge?.kind !== "known-forms"
+        && badge?.advancementId !== "known-wild-shape-forms"
+      ));
+    }
+
+    const feature = actor.items.find(item => {
+      const forms = item.getFlag?.(MODULE_ID, "knownWildShapeForms");
+      return Array.isArray(forms) && forms.length > 0;
+    });
+    if (!feature || !byItem.has(feature.id)) return;
+
+    const forms = feature.getFlag(MODULE_ID, "knownWildShapeForms") ?? [];
+    const values = [...new Set(forms.map(row => String(row?.name ?? "").trim()).filter(Boolean))];
+    if (!values.length) return;
+
+    const druid = actor.items.find(item => item.type === "class" && String(item.system?.identifier ?? "") === "druid");
+    const druidLevel = Number(druid?.system?.levels ?? 0);
+    const lastChange = feature.getFlag(MODULE_ID, "knownWildShapeFormsLastChange") ?? {};
+    const current = byItem.get(feature.id) ?? [];
+    current.push({
+      advancementId: "known-wild-shape-forms",
+      advancementType: "ManagedActorChoice",
+      advancementTitle: "Known Forms",
+      level: druidLevel,
+      kind: "known-forms",
+      icon: "fa-solid fa-paw",
+      category: "Known Forms",
+      values,
+      label: `Known Forms: ${forms.length}`,
+      tooltip: `Known Wild Shape Forms: ${values.join(", ")}`,
+      context: "currentState",
+      transactionId: lastChange.transactionId ?? "known-forms-current",
+      characterLevel: this.#actorLevel(actor),
+      classIdentifier: "druid",
+      classLevel: druidLevel,
+      sourceItemId: feature.id,
+      targetItemId: feature.id
+    });
+    byItem.set(feature.id, current);
   }
 
   static #creationScope(actor) {

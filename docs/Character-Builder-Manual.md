@@ -1,6 +1,6 @@
 # Character Builder — Complete Manual
 
-**Version:** 0.9.9x7a  
+**Version:** 0.9.9x8  
 **Foundry VTT:** 14  
 **D&D5e:** 5.3.3
 
@@ -312,6 +312,7 @@ The current rule list includes:
 - Bard — Cutting Words manual reaction assistance;
 - Concentration & Dependent Effects;
 - Temporary Transformation Actor Cleanup;
+- Druid — Wild Shape Restore Lifecycle;
 - Summon Profile Level Guard;
 - Weapon Mastery Chat Assistance.
 
@@ -345,6 +346,8 @@ Character Builder also exposes a versioned **Resource Consumption Event** after 
 
 
 **Temporary Transformation Actor Cleanup** completes the native D&D5e revert lifecycle when a player, rather than a GM, cancels a transformation. After D&D5e has restored the original character/token state, the active GM removes only temporary Actor documents whose native transformation flags prove they belong to that original Actor's transformation chain. The cleanup is generic to native transformations and never identifies Actors by creature name, type, folder, or ownership. Original character Actors and source-form Actors are never deleted by this rule.
+
+**Druid — Wild Shape Restore Lifecycle** keeps D&D5e authoritative for the transformation itself. When the native Wild Shape preset is restored, Character Builder clears the form's remaining Temporary HP before D&D5e copies preserved state back to the original Actor. After native damage reduces the transformed Druid's real HP to 0, Character Builder invokes D&D5e's own `Restore Transformation` lifecycle. Losing only the Wild Shape Temporary HP does not end the transformation, and other transformation presets such as Polymorph are untouched.
 
 **Save-Gated Effect Application** reuses D&D5e's native Effects tray instead of auto-applying a debuff from a hidden save result. For supported compatibility adapters, Character Builder ensures the source Activity exposes a non-transfer effect profile in the usage card. The tray is visible to the GM, who applies the effect only to targets that actually failed. D&D5e then creates the target Active Effect and, for a concentrated source, automatically binds it to the concentration through `flags.dnd5e.dependentOn`. Bane 2024 is the first regression adapter. If the official Item already contains a mechanical Bane effect, Character Builder links that native effect rather than adding a duplicate modifier; only a missing/empty effect profile receives the generic contextual fallback.
 
@@ -484,7 +487,7 @@ See [LICENSE](LICENSE) for the complete license terms.
 # Settings Reference
 
 
-This reference documents every visible Character Builder setting in v0.9.9x7a. Unless stated otherwise, settings are **world settings**, can be changed only by a Game Master, and do not require a server restart. Saving the settings window affects future Character Creation, Level Up, Character Keeper, or runtime-assistance operations; it does not retroactively delete character content.
+This reference documents every visible Character Builder setting in v0.9.9x8. Unless stated otherwise, settings are **world settings**, can be changed only by a Game Master, and do not require a server restart. Saving the settings window affects future Character Creation, Level Up, Character Keeper, or runtime-assistance operations; it does not retroactively delete character content.
 
 ## Splash Tutorial
 
@@ -797,6 +800,8 @@ Each rule is enabled by default inside the saved rule set, but does nothing whil
 - **Source-to-Target Damage Riders:** Appends a source document's native Damage Activity to the current Attack damage process only when that source Actor controls the matching effect on the single selected target. Hunter's Mark and Hex are the initial adapters; Foe Slayer supplies Hunter's Mark's improved native damage Activity when present. Hex also records the controller/source binding when D&D5e creates the GM-selected native `Hexed <Ability>` target effect, repairing its concentration dependency if an intermediary native usage card lost that anchor.
 - **Bard — Cutting Words:** No automatic popup. A hostile target binds to its latest eligible Attack/Ability/Skill/Tool roll; a friendly target binds to the latest pending Damage message. The approved damage mode subtracts the Bardic die from D&D5e's final calculated damage immediately before HP, after normal resistance/vulnerability/immunity math.
 - **Concentration & Dependent Effects:** After all Character/Item post-roll providers resolve, a final failed Concentration save does **not** immediately end concentration. Character Builder posts a GM-only decision in Chat. **Keep Concentration** preserves the effect; **Drop Concentration** calls native `Actor.endConcentration()`, after which D&D5e handles dependent effects normally. A post-roll bonus that turns the save into a success never creates the decision card.
+- **Temporary Transformation Actor Cleanup:** After a player completes a native transformation revert, asks the active GM to remove only temporary Actor documents proven by D&D5e transformation flags to belong to that chain.
+- **Druid — Wild Shape Restore Lifecycle:** On native Wild Shape restore, clears remaining Wild Shape Temporary HP before the original Actor receives preserved state. If native damage reduces the transformed Druid's real HP to 0, invokes D&D5e's own Restore Transformation. Temporary HP reaching 0 by itself does not end Wild Shape.
 - **Managed Summons:** Materializes native D&D5e summons as linked managed Actors after `dnd5e.postSummon`, inherits ownership from the summoning Actor, preserves the native number of summons, and tracks each native summon invocation as one summon instance. The Ranger Primal Companion rule acts as a source-specific exclusive-companion policy. Concentration-linked summons are cleaned only after native concentration actually ends.
 - **Managed Summons — Organize Companion Actors in Folders:** Stores managed summon Actors in a per-summoner Actor folder named `<FirstName> - Companions`. Disable this option to keep managed Actors at the Actor Directory root.
 - **Summon Profile Level Guard:** Immediately before D&D5e calculates/consumes Activity resources, blocks a native Summon Activity when its own source-authored `level.min` / `level.max` profile restrictions leave `availableProfiles` empty at the effective spell/feature level. No slot or Item use is consumed. The rule is generic and also applies to constrained Summons invoked by native free-cast Forward Activities.
@@ -895,7 +900,7 @@ The wrapper always continues the original call. It is used only to settle and cl
 
 ## Rest Recovery 5e
 
-Character Builder `0.9.9x7a` includes an automatic compatibility adapter for the optional module **Rest Recovery 5e** (`rest-recovery`). It is not a dependency and no Character Builder setting is required.
+Character Builder `0.9.9x8` includes an automatic compatibility adapter for the optional module **Rest Recovery 5e** (`rest-recovery`). It is not a dependency and no Character Builder setting is required.
 
 Character Keeper continues to own only its staged character-maintenance choices. When it asks D&D5e to execute the actual rest, Rest Recovery may intercept `dnd5e.preShortRest` / `dnd5e.preLongRest`, open its own workflow, and return `false` from the original `actor.initiateRest()` call while it completes asynchronously. Character Builder recognizes that handoff when the module is active and waits for the same Actor's authoritative `dnd5e.restCompleted` event.
 

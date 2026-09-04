@@ -1,7 +1,8 @@
 import { MODULE_ID } from "../constants.mjs";
 import { RulesAssistanceSettingsService } from "./rules-assistance-settings-service.mjs";
 
-const RULE_ID = "temporary-transformation-actor-cleanup";
+const CLEANUP_RULE_ID = "temporary-transformation-actor-cleanup";
+const WILD_SHAPE_RULE_ID = "druid-wild-shape-restore-lifecycle";
 const SOCKET_CHANNEL = `module.${MODULE_ID}`;
 const SOCKET_REQUEST = "temporaryTransformationActorCleanupRequest";
 
@@ -18,6 +19,8 @@ export class TransformationActorCleanupService {
   static #socketReady = false;
   static #pending = new Map();
   static #requested = new Set();
+  static #reverting = new Set();
+  static #zeroHpPending = new Set();
 
   static initialize() {
     if (this.#initialized) return;
@@ -28,9 +31,13 @@ export class TransformationActorCleanupService {
       if (options?.characterBuilderTransformationCleanup) return;
       this.#completePlayerRevert(actor, userId);
     });
+    Hooks.on("dnd5e.applyDamage", actor => this.#restoreWildShapeAtZeroHp(actor));
     Hooks.on("deleteActor", actor => {
-      this.#pending.delete(String(actor?.id ?? ""));
-      this.#requested.delete(String(actor?.id ?? ""));
+      const key = String(actor?.id ?? "");
+      this.#pending.delete(key);
+      this.#requested.delete(key);
+      this.#reverting.delete(key);
+      this.#zeroHpPending.delete(key);
     });
     Hooks.on("updateUser", () => this.#retryReadyRequests());
   }
@@ -47,7 +54,62 @@ export class TransformationActorCleanupService {
   }
 
   static enabled() {
-    return RulesAssistanceSettingsService.ruleEnabled(RULE_ID);
+    return RulesAssistanceSettingsService.ruleEnabled(CLEANUP_RULE_ID);
+  }
+
+  static wildShapeLifecycleEnabled() {
+    return RulesAssistanceSettingsService.ruleEnabled(WILD_SHAPE_RULE_ID);
+  }
+
+  /**
+   * Wrap D&D5e's native revert lifecycle without replacing it. Wild Shape is
+   * the only native transformation whose temporary HP is intentionally cleared
+   * by Character Builder before the system copies preserved state back to the
+   * original Actor. Other transformation presets remain completely native.
+   */
+  static async wrapRevertOriginalForm(actor, wrapped, args = []) {
+    if (!actor || typeof wrapped !== "function" || !this.wildShapeLifecycleEnabled() || !this.#isWildShape(actor)) {
+      return wrapped(...args);
+    }
+
+    const key = String(actor.id ?? actor.uuid ?? "");
+    if (!key || this.#reverting.has(key)) return wrapped(...args);
+    this.#reverting.add(key);
+    try {
+      if (Number(actor.system?.attributes?.hp?.temp ?? 0) > 0) {
+        await actor.update({ "system.attributes.hp.temp": 0 }, {
+          characterBuilderWildShapeRestore: true,
+          dnd5e: { concentrationCheck: false }
+        });
+      }
+      return await wrapped(...args);
+    } finally {
+      this.#reverting.delete(key);
+      this.#zeroHpPending.delete(key);
+    }
+  }
+
+  static #restoreWildShapeAtZeroHp(actor) {
+    if (!this.wildShapeLifecycleEnabled() || !actor || !this.#isWildShape(actor)) return;
+    if (Number(actor.system?.attributes?.hp?.value ?? 0) > 0) return;
+    if (!actor.isOwner) return;
+
+    const key = String(actor.id ?? actor.uuid ?? "");
+    if (!key || this.#reverting.has(key) || this.#zeroHpPending.has(key)) return;
+
+    this.#zeroHpPending.add(key);
+    void Promise.resolve(actor.revertOriginalForm({
+      characterBuilderWildShapeZeroHp: true
+    })).catch(error => {
+      this.#zeroHpPending.delete(key);
+      console.warn(`${MODULE_ID} | Wild Shape could not be restored after reaching 0 HP.`, error);
+    });
+  }
+
+  static #isWildShape(actor) {
+    if (!actor?.getFlag?.("dnd5e", "isPolymorphed")) return false;
+    const transformOptions = actor.getFlag?.("dnd5e", "transformOptions") ?? {};
+    return String(transformOptions?.preset ?? "").toLowerCase() === "wildshape";
   }
 
   static #capture(actor) {

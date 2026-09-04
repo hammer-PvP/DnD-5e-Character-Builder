@@ -302,6 +302,7 @@ The current rule list includes:
 - Bard — Cutting Words manual reaction assistance;
 - Concentration & Dependent Effects;
 - Temporary Transformation Actor Cleanup;
+- Druid — Wild Shape Restore Lifecycle;
 - Summon Profile Level Guard;
 - Weapon Mastery Chat Assistance.
 
@@ -335,6 +336,8 @@ Character Builder also exposes a versioned **Resource Consumption Event** after 
 
 
 **Temporary Transformation Actor Cleanup** completes the native D&D5e revert lifecycle when a player, rather than a GM, cancels a transformation. After D&D5e has restored the original character/token state, the active GM removes only temporary Actor documents whose native transformation flags prove they belong to that original Actor's transformation chain. The cleanup is generic to native transformations and never identifies Actors by creature name, type, folder, or ownership. Original character Actors and source-form Actors are never deleted by this rule.
+
+**Druid — Wild Shape Restore Lifecycle** keeps D&D5e authoritative for the transformation itself. When the native Wild Shape preset is restored, Character Builder clears the form's remaining Temporary HP before D&D5e copies preserved state back to the original Actor. After native damage reduces the transformed Druid's real HP to 0, Character Builder invokes D&D5e's own `Restore Transformation` lifecycle. Losing only the Wild Shape Temporary HP does not end the transformation, and other transformation presets such as Polymorph are untouched.
 
 **Save-Gated Effect Application** reuses D&D5e's native Effects tray instead of auto-applying a debuff from a hidden save result. For supported compatibility adapters, Character Builder ensures the source Activity exposes a non-transfer effect profile in the usage card. The tray is visible to the GM, who applies the effect only to targets that actually failed. D&D5e then creates the target Active Effect and, for a concentrated source, automatically binds it to the concentration through `flags.dnd5e.dependentOn`. Bane 2024 is the first regression adapter. If the official Item already contains a mechanical Bane effect, Character Builder links that native effect rather than adding a duplicate modifier; only a missing/empty effect profile receives the generic contextual fallback.
 

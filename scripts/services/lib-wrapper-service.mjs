@@ -1,5 +1,6 @@
 import { MODULE_ID } from "../constants.mjs";
 import { PlayerSheetIntegrityService } from "./player-sheet-integrity-service.mjs";
+import { TransformationActorCleanupService } from "./transformation-actor-cleanup-service.mjs";
 
 const ADVANCEMENT_CLOSE_TARGET = "dnd5e.applications.advancement.AdvancementManager.prototype._onClose";
 const ACTOR_SHEET_ADD_TARGET = "dnd5e.applications.actor.BaseActorSheet.prototype._addDocument";
@@ -7,6 +8,7 @@ const ACTOR_SHEET_DROP_ITEM_TARGET = "dnd5e.applications.actor.BaseActorSheet.pr
 const ACTOR_SHEET_DROP_TARGET = "dnd5e.applications.actor.BaseActorSheet.prototype._onDropCreateItems";
 const ACTOR_DIRECTORY_CONTEXT_TARGET = "foundry.applications.sidebar.tabs.ActorDirectory.prototype._getEntryContextOptions";
 const DND5E_ACTOR_MODIFY_TOKEN_ATTRIBUTE_TARGET = "dnd5e.documents.Actor5e.prototype.modifyTokenAttribute";
+const DND5E_ACTOR_REVERT_ORIGINAL_FORM_TARGET = "dnd5e.documents.Actor5e.prototype.revertOriginalForm";
 /**
  * Central libWrapper integration point.
  *
@@ -103,6 +105,14 @@ export class LibWrapperService {
         async function (wrapped, attribute, value, isDelta, isBar, ...args) {
           if (!PlayerSheetIntegrityService.mayModifyTokenAttribute(this, attribute)) return this;
           return wrapped(attribute, value, isDelta, isBar, ...args);
+        },
+        "WRAPPER"
+      );
+      api.register(
+        MODULE_ID,
+        DND5E_ACTOR_REVERT_ORIGINAL_FORM_TARGET,
+        function (wrapped, ...args) {
+          return TransformationActorCleanupService.wrapRevertOriginalForm(this, wrapped, args);
         },
         "WRAPPER"
       );

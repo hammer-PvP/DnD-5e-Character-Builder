@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.9x8 — Druid Wild Shape Stabilization
+
+### Druid — Known Forms current-state badge
+- Reworked **Known Forms** presentation as one current-state badge instead of one historical badge per Druid Level Up transaction. Creation, Level Up annotation refresh, and full metadata rebuilds now collapse legacy duplicates to the Actor's authoritative `knownWildShapeForms` state.
+- Character Keeper form replacement performs the same reconciliation across the Actor, so an older Druid with accumulated Known Forms badges is repaired lazily the first time a known form is changed at Long Rest. No world-wide startup migration is required.
+
+### Druid — Wild Shape restore lifecycle
+- Added **Druid — Wild Shape Restore Lifecycle** as an independent Assistance Rule without replacing D&D5e transformation mechanics. `Restore Transformation` still calls the native `Actor5e.revertOriginalForm()` flow, but Wild Shape now clears remaining Temporary HP before D&D5e copies preserved state back to the original Actor.
+- After native D&D5e damage reduces a Wild Shape Actor's real HP to 0, Character Builder invokes the same native restore function and clears Wild Shape Temporary HP. Reaching 0 Temporary HP alone does not restore the form.
+- Detection is anchored to D&D5e's native transformation preset identity (`transformOptions.preset === "wildshape"`), so Polymorph and other native transformations remain untouched. A per-Actor guard prevents recursive or duplicate restore calls.
+
+### Preserved behavior
+- Wild Shape Temporary HP generation, including Circle of the Moon's native `3 × Druid level` result, remains system-owned.
+- Beast selection continues to use D&D5e's native Transform/Compendium Browser flow; Character Builder does not intercept or filter that selector.
+
 ## 0.9.9x7a — War Bond Activation + Distribution Sanitation
 
 ### Fighter — Eldritch Knight: War Bond
