@@ -6304,3 +6304,48 @@
 .cb-concentration-decision-actions button.danger {
   border-color: rgba(157,73,73,.72);
 }
+
+/* 0.9.9x6 — GM Party / Group filtering */
+.cb-tool-party-panel {
+  flex: 0 0 auto;
+  margin: 12px 18px 0;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid rgba(209,176,107,.28);
+  border-radius: 6px;
+  background: rgba(209,176,107,.055);
+}
+.cb-tool-party-copy {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cb-tool-party-copy > i {
+  flex: 0 0 auto;
+  color: var(--cb-gold);
+  font-size: 22px;
+}
+.cb-tool-party-copy strong,
+.cb-tool-party-copy small { display: block; }
+.cb-tool-party-copy small {
+  margin-top: 2px;
+  opacity: .66;
+  line-height: 1.25;
+}
+.cb-tool-party-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.cb-tool-party-actions select { min-width: 190px; max-width: 260px; }
+.cb-tool-party-actions button { white-space: nowrap; }
+@media (max-width: 760px) {
+  .cb-tool-party-panel { align-items: stretch; flex-direction: column; }
+  .cb-tool-party-actions { width: 100%; }
+  .cb-tool-party-actions select { flex: 1 1 auto; min-width: 0; max-width: none; }
+}

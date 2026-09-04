@@ -1,6 +1,6 @@
 # Character Builder Settings Reference
 
-This reference documents every visible Character Builder setting in v0.9.9x5. Unless stated otherwise, settings are **world settings**, can be changed only by a Game Master, and do not require a server restart. Saving the settings window affects future Character Creation, Level Up, Character Keeper, or runtime-assistance operations; it does not retroactively delete character content.
+This reference documents every visible Character Builder setting in v0.9.9x6. Unless stated otherwise, settings are **world settings**, can be changed only by a Game Master, and do not require a server restart. Saving the settings window affects future Character Creation, Level Up, Character Keeper, or runtime-assistance operations; it does not retroactively delete character content.
 
 ## Splash Tutorial
 
@@ -190,6 +190,15 @@ At least one method must remain enabled.
 - **Commit timing:** Keeper selections remain staged until the authoritative Long Rest finishes; cancelling D&D5e or Rest Recovery leaves the live prepared list unchanged.
 - **Class cadence:** Ranger, Bard, Sorcerer, and Warlock do not gain Long Rest preparation from this option because their ordinary preparation/repertoire timing is Level Up.
 - **Review tools:** The spell search/filter toolbar stays visible while scrolling long spell lists. **All** shows the ordinary preparation pool; **Prepared** shows only currently selected ordinary prepared spells and updates immediately as selections change.
+
+## Character Builder Tool — Party / Group filtering
+
+- **Source of truth:** Native D&D5e **Group** Actors and their native membership. Character Builder does not store a parallel Party roster.
+- **When Groups exist:** Character Builder Tool offers **All Characters** plus each native Group in its Party / Group selector.
+- **When no Groups exist:** The Tool lists all non-draft character Actors, matching the pre-x6 behavior.
+- **Filtered operations:** Level Up grants, XP distribution, Epic Boon grants, and GM-managed Short/Long Rest availability act only on character-type members visible through the selected Group. NPC and vehicle members are ignored.
+- **Membership editing:** **Open Group** opens the native D&D5e Group sheet; add/remove members there.
+- **Primary Party:** Not required and not modified by Character Builder. Multiple Groups can be used independently.
 
 ## Character Keeper — GM-Managed Rest Availability
 

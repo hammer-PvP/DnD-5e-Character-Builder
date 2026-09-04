@@ -85,19 +85,10 @@ export class ManagedSummonsService {
       });
     });
 
-    // If native lifecycle, a GM, or another module removes the final Token for
-    // a managed summon, remove only the now-orphaned managed Actor. This does
-    // not impose a duration or summon limit; it follows the Token's actual end.
-    Hooks.on("deleteToken", (token, options) => {
-      if (options?.characterBuilderManagedSummon || !this.enabled() || !this.#isActiveGM()) return;
-      const actorId = String(token?.actorId ?? "");
-      if (!actorId) return;
-      queueMicrotask(() => {
-        void this.#removeOrphanedManagedActor(actorId).catch(error => {
-          console.warn(`${MODULE_ID} | Managed Summons orphan cleanup failed.`, error);
-        });
-      });
-    });
+    // Token presence is not summon existence. Manual Scene deletion, Scene cleanup,
+    // or moving between Scenes must not destroy the persistent managed Actor.
+    // Managed Actors are deleted only by explicit source lifecycle paths below
+    // (exclusive recast/replacement or confirmed concentration ending).
   }
 
   static ready() {
@@ -398,15 +389,6 @@ export class ManagedSummonsService {
     return DEFAULT_POLICY;
   }
 
-  static async #removeOrphanedManagedActor(actorId) {
-    if (!actorId || this.#actorReferencedByAnyToken(actorId)) return;
-    const actor = game.actors?.get?.(String(actorId));
-    if (!actor?.getFlag?.(MODULE_ID, FLAG_KEY)) return;
-    await actor.delete({
-      characterBuilderManagedSummon: true,
-      reason: "managed-summon-last-token-removed"
-    });
-  }
 
   static #concentrationForSourceItem(actor, sourceItem) {
     if (!actor || !sourceItem) return null;

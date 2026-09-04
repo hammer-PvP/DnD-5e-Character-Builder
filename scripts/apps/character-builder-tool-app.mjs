@@ -3,6 +3,7 @@ import { LevelUpService } from "../services/level-up-service.mjs";
 import { EpicBoonService } from "../services/epic-boon-service.mjs";
 import { ProgressionToolService } from "../services/progression-tool-service.mjs";
 import { RestAccessService } from "../services/rest-access-service.mjs";
+import { PartyGroupService } from "../services/party-group-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -10,6 +11,7 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
   constructor(options = {}) {
     super(options);
     this.busy = false;
+    this.partyGroupId = String(options?.partyGroupId ?? "");
   }
 
   static DEFAULT_OPTIONS = {
@@ -30,11 +32,10 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
     const mode = settings.levelUpMode === "xp" ? "xp" : "milestone";
     const epicBoonEnabled = Boolean(settings.enableEpicBoons && settings.enableGrantEpicBoons);
     const managedRestAccess = settings.gmManagedRestAccess === true;
-    const actors = game.actors
-      .filter(actor => actor.type === "character"
-        && !actor.getFlag(MODULE_ID, "isDraft")
-        && !actor.getFlag(MODULE_ID, "isLevelUpDraft"))
-      .sort((a, b) => a.name.localeCompare(b.name, game.i18n.lang))
+    const partyGroups = PartyGroupService.groups();
+    if (this.partyGroupId && !PartyGroupService.group(this.partyGroupId)) this.partyGroupId = "";
+    const selectedPartyGroup = PartyGroupService.group(this.partyGroupId);
+    const actors = PartyGroupService.characters(this.partyGroupId)
       .map(actor => {
         const level = LevelUpService.actorLevel(actor);
         const created = actor.items.some(item => item.type === "class");
@@ -102,6 +103,16 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
       epicBoonEnabled,
       managedRestAccess,
       actors,
+      partyGroups: partyGroups.map(group => ({
+        id: group.id,
+        name: group.name,
+        selected: group.id === this.partyGroupId,
+        characterCount: PartyGroupService.characters(group.id).length
+      })),
+      hasPartyGroups: partyGroups.length > 0,
+      selectedPartyGroupId: this.partyGroupId,
+      selectedPartyGroupName: selectedPartyGroup?.name ?? "All Characters",
+      selectedPartyIsGroup: Boolean(selectedPartyGroup),
       busy: this.busy
     };
   }
@@ -112,6 +123,8 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
     root.querySelector('[data-action="select-all"]')?.addEventListener("click", event => this.#selectAll(event));
     root.querySelector('[data-action="clear-selection"]')?.addEventListener("click", event => this.#clear(event));
     root.querySelector('[data-action="current-scene"]')?.addEventListener("click", event => this.#selectCurrentScene(event));
+    root.querySelector('[data-party-group]')?.addEventListener("change", event => this.#changePartyGroup(event));
+    root.querySelector('[data-action="open-party-group"]')?.addEventListener("click", event => this.#openPartyGroup(event));
     root.querySelector('[data-action="apply"]')?.addEventListener("click", event => this.#applyProgression(event));
     root.querySelector('[data-action="grant-epic-boon"]')?.addEventListener("click", event => this.#grantEpicBoons(event));
     root.querySelector('[data-action="short-rest-access"]')?.addEventListener("click", event => this.#changeRestAccess(event, "short"));
@@ -120,6 +133,19 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
     root.querySelector('[name="totalXp"]')?.addEventListener("input", () => this.#refreshPreview());
     root.querySelectorAll('[name="actorIds"]').forEach(input => input.addEventListener("change", () => this.#refreshPreview()));
     this.#refreshPreview();
+  }
+
+  async #changePartyGroup(event) {
+    if (this.busy) return;
+    this.partyGroupId = String(event.currentTarget?.value ?? "");
+    await this.render({ force: true });
+  }
+
+  #openPartyGroup(event) {
+    event.preventDefault();
+    const group = PartyGroupService.group(this.partyGroupId);
+    if (!group) return ui.notifications.warn("Select a D&D5e Group first.");
+    group.sheet?.render?.(true);
   }
 
   #selectedRows() {

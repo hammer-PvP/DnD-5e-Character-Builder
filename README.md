@@ -42,7 +42,7 @@ Enable **Character Builder (DnD 5e)** in the world after installation.
 
 1. Create or open a Player Character Actor.
 2. Use the gold **Character Builder** button on an empty character sheet to begin guided creation.
-3. Grant Level Ups individually from Actor controls or in groups through **Character Builder Tool**.
+3. Grant Level Ups individually from Actor controls or in groups through **Character Builder Tool**. When the world uses native D&D5e Group Actors, choose the desired Party / Group in the Tool to limit batch actions to that group.
 4. Optionally enable **GM-Managed Rest Availability** and grant or revoke Short or Long Rest access for selected characters from the same tool.
 5. Configure content sources and campaign rules in **Character Builder Settings**.
 6. Allow players to complete Level Ups and class maintenance from their own character sheets. Character Builder delegates protected Draft and safety-backup creation/cleanup to an active GM, so players do not need Foundry's global Create Actor or Delete Actor permissions for these workflows.
@@ -221,6 +221,12 @@ For Short Rests, Character Keeper also surfaces optional decisions that are easy
 - **Arcane Recovery** and Circle of the Land **Natural Recovery** share one spell-slot selection interface. It reads the Actor's actual derived level 1–5 spell-slot maximums, enforces the feature's combined-level budget, and consumes the native Item/Activity use tracker rather than creating a Character Builder resource.
 - **Sorcerous Restoration** stages the player's intent and, only after the authoritative Short Rest succeeds, invokes the native **Restore Sorcery Points** Activity. D&D5e remains responsible for the formula and Font of Magic consumption.
 - **Magical Cunning** is a direct shortcut to the native **Regain Pact Spell Slots** Activity. Because the rite is an independent feature use rather than a Keeper rest transaction, using it is not undone if the later Short Rest is cancelled.
+
+### GM Party / Group filtering
+
+**Character Builder Tool** uses D&D5e's native **Group** Actors rather than maintaining a second Character Builder Party roster. When one or more Groups exist, the Tool shows a **Party / Group** selector with **All Characters** plus one entry for every native Group. Selecting a Group restricts Character Builder batch operations to character-type members of that Group; NPCs and vehicles in the Group are ignored.
+
+The same filter applies to batch Level Up grants, XP distribution, Epic Boon grants, and GM-managed Short/Long Rest availability. **Open Group** opens D&D5e's native Group sheet so the GM can add or remove members using the system's normal workflow. Character Builder does not require or change D&D5e's **Primary Party** setting. If the world has no Group Actors, the Tool simply keeps its previous behavior and lists all non-draft character Actors.
 
 ### Optional GM-Managed Rest Availability
 

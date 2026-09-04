@@ -23,8 +23,35 @@
   <section class="cb-tool-selection-summary"><span>Selected Characters</span><strong data-selected-count>0</strong></section>
   {{/if}}
 
+  <section class="cb-tool-party-panel">
+    <div class="cb-tool-party-copy">
+      <i class="fa-solid fa-people-group" aria-hidden="true"></i>
+      <div>
+        <strong>Party / Group</strong>
+        {{#if hasPartyGroups}}
+        <small>Uses native D&amp;D5e Group membership. Choose a Group to keep batch actions focused on that party.</small>
+        {{else}}
+        <small>No native D&amp;D5e Groups exist yet, so Character Builder shows all character Actors.</small>
+        {{/if}}
+      </div>
+    </div>
+    {{#if hasPartyGroups}}
+    <div class="cb-tool-party-actions">
+      <select data-party-group aria-label="Party or Group">
+        <option value="" {{#unless selectedPartyGroupId}}selected{{/unless}}>All Characters</option>
+        {{#each partyGroups}}
+        <option value="{{id}}" {{#if selected}}selected{{/if}}>{{name}} ({{characterCount}})</option>
+        {{/each}}
+      </select>
+      <button type="button" data-action="open-party-group" {{#unless selectedPartyIsGroup}}disabled{{/unless}} title="Open the selected native D&amp;D5e Group sheet">
+        <i class="fa-solid fa-users-gear"></i> Open Group
+      </button>
+    </div>
+    {{/if}}
+  </section>
+
   <div class="cb-tool-list-controls">
-    <input type="search" placeholder="Search characters" data-character-search>
+    <input type="search" placeholder="Search {{selectedPartyGroupName}}" data-character-search>
     <div>
       <button type="button" data-action="select-all">Select All</button>
       <button type="button" data-action="clear-selection">Clear</button>
@@ -45,7 +72,7 @@
       {{/if}}
     </label>
     {{else}}
-    <p class="cb-empty-tool-list">No Player Character Actors were found.</p>
+    <p class="cb-empty-tool-list">No eligible character Actors were found in {{selectedPartyGroupName}}.</p>
     {{/each}}
   </section>
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.9x6 — Internal Test Build
+
+### GM Party / Group control
+- Added a **Party / Group** selector to **Character Builder Tool** using D&D5e's native Group Actors and native group membership. Character Builder does not create or persist a parallel Party roster.
+- **All Characters** remains available as a fallback. If no native Groups exist, the Tool keeps the existing behavior and shows all non-draft character Actors.
+- Selecting a native Group limits Level Up grants, XP distribution, Epic Boon grants, and GM-managed Short/Long Rest availability to character Actors that belong to that Group. NPC and vehicle members are ignored by Character Builder batch actions.
+- Added **Open Group** beside the selector so the GM can edit membership through D&D5e's own Group sheet. No Primary Party setting is required.
+
+### Managed Summons persistence
+- Removed automatic Managed Actor deletion from the generic `deleteToken` hook. A GM deleting a Token manually, cleaning a Scene, or moving play between Scenes now removes only that Scene Token; the managed Actor remains available in `<FirstName> - Companions`.
+- Managed Actors are still removed by explicit summon lifecycle paths: source-specific exclusive replacement/recast (including Find Familiar, Mage Hand, and Primal Companion) and confirmed concentration ending.
+- Preserved the live-validated Find Familiar, Mage Hand, Summon Elemental, Primal Companion, ownership inheritance, companion folders, Concentration decision card, HP Token HUD integrity, Keeper spell filtering, and potion configuration behavior unchanged.
+
 ## 0.9.9x5 — Internal Test Build
 
 ### Managed Summons lifecycle
