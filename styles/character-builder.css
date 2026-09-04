@@ -6349,3 +6349,172 @@
   .cb-tool-party-actions { width: 100%; }
   .cb-tool-party-actions select { flex: 1 1 auto; min-width: 0; max-width: none; }
 }
+
+/* 0.9.9x7 — Runtime Feature Maintenance */
+.cb-fiendish-resilience-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.cb-fiendish-resilience-card {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 18px 36px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid rgba(209,176,107,.22);
+  border-radius: 6px;
+  background: rgba(255,255,255,.035);
+  cursor: pointer;
+}
+.cb-fiendish-resilience-card:hover,
+.cb-fiendish-resilience-card.selected { background: rgba(209,176,107,.10); border-color: rgba(209,176,107,.52); }
+.cb-fiendish-resilience-card.current { box-shadow: inset 3px 0 #8e2b31; }
+.cb-fiendish-resilience-card input { margin: 0; }
+.cb-fiendish-resilience-card img { width: 34px; height: 34px; object-fit: cover; border-radius: 4px; }
+.cb-fiendish-resilience-card span { min-width: 0; }
+.cb-fiendish-resilience-card strong,
+.cb-fiendish-resilience-card small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cb-fiendish-resilience-card small { margin-top: 2px; opacity: .65; }
+.cb-fiendish-resilience-card > i { color: var(--cb-gold); }
+
+.cb-memorize-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 56px minmax(0, 1fr);
+  gap: 10px;
+  align-items: stretch;
+}
+.cb-memorize-columns > section {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(209,176,107,.22);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.cb-memorize-columns > section > header { padding: 10px 12px; background: rgba(255,255,255,.045); border-bottom: 1px solid rgba(209,176,107,.18); }
+.cb-memorize-columns > section > header span,
+.cb-memorize-columns > section > header strong,
+.cb-memorize-columns > section > header small { display: block; }
+.cb-memorize-columns > section > header small { margin-top: 2px; opacity: .62; }
+.cb-memorize-list { min-height: 280px; max-height: 430px; overflow: auto; padding: 7px; }
+.cb-memorize-spell-card {
+  display: grid;
+  grid-template-columns: 18px 36px minmax(0,1fr) 18px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px;
+  margin-bottom: 5px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 5px;
+  background: rgba(255,255,255,.025);
+  cursor: pointer;
+}
+.cb-memorize-spell-card:hover,
+.cb-memorize-spell-card.selected { background: rgba(209,176,107,.09); border-color: rgba(209,176,107,.42); }
+.cb-memorize-spell-card img { width: 34px; height: 34px; object-fit: cover; border-radius: 4px; }
+.cb-memorize-spell-card span { min-width: 0; }
+.cb-memorize-spell-card strong,
+.cb-memorize-spell-card small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cb-memorize-spell-card small { opacity: .62; }
+.cb-memorize-spell-card > i { color: var(--cb-gold); }
+.cb-memorize-spell-card.remove > i { color: #cf7777; }
+.cb-memorize-spell-card.add > i { color: #83ca8f; }
+.cb-memorize-swap-arrow { display: grid; place-content: center; text-align: center; gap: 5px; color: var(--cb-gold); }
+.cb-memorize-swap-arrow i { font-size: 22px; }
+.cb-memorize-swap-arrow span { font-size: 11px; font-weight: 700; opacity: .72; }
+
+.cb-war-bond-keeper-count { text-align: right; }
+.cb-war-bond-keeper-count strong,
+.cb-war-bond-keeper-count small { display: block; }
+.cb-war-bond-keeper-count strong { color: var(--cb-gold); font-size: 18px; }
+.cb-war-bond-keeper-count small { opacity: .62; }
+.cb-war-bond-keeper-slots { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; margin: 10px 0; }
+.cb-war-bond-keeper-slots article { display: flex; align-items: center; gap: 9px; padding: 9px; border: 1px solid rgba(209,176,107,.22); border-radius: 6px; background: rgba(255,255,255,.03); }
+.cb-war-bond-keeper-slots img { width: 38px; height: 38px; object-fit: cover; border-radius: 4px; }
+.cb-war-bond-keeper-slots article > i { width: 38px; text-align: center; color: var(--cb-gold); font-size: 20px; }
+.cb-war-bond-keeper-slots article.broken > i { color: #cf7777; }
+.cb-war-bond-keeper-slots strong,
+.cb-war-bond-keeper-slots small { display: block; }
+.cb-war-bond-keeper-slots small { opacity: .62; }
+
+.war-bond-manager-app .window-content { padding: 0; overflow: hidden; }
+.cb-war-bond-manager { height: 100%; display: flex; flex-direction: column; min-height: 0; background: #111113; color: #eee; }
+.cb-war-bond-header { flex: 0 0 auto; padding: 16px 18px; border-bottom: 1px solid rgba(209,176,107,.25); background: #17171a; }
+.cb-war-bond-header > img { width: 52px; height: 52px; object-fit: cover; border-radius: 6px; }
+.cb-war-bond-header > div:nth-child(2) { flex: 1 1 auto; min-width: 0; }
+.cb-war-bond-capacity { flex: 0 0 auto; text-align: right; }
+.cb-war-bond-capacity span,
+.cb-war-bond-capacity strong { display: block; }
+.cb-war-bond-capacity span { font-size: 11px; text-transform: uppercase; opacity: .65; }
+.cb-war-bond-capacity strong { color: #d1b06b; font-size: 24px; }
+.cb-war-bond-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 16px 18px; }
+.cb-war-bond-slots-section,
+.cb-war-bond-weapons-section { margin-bottom: 18px; }
+.cb-war-bond-slots { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.cb-war-bond-slot {
+  position: relative;
+  min-width: 0;
+  min-height: 118px;
+  display: grid;
+  grid-template-columns: 52px minmax(0,1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px dashed rgba(209,176,107,.38);
+  border-radius: 7px;
+  background: rgba(255,255,255,.025);
+}
+.cb-war-bond-slot.bound { border-style: solid; background: rgba(209,176,107,.055); }
+.cb-war-bond-slot.broken { border-color: rgba(190,82,82,.52); background: rgba(142,43,49,.08); }
+.cb-war-bond-slot.dragover { border-style: solid; border-color: #d1b06b; background: rgba(209,176,107,.14); }
+.cb-war-bond-slot > img,
+.cb-war-bond-slot-icon { width: 50px; height: 50px; border-radius: 6px; }
+.cb-war-bond-slot > img { object-fit: cover; }
+.cb-war-bond-slot-icon { display: grid; place-content: center; border: 1px solid rgba(209,176,107,.24); color: #d1b06b; font-size: 22px; }
+.cb-war-bond-slot-icon.blocked { color: #cf7777; border-color: rgba(207,119,119,.35); }
+.cb-war-bond-slot-copy { min-width: 0; }
+.cb-war-bond-slot-copy span,
+.cb-war-bond-slot-copy strong,
+.cb-war-bond-slot-copy small { display: block; }
+.cb-war-bond-slot-copy span { font-size: 10px; text-transform: uppercase; opacity: .62; }
+.cb-war-bond-slot-copy strong { margin: 2px 0; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cb-war-bond-slot-copy small { opacity: .66; line-height: 1.25; }
+.cb-war-bond-slot > button { white-space: nowrap; }
+.cb-war-bond-drop-hint { position: absolute; left: 12px; right: 12px; bottom: 7px; font-size: 10px; text-align: center; opacity: .58; pointer-events: none; }
+.cb-war-bond-search { display: flex; align-items: center; gap: 6px; min-width: 220px; }
+.cb-war-bond-search input { width: 100%; }
+.cb-war-bond-weapon-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; max-height: 270px; overflow: auto; padding-right: 4px; }
+.cb-war-bond-weapon {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 40px minmax(0,1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 9px;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 5px;
+  background: rgba(255,255,255,.025);
+  cursor: grab;
+}
+.cb-war-bond-weapon:hover { border-color: rgba(209,176,107,.4); background: rgba(209,176,107,.07); }
+.cb-war-bond-weapon:active { cursor: grabbing; }
+.cb-war-bond-weapon img { width: 38px; height: 38px; object-fit: cover; border-radius: 4px; }
+.cb-war-bond-weapon div { min-width: 0; }
+.cb-war-bond-weapon strong,
+.cb-war-bond-weapon small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cb-war-bond-weapon small { opacity: .62; }
+.cb-war-bond-drag { font-size: 11px; opacity: .62; white-space: nowrap; }
+.cb-war-bond-footer { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 10px 18px; border-top: 1px solid rgba(209,176,107,.24); background: #17171a; }
+.cb-war-bond-footer p { margin: 0; max-width: 70%; opacity: .66; font-size: 11px; }
+.cb-war-bond-manager.busy { pointer-events: none; opacity: .72; }
+
+@media (max-width: 900px) {
+  .cb-fiendish-resilience-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .cb-memorize-columns { grid-template-columns: 1fr; }
+  .cb-memorize-swap-arrow { grid-auto-flow: column; }
+  .cb-war-bond-slots,
+  .cb-war-bond-weapon-list,
+  .cb-war-bond-keeper-slots { grid-template-columns: 1fr; }
+}

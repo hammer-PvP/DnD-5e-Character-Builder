@@ -10,6 +10,7 @@ import { RestAccessService } from "../services/rest-access-service.mjs";
 import { LongRestLifecycleService } from "../services/long-rest-lifecycle-service.mjs";
 import { RestExecutionHandoffService } from "../services/rest-execution-handoff-service.mjs";
 import { RestDecisionAssistanceService } from "../services/rest-decision-assistance-service.mjs";
+import { WarBondManagerApp } from "./war-bond-manager-app.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -389,6 +390,9 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
         case "filter-prepare-spells":
           this.#setPreparedSpellFilter(target.dataset.filterMode);
           break;
+        case "open-war-bond-manager":
+          await WarBondManagerApp.launch(this.actor, { featureItemId: this.#selectedAction()?.featureItemId ?? null });
+          break;
       }
     } catch (error) {
       console.error(`${MODULE_ID} | Character Keeper action failed.`, error);
@@ -741,9 +745,10 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
         if (!changes.length) throw new Error("Choose at least one Weapon Mastery replacement.");
         return { changes };
       }
-      case "effect-choice": {
+      case "effect-choice":
+      case "fiendish-resilience": {
         const effectId = checkedValues("keeper.effectId")[0] ?? "";
-        if (!effectId) throw new Error("Choose one feature option.");
+        if (!effectId) throw new Error(action.kind === "fiendish-resilience" ? "Choose one damage resistance." : "Choose one feature option.");
         return { effectId };
       }
       case "activity-choice": {
@@ -799,6 +804,14 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
         if (preparedSpellItemIds.length > limit) throw new Error(`Choose no more than ${limit} ordinary prepared spell${limit === 1 ? "" : "s"}.`);
         return { classItemId, preparedSpellItemIds };
       }
+      case "memorize-spell": {
+        const removeItemId = checkedValues("keeper.memorize.removeItemId")[0] ?? "";
+        const addItemId = checkedValues("keeper.memorize.addItemId")[0] ?? "";
+        if (!removeItemId || !addItemId || removeItemId === addItemId) {
+          throw new Error("Choose one currently prepared Wizard spell and one different spellbook spell to prepare.");
+        }
+        return { removeItemId, addItemId };
+      }
       case "native-rest-feature":
         return { native: true };
       case "scribe-spell": {
@@ -819,6 +832,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     const labels = {
       "weapon-mastery": "Apply Weapon Mastery Changes",
       "effect-choice": `Confirm ${action.label}`,
+      "fiendish-resilience": "Confirm Resistance",
       "activity-choice": `Confirm ${action.label}`,
       land: "Confirm Land",
       "wild-shape-form": "Replace Known Form",
@@ -828,7 +842,8 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
       "roll-cosmic-omen": "Roll Cosmic Omen",
       "roll-portent": "Roll Portent",
       "scribe-spell": "Scribe Spell to Spellbook",
-      "war-bond-guide": "War Bond Instructions",
+      "war-bond-manager": "Manage War Bonds",
+      "memorize-spell": "Confirm Spell Swap",
       "spell-slot-recovery": `Confirm ${action.label}`,
       "prepare-spells": `Confirm ${action.label}`,
       "native-rest-feature": `Confirm ${action.label}`,
@@ -839,6 +854,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
       applyLabel: labels[kind] ?? `Confirm ${action.label}`,
       isWeaponMastery: kind === "weapon-mastery",
       isEffectChoice: kind === "effect-choice",
+      isFiendishResilience: kind === "fiendish-resilience",
       isActivityChoice: kind === "activity-choice",
       isLand: kind === "land",
       isWildShape: kind === "wild-shape-form",
@@ -849,7 +865,8 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
       isPortent: kind === "roll-portent",
       isRoll: ["roll-cosmic-omen", "roll-portent"].includes(kind),
       isScribe: kind === "scribe-spell",
-      isWarBondGuide: kind === "war-bond-guide",
+      isWarBondManager: kind === "war-bond-manager",
+      isMemorizeSpell: kind === "memorize-spell",
       isSpellSlotRecovery: kind === "spell-slot-recovery",
       isPrepareSpells: kind === "prepare-spells",
       isNativeRestFeature: kind === "native-rest-feature",

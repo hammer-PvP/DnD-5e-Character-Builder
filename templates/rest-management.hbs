@@ -63,9 +63,13 @@
             {{#unless selected.isPrepareSpells}}<p>{{selected.description}}</p>{{/unless}}
           </div>
         </div>
-        {{#unless selected.isWarBondGuide}}
         <div class="cb-keeper-feature-actions">
-          {{#if selected.isRoll}}
+          {{#if selected.isWarBondManager}}
+          <button type="button" class="cb-primary-confirm" data-action="open-war-bond-manager" {{#if busy}}disabled{{/if}}>
+            <i class="fa-solid fa-link"></i>
+            <span><strong>Manage War Bonds</strong><small>Open the same manager used by Bond with Weapon</small></span>
+          </button>
+          {{else if selected.isRoll}}
           <button type="button" class="cb-primary-confirm" data-action="roll-current-action" {{#if selected.rollContext.locked}}disabled{{/if}} {{#if busy}}disabled{{/if}}>
             <i class="fa-solid fa-dice"></i>
             <span><strong>{{#if selected.rollContext.locked}}Roll Locked{{else}}{{selected.applyLabel}}{{/if}}</strong><small>Visible to player and GM in chat</small></span>
@@ -107,7 +111,6 @@
           </button>
           {{/if}}
         </div>
-        {{/unless}}
       </header>
 
       <div class="cb-keeper-scroll {{#if selected.isPrepareSpells}}cb-keeper-scroll-prepare-spells{{/if}}">
@@ -261,6 +264,62 @@
             </div>
           </section>
           {{/each}}
+        </section>
+        {{/if}}
+
+        {{#if selected.isFiendishResilience}}
+        <section class="cb-keeper-section cb-fiendish-resilience">
+          <header class="cb-choice-section-header">
+            <div><h3>Choose Damage Resistance</h3><p>Current resistance: <strong>{{selected.fiendishResilience.current}}</strong>. Exactly one source-native Fiendish Resilience effect will remain active after the rest.</p></div>
+          </header>
+          <div class="cb-fiendish-resilience-grid">
+            {{#each selected.fiendishResilience.options}}
+            <label class="cb-fiendish-resilience-card {{#if active}}current{{/if}} {{#if (dnd5eCharacterBuilderEq id ../selected.fiendishResilience.selected)}}selected{{/if}}">
+              <input type="radio" name="keeper.effectId" value="{{id}}" {{#if (dnd5eCharacterBuilderEq id ../selected.fiendishResilience.selected)}}checked{{/if}}>
+              <img src="{{img}}" alt="">
+              <span><strong>{{label}}</strong><small>{{#if active}}Current resistance{{else}}Available after rest{{/if}}</small></span>
+              <i class="fa-solid {{#if (dnd5eCharacterBuilderEq id ../selected.fiendishResilience.selected)}}fa-circle-check{{else}}fa-circle{{/if}}"></i>
+            </label>
+            {{/each}}
+          </div>
+          <p class="cb-notice"><i class="fa-solid fa-shield-halved"></i> Character Builder only toggles the Active Effects already supplied by the source-native Fiendish Resilience Item; it does not create a separate resistance mechanic.</p>
+        </section>
+        {{/if}}
+
+        {{#if selected.isMemorizeSpell}}
+        <section class="cb-keeper-section cb-memorize-spell">
+          <header class="cb-choice-section-header">
+            <div><h3>Memorize Spell</h3><p>Choose exactly one ordinary prepared Wizard spell to remove and one ordinary unprepared level 1+ spell from this spellbook to prepare. Always Prepared spells and cantrips are excluded.</p></div>
+          </header>
+          <div class="cb-memorize-columns">
+            <section>
+              <header><span class="cb-kicker">Prepared Wizard Spells</span><strong>Choose one to remove</strong><small>{{selected.memorizeSpell.preparedCount}} eligible</small></header>
+              <div class="cb-memorize-list">
+                {{#each selected.memorizeSpell.prepared}}
+                <label class="cb-memorize-spell-card {{#if selected}}selected remove{{/if}}">
+                  <input type="radio" name="keeper.memorize.removeItemId" value="{{id}}" {{#if selected}}checked{{/if}}>
+                  <img src="{{img}}" alt="">
+                  <span><strong>{{name}}</strong><small>{{levelLabel}}</small></span>
+                  <i class="fa-solid fa-minus"></i>
+                </label>
+                {{else}}<p class="cb-notice">No ordinary prepared Wizard spell is eligible to swap.</p>{{/each}}
+              </div>
+            </section>
+            <div class="cb-memorize-swap-arrow"><i class="fa-solid fa-arrow-right-arrow-left"></i><span>1 : 1</span></div>
+            <section>
+              <header><span class="cb-kicker">Other Spellbook Spells</span><strong>Choose one to prepare</strong><small>{{selected.memorizeSpell.availableCount}} eligible</small></header>
+              <div class="cb-memorize-list">
+                {{#each selected.memorizeSpell.available}}
+                <label class="cb-memorize-spell-card {{#if selected}}selected add{{/if}}">
+                  <input type="radio" name="keeper.memorize.addItemId" value="{{id}}" {{#if selected}}checked{{/if}}>
+                  <img src="{{img}}" alt="">
+                  <span><strong>{{name}}</strong><small>{{levelLabel}}</small></span>
+                  <i class="fa-solid fa-plus"></i>
+                </label>
+                {{else}}<p class="cb-notice">No ordinary unprepared Wizard spell is eligible to memorize.</p>{{/each}}
+              </div>
+            </section>
+          </div>
         </section>
         {{/if}}
 
@@ -586,17 +645,25 @@
 
 
 
-        {{#if selected.isWarBondGuide}}
-        <section class="cb-keeper-section cb-war-bond-guide">
-          <p class="cb-notice"><i class="fa-solid fa-shield-halved"></i> Character Keeper is only a reminder for this feature. Weapon selection and binding remain controlled by the native D&amp;D5e War Bond activity.</p>
-          <ol class="cb-war-bond-steps">
-            <li><span>1</span><div><strong>Open War Bond on the Character Sheet</strong><p>Go to the <em>Features</em> tab and open the native <strong>War Bond</strong> feature.</p></div></li>
-            <li><span>2</span><div><strong>Use Bond with Weapon</strong><p>Run the native activity. D&amp;D5e creates the War Bond enchantment card in chat.</p></div></li>
-            <li><span>3</span><div><strong>Open the Inventory</strong><p>Return to the character inventory while keeping the chat card visible.</p></div></li>
-            <li><span>4</span><div><strong>Drag the Weapon to Chat</strong><p>Drag an inventory weapon onto the card area labeled <em>“Place item here to enchant it…”</em>.</p></div></li>
-            <li><span>5</span><div><strong>Bind a Second Weapon When Needed</strong><p>Repeat the native process for the second permitted weapon, then complete the binding through D&amp;D5e.</p></div></li>
-          </ol>
-          <p class="cb-notice warning"><i class="fa-solid fa-circle-info"></i> The two header images are visual cues only. They do not open War Bond, Mordenkainen’s Sword, or any other document.</p>
+        {{#if selected.isWarBondManager}}
+        <section class="cb-keeper-section cb-war-bond-keeper-panel">
+          <header class="cb-choice-section-header">
+            <div>
+              <h3>Current War Bonds</h3>
+              <p>The manager uses D&amp;D5e's native Bond with Weapon validation and enchantment profile, while Character Builder maintains breaking/replacement and the native spent-use counter.</p>
+            </div>
+            <div class="cb-war-bond-keeper-count"><strong>{{selected.warBondContext.capacityLabel}}</strong><small>bond capacity</small></div>
+          </header>
+          <div class="cb-war-bond-keeper-slots">
+            {{#each selected.warBondContext.slots}}
+            <article class="{{kind}}">
+              {{#if bound}}<img src="{{img}}" alt=""><div><strong>{{name}}</strong><small>War Bonded</small></div>
+              {{else if broken}}<i class="fa-solid fa-ban"></i><div><strong>Broken Bond</strong><small>Spent capacity without a valid weapon</small></div>
+              {{else}}<i class="fa-solid fa-link"></i><div><strong>Free Slot</strong><small>Available for a weapon</small></div>{{/if}}
+            </article>
+            {{/each}}
+          </div>
+          <p class="cb-notice"><i class="fa-solid fa-arrow-up-right-from-square"></i> Use <strong>Manage War Bonds</strong> above to drag weapons into slots, break an existing bond, or repair/release a broken slot. Changes happen immediately because this same manager is available outside rests through the native Activity.</p>
         </section>
         {{/if}}
 

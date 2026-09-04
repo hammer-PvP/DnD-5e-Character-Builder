@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.9x7 — Internal Test Build
+
+### Fighter — Eldritch Knight: War Bond Manager
+- Replaced the native **Bond with Weapon** Activity launch with a Character Builder **Manage War Bonds** interface while keeping the source-native Enchant Activity as the eligibility and enchantment authority. **Summon Weapon** and other War Bond Activities remain native.
+- Added native-capacity bond slots, inventory weapon drag-and-drop, **Break Bond**, and native `uses.spent` reconciliation. The bond maximum is read from the feature rather than hardcoded.
+- Added **Broken Bond** detection when native War Bond capacity remains spent but the previously bonded weapon no longer exists on the Actor. Broken capacity can be deliberately released or replaced by dropping a new eligible weapon into that slot.
+- Added the same War Bond Manager launcher to Character Keeper on Short Rest without creating a second bond ledger or duplicate enchantment mechanic.
+
+### Wizard — Memorize Spell
+- Added the official Wizard **Memorize Spell** Short Rest maintenance path. The interface shows two independent scrollable lists: currently prepared ordinary level 1+ Wizard spells and ordinary unprepared level 1+ spells already in that Wizard spellbook.
+- Requires a strict 1-for-1 swap. Cantrips, Always Prepared spells, and feature-granted prepared spells are excluded. The existing native spell Items are updated only after the authoritative Short Rest completes, preserving the total prepared count.
+
+### Warlock — Fiendish Resilience
+- Replaced the generic effect-choice presentation with a dedicated Character Keeper resistance selector on Short and Long Rest.
+- The interface reads the source-native Fiendish Resilience Active Effects and enables exactly the selected resistance while disabling the other native choices. No parallel Character Builder resistance mechanic is created.
+
 ## 0.9.9x6 — Internal Test Build
 
 ### GM Party / Group control

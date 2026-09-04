@@ -5,6 +5,8 @@ import { RuntimeBadgeReconciliationService } from "./runtime-badge-reconciliatio
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
 import { RestDecisionAssistanceService } from "./rest-decision-assistance-service.mjs";
 import { LongRestSpellPreparationService } from "./long-rest-spell-preparation-service.mjs";
+import { MemorizeSpellService } from "./memorize-spell-service.mjs";
+import { WarBondManagementService } from "./war-bond-management-service.mjs";
 
 const LAND_LABELS = Object.freeze({ arid: "Arid", polar: "Polar", temperate: "Temperate", tropical: "Tropical" });
 const LAND_RESISTANCES = Object.freeze({ arid: "fire", polar: "cold", temperate: "lightning", tropical: "poison" });
@@ -78,7 +80,7 @@ export class RuntimeFeatureService {
       });
 
     const resilience = this.#feature(actor, "fiendish-resilience");
-    if (resilience && ["short", "long"].includes(type)) add("fiendish-resilience", "Fiendish Resilience", resilience, "effect-choice",
+    if (resilience && ["short", "long"].includes(type)) add("fiendish-resilience", "Fiendish Resilience", resilience, "fiendish-resilience",
       "Choose the damage type resisted until you choose again.", { order: 60 });
 
     const huntersPrey = this.#feature(actor, "hunters-prey");
@@ -90,10 +92,8 @@ export class RuntimeFeatureService {
       "Choose Escape the Horde or Multiattack Defense.", { order: 80 });
 
     const warBond = this.#feature(actor, "war-bond");
-    if (warBond && ["short", "long"].includes(type)) add("war-bond", "War Bond", warBond, "war-bond-guide",
-      "Use the source-native War Bond feature and chat enchantment card to bind up to two inventory weapons.", {
-        order: 90
-      });
+    if (type === "short" && warBond && WarBondManagementService.canManage(actor)) add("war-bond", "War Bond", warBond, "war-bond-manager",
+      "Manage the source-native weapon bonds and reconcile the native War Bond capacity.", { order: 90 });
 
     const primalCompanion = this.#feature(actor, "primal-companion");
     if (type === "long" && primalCompanion) add("primal-companion", "Primal Companion", primalCompanion, "native-feature",
@@ -102,6 +102,11 @@ export class RuntimeFeatureService {
       });
 
     const wizard = this.#class(actor, "wizard");
+    const memorizeSpell = MemorizeSpellService.feature(actor);
+    if (type === "short" && wizard && memorizeSpell && MemorizeSpellService.available(actor)) {
+      add("memorize-spell", "Memorize Spell", memorizeSpell, "memorize-spell",
+        "Swap exactly one prepared level 1+ Wizard spell for one other level 1+ spell in this spellbook.", { order: 95 });
+    }
     if (type === "long" && wizard) {
       if (this.#normalClassSpells(actor, "wizard", { level: 0 }).length) {
         add("replace-wizard-cantrip", "Replace Cantrip", this.#classFeature(actor, "spellcasting", "wizard"), "replace-cantrip",
@@ -140,6 +145,7 @@ export class RuntimeFeatureService {
     switch (action.kind) {
       case "weapon-mastery": return { ...action, masteryGroups: await this.#masteryContext(actor, registry, operation) };
       case "effect-choice": return { ...action, effectChoice: this.#effectChoiceContext(actor.items.get(action.featureItemId), operation) };
+      case "fiendish-resilience": return { ...action, fiendishResilience: this.#fiendishResilienceContext(actor.items.get(action.featureItemId), operation) };
       case "activity-choice": return { ...action, activityChoice: this.#activityChoiceContext(actor.items.get(action.featureItemId), operation) };
       case "land": return { ...action, landContext: await this.#landContext(actor, registry, operation) };
       case "wild-shape-form": return { ...action, wildShapeContext: await this.#wildShapeContext(actor, operation) };
@@ -160,11 +166,12 @@ export class RuntimeFeatureService {
       case "roll-cosmic-omen": return { ...action, rollContext: this.#cosmicOmenContext(actor, session) };
       case "roll-portent": return { ...action, rollContext: this.#portentContext(actor, session) };
       case "scribe-spell": return { ...action, scribeContext: await this.#scribeContext(actor, registry, operation) };
-      case "war-bond-guide": return {
+      case "war-bond-manager": return {
         ...action,
         feature: this.#itemSummary(actor.items.get(action.featureItemId)),
-        secondaryImg: this.#mordenkainensSwordIcon(registry)
+        warBondContext: await WarBondManagementService.context(actor, { featureItemId: action.featureItemId })
       };
+      case "memorize-spell": return { ...action, memorizeSpell: MemorizeSpellService.context(actor, operation) };
       case "native-feature": return { ...action, feature: this.#itemSummary(actor.items.get(action.featureItemId)) };
       default: return action;
     }
@@ -283,6 +290,14 @@ export class RuntimeFeatureService {
       return LongRestSpellPreparationService.validateOperation(actor, actionId, payload);
     }
     switch (actionId) {
+      case "fiendish-resilience": {
+        const feature = this.#feature(actor, "fiendish-resilience");
+        const context = this.#fiendishResilienceContext(feature, payload);
+        if (!context.options.some(option => option.id === payload?.effectId)) {
+          throw new Error("Choose a valid Fiendish Resilience damage resistance.");
+        }
+        return true;
+      }
       case "pact-of-the-tome": {
         const cls = this.#class(actor, "warlock");
         const context = await PactOfTheTomeService.buildContext(actor, registry, {
@@ -298,6 +313,9 @@ export class RuntimeFeatureService {
         );
         return true;
       }
+      case "memorize-spell":
+        MemorizeSpellService.validate(actor, payload);
+        return true;
       case "scribe-spell": {
         const settings = this.#settings();
         if (settings.allowSpellScrollScribing === false) throw new Error("Spell Scroll scribing is disabled by the GM.");
@@ -330,6 +348,7 @@ export class RuntimeFeatureService {
       case "weapon-mastery": return this.#applyMastery(actor, registry, payload, transactionId);
       case "aspect-of-the-wilds":
       case "fiendish-resilience": return this.#applyEffectChoice(actor, actionId, payload, transactionId);
+      case "memorize-spell": return MemorizeSpellService.apply(actor, payload, transactionId);
       case "hunters-prey":
       case "defensive-tactics": return this.#applyActivityChoice(actor, actionId, payload, transactionId);
       case "change-land": return this.#applyLand(actor, registry, payload, transactionId);
@@ -554,6 +573,36 @@ export class RuntimeFeatureService {
       current: options.find(option => option.active)?.label ?? "None",
       selected: operation?.effectId ?? options.find(option => option.active)?.id ?? "",
       options
+    };
+  }
+
+  static #fiendishResilienceContext(feature, operation) {
+    if (!feature) return { feature: null, current: "None", selected: "", options: [], damageTypes: 0 };
+    const featureSummary = this.#itemSummary(feature);
+    const options = [...(feature.effects ?? [])].map(effect => {
+      const change = effect.system?.changes?.find(row => row.key === "system.traits.dr.value");
+      if (!change) return null;
+      const value = String(change.value ?? "").trim().toLowerCase();
+      if (!value || value === "force") return null;
+      const label = String(effect.name ?? value).replace(/^.*?:\s*/, "");
+      return {
+        id: effect.id,
+        label,
+        img: effect.img ?? feature.img,
+        active: !effect.disabled,
+        value,
+        referenceUuid: featureSummary?.referenceUuid ?? featureSummary?.uuid ?? null
+      };
+    }).filter(Boolean).sort((a, b) => a.label.localeCompare(b.label, game.i18n.lang));
+    const current = options.find(option => option.active);
+    const requested = operation?.effectId;
+    const selected = options.some(option => option.id === requested) ? requested : current?.id ?? "";
+    return {
+      feature: featureSummary,
+      current: current?.label ?? "None",
+      selected,
+      options,
+      damageTypes: options.length
     };
   }
 

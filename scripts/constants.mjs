@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.9x6";
-export const MODULE_BUILD = "internal-099x6-party-groups-managed-actor-persistence-r1";
+export const MODULE_VERSION = "0.9.9x7";
+export const MODULE_BUILD = "internal-099x7-runtime-feature-maintenance-r1";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {

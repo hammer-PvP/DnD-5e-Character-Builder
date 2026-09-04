@@ -26,6 +26,8 @@ import { NativeFeatureCompatibilityService } from "./services/native-feature-com
 import { RestAccessService } from "./services/rest-access-service.mjs";
 import { PlayerSheetIntegrityService } from "./services/player-sheet-integrity-service.mjs";
 import { LevelUpReadySoundService } from "./services/level-up-ready-sound-service.mjs";
+import { WarBondManagementService } from "./services/war-bond-management-service.mjs";
+import { WarBondManagerApp } from "./apps/war-bond-manager-app.mjs";
 
 let scribeIconPromise = null;
 
@@ -67,6 +69,24 @@ Hooks.once("init", async () => {
 
   RulesAssistanceService.initialize();
   PlayerSheetIntegrityService.initialize();
+
+  // Eldritch Knight War Bond uses the source-native Bond with Weapon Activity
+  // as its capability/eligibility anchor, but replaces the incomplete native
+  // maintenance flow with Character Builder's reusable manager. Summon Weapon
+  // and every other War Bond Activity remain untouched.
+  Hooks.on("dnd5e.preUseActivity", (activity, usageConfig = {}) => {
+    if (usageConfig?.characterBuilderWarBondBypass) return;
+    if (!WarBondManagementService.matchesActivity(activity)) return;
+    const actor = activity?.actor;
+    if (!WarBondManagementService.canManage(actor)) return;
+    setTimeout(() => {
+      void WarBondManagerApp.launch(actor, {
+        featureItemId: activity?.item?.id ?? null,
+        activityId: activity?.id ?? activity?._id ?? null
+      });
+    }, 0);
+    return false;
+  });
 
   game.settings.register(MODULE_ID, "tutorialForceRevision", {
     scope: "world",
@@ -125,6 +145,7 @@ Hooks.once("init", async () => {
     claimEpicBoon: actor => EpicBoonService.claim(actor),
     openKeeper: (actor, restType = "long", config = {}) => RestManagementApp.launch(actor, restType, config),
     scribeSpell: actor => RestManagementApp.launchScribe(actor),
+    manageWarBonds: actor => WarBondManagerApp.launch(actor),
     reconcileRulesAssistance: actor => RulesAssistanceService.reconcileActor(actor),
     rulesAssistanceDiagnostics: actor => RulesAssistanceService.diagnostics(actor),
     rollResolutionQueue: SharedRollResolutionQueueService.api(),

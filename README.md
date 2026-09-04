@@ -57,7 +57,7 @@ Enable **Character Builder (DnD 5e)** in the world after installation.
 2. Click the gold button to create an empty character.
 3. When the GM grants a Level Up, use the Level Up arrow on the character sheet.
 4. During Short or Long Rests, complete any optional class actions shown by Character Keeper, or continue the rest without changing anything. If the world uses GM-Managed Rest Availability, the corresponding native rest button glows only after the GM grants that rest.
-5. Wizards receive a spellbook-management launcher for eligible scribing operations.
+5. Wizards receive spellbook-management assistance for eligible scribing operations and, from Wizard level 5, a Short Rest **Memorize Spell** swap inside Character Keeper. Eldritch Knights can open **Manage War Bonds** through the native Bond with Weapon Activity, and Fiend Warlocks can choose **Fiendish Resilience** through Character Keeper.
 
 <p align="center">
   <img src="docs/images/level-up-ready.png" alt="Level Up arrow available on a character sheet" width="780">
@@ -212,7 +212,16 @@ Character Keeper offers **Prepare <Class> Spells** at a Long Rest only for class
 
 Each class is isolated on a multiclass Actor. Cleric, Druid, and Paladin review their own ordinary class spell Items; Wizard reviews only level 1+ Wizard spells actually present in that Wizard's spellbook. Cantrips are outside this interface. Always Prepared and other feature-granted spells are shown as locked context and do not count against the ordinary prepared-spell limit. Wizard Savant acquisitions remain ordinary spellbook spells and therefore remain valid preparation candidates.
 
-Spell access and preparation timing are separate policies. **Ranger** still uses the full-list prepared-spell access model for ownership and numeric prepared-limit rules, but its preparation cadence is **Level Up**, so Ranger receives no Long Rest preparation action. Bard, Sorcerer, and Warlock likewise keep their Level Up preparation cadence. Special timing such as Wizard **Memorize Spell** is a separate future maintenance path and is not implemented by this Long Rest feature.
+Spell access and preparation timing are separate policies. **Ranger** still uses the full-list prepared-spell access model for ownership and numeric prepared-limit rules, but its preparation cadence is **Level Up**, so Ranger receives no Long Rest preparation action. Bard, Sorcerer, and Warlock likewise keep their Level Up preparation cadence. Wizard **Memorize Spell** is handled as its own Short Rest maintenance action: at Wizard level 5+, Character Keeper allows exactly one ordinary prepared level 1+ Wizard spell to be swapped for one other ordinary level 1+ spell already present in that Wizard spellbook. Cantrips and Always Prepared/feature-granted spells are excluded, and the total prepared count does not change.
+
+
+### Runtime Feature Maintenance
+
+Character Builder uses source-native D&D5e Items, Activities, Active Effects, and resource counters as the mechanical source of truth while supplying focused maintenance interfaces where the native lifecycle is incomplete or easy to mismanage.
+
+- **Fighter — Eldritch Knight: War Bond.** Using the native **Bond with Weapon** Activity opens **Manage War Bonds** instead of the incomplete native chat-only maintenance loop. The manager reads the feature's native bond capacity, uses the native Enchant Activity to validate and apply eligible weapon bonds, allows bonds to be broken, and reconciles `uses.spent`. If a use remains spent after its bonded weapon is no longer present, the corresponding slot is shown as **Broken Bond** so the player can replace or release it deliberately. **Summon Weapon** remains fully native. The same manager is available from Character Keeper on a Short Rest.
+- **Wizard — Memorize Spell.** On a Short Rest, eligible Wizards receive two scrollable spell lists: ordinary prepared Wizard spells and ordinary unprepared level 1+ spells already in that spellbook. Confirming requires one selection from each side and applies a strict 1-for-1 prepared-state swap after the native Short Rest completes.
+- **Warlock — Fiend Patron: Fiendish Resilience.** On a Short or Long Rest, Character Keeper presents the damage-resistance choices from the Active Effects already embedded in the source-native feature Item. Confirming leaves exactly the selected native resistance Effect enabled and disables the other Fiendish Resilience choices.
 
 ### Rest Decision Assistance
 
