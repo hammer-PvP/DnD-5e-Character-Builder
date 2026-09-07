@@ -30,6 +30,8 @@ export class EffectLifecycleService {
   static #gates = new Map();
   static #reroutes = new Set();
   static #audit = new Map();
+  static #worldTimeReconciling = false;
+  static #worldTimeQueued = false;
 
   static initialize() {
     if (this.#initialized) return;
@@ -43,6 +45,22 @@ export class EffectLifecycleService {
       } catch (error) {
         console.warn(`${MODULE_ID} | Could not normalize contextual effect lifecycle.`, error);
       }
+    });
+
+    // Foundry's World Time is the canonical clock for finite real-time effect
+    // durations. Only the active GM mutates documents; every client may observe
+    // the hook, but no duplicate expiration work is performed.
+    Hooks.on("updateWorldTime", () => {
+      this.#queueWorldTimeReconciliation("world-time-update");
+    });
+
+    // For newly created Actor effects, preserve core/native duration metadata.
+    // If Foundry did not provide an absolute expiry/start anchor, stamp only a
+    // Character Builder deadline. Existing pre-x9 effects are never guessed.
+    Hooks.on("createActiveEffect", effect => {
+      void this.#anchorNewWorldTimeEffect(effect).catch(error => {
+        console.warn(`${MODULE_ID} | Could not anchor new finite effect to World Time.`, error);
+      });
     });
 
     // Native concentration request cards can be clicked while a different
@@ -92,6 +110,61 @@ export class EffectLifecycleService {
     });
   }
 
+  static async ready() {
+    // A reload or GM handoff must catch effects whose native/core deadline was
+    // already crossed while this client was offline. No missing legacy anchor
+    // is invented here; only reliable deadlines are honored.
+    if (!this.#isActiveGM()) return;
+    await this.reconcileWorldTime({ reason: "ready", anchorMissing: false });
+  }
+
+  static async reconcileWorldTime({ reason = "manual", anchorMissing = false } = {}) {
+    if (!this.#isActiveGM() || this.#worldTimeReconciling) return { changed: false, expired: [] };
+    this.#worldTimeReconciling = true;
+    try {
+      const now = Number(game.time?.worldTime ?? 0);
+      if (!Number.isFinite(now)) return { changed: false, expired: [] };
+
+      const actors = this.#worldTimeActors();
+      const expiredRows = [];
+      for (const actor of actors) {
+        const effects = Array.from(actor?.effects ?? []);
+        if (!effects.length) continue;
+
+        const expired = effects.filter(effect => {
+          const deadline = this.#worldTimeDeadline(effect);
+          if (Number.isFinite(deadline)) return now >= deadline;
+          if (anchorMissing) void this.#anchorNewWorldTimeEffect(effect);
+          return false;
+        });
+        if (!expired.length) continue;
+
+        const concentrationExpired = expired.some(effect => this.#isConcentration(effect));
+        if (concentrationExpired && typeof actor.endConcentration === "function") {
+          await actor.endConcentration();
+          expiredRows.push({ actorUuid: actor.uuid ?? null, kind: "concentration", reason });
+        }
+
+        const remainingIds = expired
+          .filter(effect => !this.#isConcentration(effect) && actor.effects?.get?.(effect.id))
+          .map(effect => effect.id)
+          .filter(Boolean);
+        if (remainingIds.length) {
+          const names = remainingIds.map(id => actor.effects?.get?.(id)?.name ?? "Active Effect");
+          await actor.deleteEmbeddedDocuments("ActiveEffect", remainingIds, {
+            characterBuilderWorldTimeLifecycle: true,
+            characterBuilderWorldTimeReason: reason,
+            worldTime: now
+          });
+          names.forEach(name => expiredRows.push({ actorUuid: actor.uuid ?? null, kind: "effect", name, reason }));
+        }
+      }
+      return { changed: expiredRows.length > 0, expired: expiredRows };
+    } finally {
+      this.#worldTimeReconciling = false;
+    }
+  }
+
   static enabled() {
     return RulesAssistanceSettingsService.ruleEnabled(RULE_ID);
   }
@@ -106,7 +179,8 @@ export class EffectLifecycleService {
     anchorUuid = null,
     controllerUuid = null,
     sourceUuid = null,
-    termination = null
+    termination = null,
+    restType = null
   } = {}) {
     const data = foundry.utils.deepClone(effectData ?? {});
     const lifecycle = {
@@ -114,7 +188,8 @@ export class EffectLifecycleService {
       anchorUuid: anchorUuid ? String(anchorUuid) : null,
       controllerUuid: controllerUuid ? String(controllerUuid) : null,
       sourceUuid: sourceUuid ? String(sourceUuid) : null,
-      termination: String(termination ?? (mode === "concentration" ? "native-dependent" : "native"))
+      termination: String(termination ?? (mode === "concentration" ? "native-dependent" : "native")),
+      restType: restType ? String(restType) : null
     };
     foundry.utils.setProperty(data, `flags.${MODULE_ID}.${FLAG_KEY}.lifecycle`, lifecycle);
     if (lifecycle.mode === "concentration" && lifecycle.anchorUuid) {
@@ -145,6 +220,104 @@ export class EffectLifecycleService {
       ?? results?.message?.getFlag?.("dnd5e", "concentration")
       ?? null;
     return id ? actor?.effects?.get?.(id) ?? null : null;
+  }
+
+  static #queueWorldTimeReconciliation(reason) {
+    if (!this.#isActiveGM() || this.#worldTimeQueued) return;
+    this.#worldTimeQueued = true;
+    queueMicrotask(() => {
+      this.#worldTimeQueued = false;
+      void this.reconcileWorldTime({ reason, anchorMissing: false }).catch(error => {
+        console.warn(`${MODULE_ID} | World Time effect reconciliation failed.`, error);
+      });
+    });
+  }
+
+  static async #anchorNewWorldTimeEffect(effect) {
+    if (!this.#isActiveGM() || effect?.documentName !== "ActiveEffect" || effect?.parent?.documentName !== "Actor") return;
+    if (Number.isFinite(this.#worldTimeDeadline(effect))) return;
+    const seconds = this.#finiteWorldSeconds(effect);
+    if (!Number.isFinite(seconds) || seconds <= 0) return;
+    const now = Number(game.time?.worldTime ?? 0);
+    if (!Number.isFinite(now)) return;
+    await effect.setFlag(MODULE_ID, "worldTimeLifecycle", {
+      version: 1,
+      deadline: now + seconds,
+      durationSeconds: seconds,
+      anchoredAt: now
+    });
+  }
+
+  static #worldTimeDeadline(effect) {
+    if (!effect || effect.parent?.documentName !== "Actor") return null;
+    const duration = effect.duration ?? effect._source?.duration ?? {};
+
+    // Foundry 14 can expose an absolute expiry. Prefer it when numeric.
+    const expiry = Number(duration?.expiry);
+    if (Number.isFinite(expiry) && expiry > 0) return expiry;
+
+    // Legacy/core duration representation.
+    const startTime = Number(duration?.startTime ?? effect._source?.duration?.startTime);
+    const seconds = Number(duration?.seconds ?? effect._source?.duration?.seconds);
+    if (Number.isFinite(startTime) && Number.isFinite(seconds) && seconds > 0) return startTime + seconds;
+
+    // Some Foundry 14 Active Effects expose value+units instead of seconds.
+    const scalar = this.#finiteWorldSeconds(effect);
+    if (Number.isFinite(startTime) && Number.isFinite(scalar) && scalar > 0) return startTime + scalar;
+
+    const managed = effect.getFlag?.(MODULE_ID, "worldTimeLifecycle")
+      ?? effect.flags?.[MODULE_ID]?.worldTimeLifecycle
+      ?? null;
+    const managedDeadline = Number(managed?.deadline);
+    return Number.isFinite(managedDeadline) && managedDeadline > 0 ? managedDeadline : null;
+  }
+
+  static #finiteWorldSeconds(effect) {
+    const duration = effect?.duration ?? effect?._source?.duration ?? {};
+    const rounds = Number(duration?.rounds ?? effect?._source?.duration?.rounds);
+    const turns = Number(duration?.turns ?? effect?._source?.duration?.turns);
+    if ((Number.isFinite(rounds) && rounds > 0) || (Number.isFinite(turns) && turns > 0)) return null;
+
+    const seconds = Number(duration?.seconds ?? effect?._source?.duration?.seconds);
+    if (Number.isFinite(seconds) && seconds > 0) return seconds;
+
+    const value = Number(duration?.value ?? effect?._source?.duration?.value);
+    if (!Number.isFinite(value) || value <= 0) return null;
+    const units = String(duration?.units ?? effect?._source?.duration?.units ?? "").trim().toLowerCase();
+    const multipliers = {
+      second: 1, seconds: 1, sec: 1, secs: 1,
+      minute: 60, minutes: 60, min: 60, mins: 60,
+      hour: 3600, hours: 3600, hr: 3600, hrs: 3600,
+      day: 86400, days: 86400,
+      month: 2592000, months: 2592000,
+      year: 31536000, years: 31536000
+    };
+    const multiplier = multipliers[units];
+    return Number.isFinite(multiplier) ? value * multiplier : null;
+  }
+
+  static #worldTimeActors() {
+    const actors = new Map();
+    const add = actor => {
+      if (!actor?.effects || !actor?.uuid) return;
+      actors.set(String(actor.uuid), actor);
+    };
+    for (const actor of game.actors ?? []) add(actor);
+    for (const scene of game.scenes ?? []) {
+      for (const token of scene.tokens ?? []) add(token.actor);
+    }
+    return [...actors.values()];
+  }
+
+  static #activeGM() {
+    const preferred = game.users?.activeGM;
+    if (preferred?.active && preferred.isGM) return preferred;
+    return game.users?.contents?.filter(user => user.active && user.isGM)
+      .sort((a, b) => String(a.id).localeCompare(String(b.id)))[0] ?? null;
+  }
+
+  static #isActiveGM() {
+    return Boolean(game.user?.isGM && this.#activeGM()?.id === game.user.id);
   }
 
   static #normalizePendingEffect(effect, data) {
@@ -386,16 +559,29 @@ export class EffectLifecycleService {
     });
   }
 
+  static #isConcentration(effect) {
+    const concentrating = globalThis.CONFIG?.DND5E?.specialStatusEffects?.CONCENTRATING
+      ?? globalThis.CONFIG?.specialStatusEffects?.CONCENTRATING
+      ?? "concentrating";
+    return Boolean(effect?.statuses?.has?.(concentrating)
+      || Array.from(effect?.statuses ?? []).includes(concentrating));
+  }
+
   static #hasConcentration(actor) {
     return this.#concentrationEffects(actor).length > 0;
   }
 
   static #concentrationEffects(actor) {
     const effects = actor?.concentration?.effects;
-    if (!effects) return [];
-    if (Array.isArray(effects)) return effects;
-    if (Array.isArray(effects.contents)) return effects.contents;
-    return [...effects];
+    if (effects) {
+      if (Array.isArray(effects) && effects.length) return effects;
+      if (Array.isArray(effects.contents) && effects.contents.length) return effects.contents;
+      try {
+        const rows = [...effects];
+        if (rows.length) return rows;
+      } catch (_error) {}
+    }
+    return Array.from(actor?.effects ?? []).filter(effect => this.#isConcentration(effect));
   }
 
   static #actorFromSpeaker(speaker) {

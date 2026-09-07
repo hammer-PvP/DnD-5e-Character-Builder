@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.9.9x9 — World-Time Lifecycle + Find Steed + Blind Checks
+
+### Effect lifecycle — World Time as the duration authority
+- Finite Actor Active Effects expressed in seconds/minutes/hours/days now expire when Foundry **World Time** reaches their reliable deadline. Large time jumps reconcile all already-expired effects immediately; real-world wall-clock time is not used.
+- Newly created finite Actor effects receive a Character Builder World-Time deadline only when Foundry did not already provide a native absolute/start-time anchor. Existing pre-x9 effects with no trustworthy anchor are preserved rather than assigned a guessed start time.
+- Finite concentration durations expire by calling the Actor's native `endConcentration()` method. D&D5e remains authoritative for dependent-effect teardown and Managed Summons continues reacting only after concentration has actually ended.
+- Round/turn durations are excluded from the World-Time manager and remain owned by Combat/turn lifecycle. Passive or indefinite effects are untouched.
+
+### Rest effect lifecycle normalization
+- Short/Long Rest cleanup no longer treats every finite-duration effect as a rest-expiring effect. A duration such as 10 hours continues through an 8-hour Long Rest with its remaining World-Time duration unless its own metadata explicitly says that a rest ends it.
+- Explicit Short-Rest and Long-Rest effect metadata is still honored. Native concentration is still ended on Long Rest, while Short Rest does not end concentration.
+
+### Paladin — Find Steed
+- Added a narrow Managed Summons source policy for **Find Steed**. A newly materialized Steed whose native synthetic Actor already has the correctly scaled maximum HP but stale base current HP is initialized with `Current HP = native Max HP`.
+- Character Builder never recalculates the Steed's maximum HP, AC, attacks, profile eligibility, or scaling, and does not copy Primal Companion's exclusive replacement policy.
+
+### Homebrew — Blind Skill & Tool Checks
+- Added **Blind Skill & Tool Checks** under Character Keeper / Homebrew settings, disabled by default. Player Skill and Tool checks preserve the full native D&D5e configuration dialog, including Advantage/Disadvantage and bonuses, then force only that roll's Chat visibility to **Blind GM**.
+- The player's global Chat roll mode is never changed. Saving Throws, attacks, damage, Initiative, spell rolls, and checks initiated by a GM remain untouched.
+
 ## 0.9.9x8 — Druid Wild Shape Stabilization
 
 ### Druid — Known Forms current-state badge

@@ -224,6 +224,7 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
       manageSpellPreparationWithKeeper: form.querySelector('[name="manageSpellPreparationWithKeeper"]')?.checked ?? true,
       halfLongRestRecoveryOnShortRest: form.querySelector('[name="halfLongRestRecoveryOnShortRest"]')?.checked ?? false,
       shortRestHomebrewCooldownMinutes,
+      blindSkillToolChecks: form.querySelector('[name="blindSkillToolChecks"]')?.checked ?? false,
       gmManagedRestAccess: form.querySelector('[name="gmManagedRestAccess"]')?.checked ?? false,
       playerSheetIntegrity: form.querySelector('[name="playerSheetIntegrity"]')?.checked ?? false,
       playerSheetIntegrityConfig,

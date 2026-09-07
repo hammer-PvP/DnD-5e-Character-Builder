@@ -245,6 +245,12 @@
                   </div>
                   <p class="hint">Eligible reserves include normal Long-Rest spell slots, Long-Rest-only Item or Activity uses, and Actor resources marked Long Rest but not Short Rest. HP, Hit Dice, temporary HP, Death Saves, Exhaustion, spell preparation, effects, consumables, daily/dawn recovery, and resources already recovered on a Short Rest are excluded. Recovery is listed in chat for auditing.</p>
 
+                  <hr>
+                  <div class="cb-settings-toggle">
+                    <label><input type="checkbox" name="blindSkillToolChecks" {{checked settings.blindSkillToolChecks}}> Blind Skill &amp; Tool Checks</label>
+                    <p class="hint"><strong>Optional immersion homebrew; disabled by default.</strong> Skill and Tool checks initiated by players keep the full native D&amp;D5e roll dialog, including Advantage, Disadvantage, abilities, and bonuses, but the final message is forced to Foundry's Blind GM visibility. The player's global Chat roll mode is never changed. Saving Throws, attacks, damage, Initiative, spell rolls, and GM-initiated checks remain untouched.</p>
+                  </div>
+
                   <p class="hint">Optional Short Rest and Long Rest reconfiguration uses native D&amp;D5e recovery, then applies only the Character Keeper choices confirmed for that rest.</p>
                 </fieldset>
 

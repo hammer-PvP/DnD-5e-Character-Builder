@@ -1,6 +1,7 @@
 import { MODULE_ID, MODULE_VERSION } from "../constants.mjs";
 import { RulesAssistanceSettingsService } from "./rules-assistance-settings-service.mjs";
 import { PrimalCompanionAssistanceService } from "./primal-companion-assistance-service.mjs";
+import { FindSteedAssistanceService } from "./find-steed-assistance-service.mjs";
 
 const RULE_ID = "managed-summons";
 const SOCKET_CHANNEL = `module.${MODULE_ID}`;
@@ -373,6 +374,7 @@ export class ManagedSummonsService {
   static #policyForActivity(activity) {
     const policies = [
       PrimalCompanionAssistanceService,
+      FindSteedAssistanceService,
       FIND_FAMILIAR_POLICY,
       MAGE_HAND_POLICY
     ];
@@ -383,6 +385,9 @@ export class ManagedSummonsService {
     const id = String(policyId ?? "");
     if (id === PrimalCompanionAssistanceService.policyId && PrimalCompanionAssistanceService.enabled()) {
       return PrimalCompanionAssistanceService;
+    }
+    if (id === FindSteedAssistanceService.policyId && FindSteedAssistanceService.enabled()) {
+      return FindSteedAssistanceService;
     }
     if (id === FIND_FAMILIAR_POLICY.policyId) return FIND_FAMILIAR_POLICY;
     if (id === MAGE_HAND_POLICY.policyId) return MAGE_HAND_POLICY;

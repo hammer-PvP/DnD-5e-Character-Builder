@@ -1,6 +1,6 @@
 # Character Builder — Complete Manual
 
-**Version:** 0.9.9x8  
+**Version:** 0.9.9x9  
 **Foundry VTT:** 14  
 **D&D5e:** 5.3.3
 
@@ -197,6 +197,12 @@ Character Validator is a secondary integrity and migration safety net, not a req
 The Validator treats Character Builder data as read-only evidence: it may consult source snapshots, progression rules, choice badges, history, provenance, and canonical enabled sources, but it does not edit Character Builder settings, compendiums, registries, templates, or runtime rules. Repairs are limited to the revised Actor and are classified as deterministic restore, metadata/state reconciliation, guided native choice replay, or review-only when provenance is ambiguous.
 
 Current validation includes structural Activity/Active Effect links, missing deterministic Advancement Items, stale copied Actor references, dependent Advancement completion, class/subclass grants, Weapon Mastery, Fighting Style, spell access/repertoire and grant ownership, malformed empty Spell placeholders, and source-accounted Traits such as skills, Expertise, saves, languages, tools, weapon/armor training, damage resistances/immunities/vulnerabilities, and condition immunities. Equipment, money, ammunition, current HP, spent spell slots, and spent resource amounts are intentionally outside scope.
+
+## Runtime Effect Lifecycle
+
+Finite real-time Active Effects use Foundry World Time for expiration. Advancing or jumping World Time past an effect deadline removes it; finite concentration ends through D&D5e's native concentration lifecycle. Round/turn effects remain Combat-owned, while explicit Short/Long Rest effects remain Rest-owned. A finite effect is not removed early merely because a Long Rest occurred.
+
+The optional **Blind Skill & Tool Checks** homebrew forces player Skill and Tool check messages to Foundry's Blind GM visibility while preserving the native roll dialog and Advantage/Disadvantage choices. GM rolls, Saving Throws, attacks, damage, Initiative, and spell rolls are unaffected.
 
 ## Character Keeper and Rest Management
 
@@ -487,7 +493,7 @@ See [LICENSE](LICENSE) for the complete license terms.
 # Settings Reference
 
 
-This reference documents every visible Character Builder setting in v0.9.9x8. Unless stated otherwise, settings are **world settings**, can be changed only by a Game Master, and do not require a server restart. Saving the settings window affects future Character Creation, Level Up, Character Keeper, or runtime-assistance operations; it does not retroactively delete character content.
+This reference documents every visible Character Builder setting in v0.9.9x9. Unless stated otherwise, settings are **world settings**, can be changed only by a Game Master, and do not require a server restart. Saving the settings window affects future Character Creation, Level Up, Character Keeper, or runtime-assistance operations; it does not retroactively delete character content.
 
 ## Splash Tutorial
 
@@ -900,7 +906,7 @@ The wrapper always continues the original call. It is used only to settle and cl
 
 ## Rest Recovery 5e
 
-Character Builder `0.9.9x8` includes an automatic compatibility adapter for the optional module **Rest Recovery 5e** (`rest-recovery`). It is not a dependency and no Character Builder setting is required.
+Character Builder `0.9.9x9` includes an automatic compatibility adapter for the optional module **Rest Recovery 5e** (`rest-recovery`). It is not a dependency and no Character Builder setting is required.
 
 Character Keeper continues to own only its staged character-maintenance choices. When it asks D&D5e to execute the actual rest, Rest Recovery may intercept `dnd5e.preShortRest` / `dnd5e.preLongRest`, open its own workflow, and return `false` from the original `actor.initiateRest()` call while it completes asynchronously. Character Builder recognizes that handoff when the module is active and waits for the same Actor's authoritative `dnd5e.restCompleted` event.
 

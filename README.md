@@ -40,6 +40,14 @@ Enable **Character Builder (DnD 5e)** in the world after installation.
 
 Complete user documentation: [Character Builder Manual](docs/Character-Builder-Manual.md).
 
+## Runtime Effect Lifecycle
+
+Character Builder uses Foundry **World Time** as the authority for finite real-time Active Effect durations. Effects with reliable seconds/minutes/hours/days deadlines expire when World Time reaches that deadline, including after a large calendar/time jump. Round and turn durations remain Combat-owned, and explicit Short/Long Rest lifecycles remain rest-owned. A Long Rest is not a generic shortcut for deleting effects whose own duration has not ended.
+
+Finite concentration durations end through D&D5e's native concentration API, allowing native dependent effects and Character Builder Managed Summons to clean up through their existing lifecycle.
+
+Optional **Blind Skill & Tool Checks** can be enabled in Character Builder Settings. Player Skill/Tool rolls keep the native roll dialog and all Advantage/Disadvantage choices, but the final message uses Foundry's Blind GM visibility without changing the user's global roll mode.
+
 ## Quick Start — Game Master
 
 1. Create or open a Player Character Actor.

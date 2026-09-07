@@ -28,6 +28,7 @@ import { PlayerSheetIntegrityService } from "./services/player-sheet-integrity-s
 import { LevelUpReadySoundService } from "./services/level-up-ready-sound-service.mjs";
 import { WarBondManagementService } from "./services/war-bond-management-service.mjs";
 import { WarBondManagerApp } from "./apps/war-bond-manager-app.mjs";
+import { BlindSkillToolCheckService } from "./services/blind-skill-tool-check-service.mjs";
 
 let scribeIconPromise = null;
 
@@ -68,6 +69,7 @@ Hooks.once("init", async () => {
 
 
   RulesAssistanceService.initialize();
+  BlindSkillToolCheckService.initialize();
   PlayerSheetIntegrityService.initialize();
 
   // Eldritch Knight War Bond uses the source-native Bond with Weapon Activity

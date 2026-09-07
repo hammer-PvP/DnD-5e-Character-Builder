@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.9x8";
-export const MODULE_BUILD = "internal-099x8-druid-wildshape-stabilization-r1";
+export const MODULE_VERSION = "0.9.9x9";
+export const MODULE_BUILD = "internal-099x9-world-time-lifecycle-steed-blind-checks-r1";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -194,6 +194,13 @@ export const RULES_ASSISTANCE_DEFINITIONS = Object.freeze([
     tag: "Source Policy"
   }),
   Object.freeze({
+    key: "paladinFindSteed",
+    ruleId: "paladin-find-steed",
+    label: "Paladin — Find Steed",
+    description: "Managed Summons policy for Find Steed: initializes a newly materialized Steed at the native derived maximum HP without changing its native formula, profile, AC, attacks, or scaling.",
+    tag: "Source Policy"
+  }),
+  Object.freeze({
     key: "healingPotionMaximumAction",
     ruleId: "healing-potion-maximum-action",
     label: "Homebrew — Healing Potion: Maximum Healing as Action",
@@ -367,6 +374,7 @@ export function defaultSettings() {
     manageSpellPreparationWithKeeper: true,
     halfLongRestRecoveryOnShortRest: false,
     shortRestHomebrewCooldownMinutes: 5,
+    blindSkillToolChecks: false,
     gmManagedRestAccess: false,
     playerSheetIntegrity: false,
     playerSheetIntegrityConfig: {
