@@ -202,6 +202,11 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     return RestSessionService.update(actor, {
       restEffectLifecycleApplied: true,
       restEffectLifecycleAppliedAt: Date.now(),
+      // Keep legacy Long Rest markers for in-flight session compatibility.
+      ...(type === "long" ? {
+        longRestLifecycleApplied: true,
+        longRestLifecycleAppliedAt: Date.now()
+      } : {}),
       restEffectLifecycleResult: {
         restType: type,
         concentrationsEnded: Number(result?.concentrationsEnded ?? 0),

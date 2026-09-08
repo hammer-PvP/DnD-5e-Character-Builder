@@ -28,6 +28,7 @@ export class RestSessionService {
       nativeRestCompleted: false,
       restDecisionPreparation: null,
       longRestLifecycleApplied: false,
+      restEffectLifecycleApplied: false,
       keeperChangesApplied: false,
       activeActionId: null,
       operations: {},

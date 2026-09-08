@@ -42,11 +42,11 @@ Complete user documentation: [Character Builder Manual](docs/Character-Builder-M
 
 ## Runtime Effect Lifecycle
 
-Character Builder uses Foundry **World Time** as the authority for finite real-time Active Effect durations. Effects with reliable seconds/minutes/hours/days deadlines expire when World Time reaches that deadline, including after a large calendar/time jump. Round and turn durations remain Combat-owned, and explicit Short/Long Rest lifecycles remain rest-owned. A Long Rest is not a generic shortcut for deleting effects whose own duration has not ended.
+Finite real-time Active Effects use Foundry v14's native **World Time / ActiveEffectRegistry** as the duration authority. Character Builder does not maintain a second timer. After Foundry marks a time-based effect expired, the module removes the expired Actor effect; expired concentration is ended through D&D5e's native concentration API so dependent effects and Managed Summons follow their existing lifecycle. Round/turn effects remain Combat-owned.
 
-Finite concentration durations end through D&D5e's native concentration API, allowing native dependent effects and Character Builder Managed Summons to clean up through their existing lifecycle.
+Short/Long Rest cleanup is explicit rather than generic: a finite-duration effect is not removed merely because a Long Rest occurred. Native D&D5e rest time advances World Time, so remaining duration naturally carries through the rest when appropriate.
 
-Optional **Blind Skill & Tool Checks** can be enabled in Character Builder Settings. Player Skill/Tool rolls keep the native roll dialog and all Advantage/Disadvantage choices, but the final message uses Foundry's Blind GM visibility without changing the user's global roll mode.
+Optional **Blind Skill & Tool Checks** can be enabled in Character Builder Settings. Player Skill/Tool rolls keep the native roll dialog and Advantage/Disadvantage choices, but the final message uses Foundry's Blind GM visibility without changing the user's global roll mode.
 
 ## Quick Start — Game Master
 

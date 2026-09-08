@@ -200,13 +200,15 @@ Current validation includes structural Activity/Active Effect links, missing det
 
 ## Runtime Effect Lifecycle
 
-Finite real-time Active Effects use Foundry World Time for expiration. Advancing or jumping World Time past an effect deadline removes it; finite concentration ends through D&D5e's native concentration lifecycle. Round/turn effects remain Combat-owned, while explicit Short/Long Rest effects remain Rest-owned. A finite effect is not removed early merely because a Long Rest occurred.
+Foundry v14's native **ActiveEffectRegistry and World Time** own finite real-time duration accounting. Character Builder does not maintain a parallel timer. When Foundry marks a seconds/minutes/hours/days/months/years Actor effect expired, Character Builder performs only post-expiry cleanup. Ordinary expired effects are removed; expired concentration is ended through D&D5e's native `endConcentration()` lifecycle so dependent effects and Managed Summons clean up normally. Round/turn effects remain owned by Combat.
 
-The optional **Blind Skill & Tool Checks** homebrew forces player Skill and Tool check messages to Foundry's Blind GM visibility while preserving the native roll dialog and Advantage/Disadvantage choices. GM rolls, Saving Throws, attacks, damage, Initiative, and spell rolls are unaffected.
+Short/Long Rest lifecycle is separate. A finite effect is not deleted simply because a rest occurs. If an effect lasts 10 hours and an 8-hour Long Rest advances World Time, it retains the remaining duration unless its own metadata explicitly says that the relevant rest ends it. Long Rest continues to end native concentration.
+
+The optional **Blind Skill & Tool Checks** homebrew forces player Skill and Tool check messages to Foundry's Blind GM visibility while preserving the native roll dialog, Advantage/Disadvantage, and bonuses. GM rolls, Saving Throws, attacks, damage, Initiative, and spell rolls are unaffected.
 
 ## Character Keeper and Rest Management
 
-After a successful native **Long Rest**, Character Keeper ends any remaining native concentration and performs a conservative transient-effect cleanup. Finite-duration/runtime effects are removed, while indefinite passive/source-derived effects and persistent conditions/custom effects are preserved unless their own data explicitly says they expire on a Long Rest.
+After a successful native **Long Rest**, Character Keeper ends any remaining native concentration and removes only effects that explicitly declare a Long-Rest lifecycle. Short Rest likewise removes only explicitly Short-Rest effects. Finite clock durations are not treated as rest expirations; D&D5e's normal rest-time World Time advancement lets those durations continue or expire naturally.
 
 
 Character Keeper opens before a Short or Long Rest only when the Actor has an optional supported action for that rest.
@@ -774,6 +776,14 @@ At least one method must remain enabled.
 - **Range:** 0–10080 whole minutes.
 - **Persistence:** The Actor stores the next eligible server timestamp, so reloading the world does not reset the cooldown.
 
+### Blind Skill & Tool Checks
+
+- **Scope:** World, GM-only.
+- **Default:** **Off**.
+- **Enabled:** Skill and Tool checks initiated by a player preserve D&D5e's native configuration dialog, including Normal/Advantage/Disadvantage, ability choice, and bonuses, but only that roll's final Chat visibility is forced to **Blind GM**.
+- **Player global roll mode:** Never changed.
+- **Unaffected:** Saving Throws, attacks, damage, Initiative, spell rolls, and checks initiated by a GM.
+
 ## Rules Automation Assistance
 
 ### Rules Automation Assistance
@@ -813,6 +823,7 @@ Each rule is enabled by default inside the saved rule set, but does nothing whil
 - **Summon Profile Level Guard:** Immediately before D&D5e calculates/consumes Activity resources, blocks a native Summon Activity when its own source-authored `level.min` / `level.max` profile restrictions leave `availableProfiles` empty at the effective spell/feature level. No slot or Item use is consumed. The rule is generic and also applies to constrained Summons invoked by native free-cast Forward Activities.
 - **Weapon Mastery Chat Assistance:** Enriches the originating weapon Attack Activity card only when D&D5e confirms a mastery option for that Actor/weapon. The mastery name is a compact native link to the official D&D5e mastery reference. Graze adds a contextual damage button after a provable miss, Cleave adds a specialized weapon-damage button that omits a positive attack-ability modifier, and Topple shows only its calculated DC. Vex, Sap, Nick, Push, and Slow are link-only. No target, distance, turn, once-per-turn, or Action Economy state is tracked.
 - **Ranger — Primal Companion:** Completes only the native summon lifecycle gaps. The finalized native synthetic Beast is materialized as a Ranger-specific linked Actor, starts at its already-derived maximum HP, inherits the Ranger Actor's ownership, and replaces that Ranger's previous companion. D&D5e remains authoritative for AC, PB, Beast's Strike, damage, effects, and maximum HP.
+- **Paladin — Find Steed:** Uses the same Managed Summons materialization layer without reimplementing the Steed stat block. A newly summoned Steed starts at D&D5e's already-derived maximum HP, and a successful recast replaces only that caster's previous Find Steed managed instance.
 - **Homebrew — Healing Potion: Maximum Healing as Action:** Disabled by default. Eligible Healing Potions keep their native Bonus Action healing and gain a Character Builder-managed Action Healing Activity that maximizes every numeric die with Foundry's native `minN` modifier. **Configure Potions** auto-recognizes official Healing Potions and lets the GM register third-party/homebrew consumables by drag-and-drop. The Assistance/Potion configuration windows are intentionally non-modal so the GM can keep them open while browsing World Items and Compendiums; only the focused Activity choice after a drop is modal when needed.
 
 ## Hit Point Advancement

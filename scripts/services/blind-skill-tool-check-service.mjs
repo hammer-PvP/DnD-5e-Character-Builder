@@ -12,10 +12,6 @@ export class BlindSkillToolCheckService {
     if (this.#initialized) return;
     this.#initialized = true;
 
-    // D&D5e calls these hooks after the native configuration dialog has built
-    // the final rolls but before evaluation/posting. This preserves normal,
-    // Advantage/Disadvantage, bonuses, alternate abilities, and every other
-    // native option while overriding only the visibility of this one message.
     Hooks.on("dnd5e.postSkillRollConfiguration", (_rolls, config, _dialog, message) => {
       this.#forceBlindForPlayer(config, message, "skill");
     });

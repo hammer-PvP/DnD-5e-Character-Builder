@@ -1,7 +1,7 @@
 {
   "id": "dnd5e-character-builder",
   "title": "Character Builder (DnD 5e)",
-  "description": "Guided D&D 5e character creation, Level Up, multiclass, Epic Boon, Character Keeper, World-Time effect lifecycle, managed summons and Find Steed materialization assistance, optional Blind Skill & Tool Checks, GM-confirmed Concentration failure resolution, native D&D5e Party/Group filtering, Character Validation, player-sheet integrity, and granular rules automation for Foundry VTT 14.",
+  "description": "Guided D&D 5e character creation, Level Up, multiclass, Epic Boon, Character Keeper, Foundry World-Time Active Effect lifecycle normalization, Managed Summons with Find Steed materialization/replacement assistance, optional Blind Skill & Tool Checks, GM-confirmed Concentration failure resolution, native D&D5e Party/Group filtering, Character Validation, player-sheet integrity, and granular rules automation for Foundry VTT 14.",
   "version": "0.9.9x9",
   "authors": [
     {
