@@ -1,6 +1,6 @@
 # Character Builder — Complete Manual
 
-**Version:** 0.9.9x9  
+**Version:** 0.9.9x10  
 **Foundry VTT:** 14  
 **D&D5e:** 5.3.3
 
@@ -198,17 +198,9 @@ The Validator treats Character Builder data as read-only evidence: it may consul
 
 Current validation includes structural Activity/Active Effect links, missing deterministic Advancement Items, stale copied Actor references, dependent Advancement completion, class/subclass grants, Weapon Mastery, Fighting Style, spell access/repertoire and grant ownership, malformed empty Spell placeholders, and source-accounted Traits such as skills, Expertise, saves, languages, tools, weapon/armor training, damage resistances/immunities/vulnerabilities, and condition immunities. Equipment, money, ammunition, current HP, spent spell slots, and spent resource amounts are intentionally outside scope.
 
-## Runtime Effect Lifecycle
-
-Foundry v14's native **ActiveEffectRegistry and World Time** own finite real-time duration accounting. Character Builder does not maintain a parallel timer. When Foundry marks a seconds/minutes/hours/days/months/years Actor effect expired, Character Builder performs only post-expiry cleanup. Ordinary expired effects are removed; expired concentration is ended through D&D5e's native `endConcentration()` lifecycle so dependent effects and Managed Summons clean up normally. Round/turn effects remain owned by Combat.
-
-Short/Long Rest lifecycle is separate. A finite effect is not deleted simply because a rest occurs. If an effect lasts 10 hours and an 8-hour Long Rest advances World Time, it retains the remaining duration unless its own metadata explicitly says that the relevant rest ends it. Long Rest continues to end native concentration.
-
-The optional **Blind Skill & Tool Checks** homebrew forces player Skill and Tool check messages to Foundry's Blind GM visibility while preserving the native roll dialog, Advantage/Disadvantage, and bonuses. GM rolls, Saving Throws, attacks, damage, Initiative, and spell rolls are unaffected.
-
 ## Character Keeper and Rest Management
 
-After a successful native **Long Rest**, Character Keeper ends any remaining native concentration and removes only effects that explicitly declare a Long-Rest lifecycle. Short Rest likewise removes only explicitly Short-Rest effects. Finite clock durations are not treated as rest expirations; D&D5e's normal rest-time World Time advancement lets those durations continue or expire naturally.
+After a successful native **Long Rest**, Character Keeper ends any remaining native concentration and performs a conservative transient-effect cleanup. Finite-duration/runtime effects are removed, while indefinite passive/source-derived effects and persistent conditions/custom effects are preserved unless their own data explicitly says they expire on a Long Rest.
 
 
 Character Keeper opens before a Short or Long Rest only when the Actor has an optional supported action for that rest.
@@ -350,7 +342,9 @@ Character Builder also exposes a versioned **Resource Consumption Event** after 
 
 **Concentration & Dependent Effects** keeps D&D5e authoritative for concentration documents and target-effect cleanup. A Concentration roll is kept pending until the shared post-roll queue reaches its final total, including Character Builder and Item-origin providers. If the final result still fails, Character Builder leaves concentration active and posts a GM decision card in Chat. **Keep Concentration** preserves the current state; **Drop Concentration** calls the native `Actor.endConcentration()` API, after which D&D5e removes dependent effects normally. Character Builder also corrects the native concentration-request edge case where clicking a whispered DC request while another non-concentrating Actor is targeted would otherwise roll that wrong Actor. Non-concentration effects remain unaffected.
 
-**Managed Summons** runs after native D&D5e Summon Activities and materializes finalized summons as linked managed Actors without changing native summon count, placement, profiles, attacks, AC, PB, damage, or concentration rules. Managed Actors inherit ownership from the summoning Actor, may be organized in per-character `<FirstName> - Companions` folders, and are tracked by summoner, source, and summon instance. Source policies can add lifecycle rules such as the Ranger Primal Companion's exclusive active companion. Concentration-bound managed summons are cleaned up only after D&D5e confirms that concentration has actually ended.
+**Effect Duration Lifecycle** follows one authority per timing model. Foundry VTT 14's native ActiveEffect registry owns finite durations expressed in real game time (seconds, minutes, hours, days) and evaluates them against World Time, including large time jumps. Character Builder does not delete those effects a second time. Short/Long Rest cleanup is reserved for effects whose own lifecycle explicitly names that rest; a finite effect does not end early merely because a rest occurred. Round/turn timing remains combat-owned, and indefinite/passive effects are preserved.
+
+**Managed Summons** runs after native D&D5e Summon Activities and materializes finalized summons as linked managed Actors without changing native summon count, placement, profiles, attacks, AC, PB, damage, or concentration rules. Managed Actors inherit ownership from the summoning Actor, may be organized in per-character `<FirstName> - Companions` folders, and are tracked by summoner, source, and summon instance. Source policies include the Ranger Primal Companion and Paladin Find Steed as exclusive per-caster/source instances. A newly materialized Find Steed starts at D&D5e's already-derived maximum HP. Concentration-bound managed summons are cleaned only after concentration is confirmed ended; this includes direct deletion of the concentrating Active Effect by Foundry VTT 14's native World-Time expiration registry.
 
 
 **Temporary Transformation Actor Cleanup** completes the native D&D5e revert lifecycle when a player, rather than a GM, cancels a transformation. After D&D5e has restored the original character/token state, the active GM removes only temporary Actor documents whose native transformation flags prove they belong to that original Actor's transformation chain. The cleanup is generic to native transformations and never identifies Actors by creature name, type, folder, or ownership. Original character Actors and source-form Actors are never deleted by this rule.
@@ -495,7 +489,7 @@ See [LICENSE](LICENSE) for the complete license terms.
 # Settings Reference
 
 
-This reference documents every visible Character Builder setting in v0.9.9x9. Unless stated otherwise, settings are **world settings**, can be changed only by a Game Master, and do not require a server restart. Saving the settings window affects future Character Creation, Level Up, Character Keeper, or runtime-assistance operations; it does not retroactively delete character content.
+This reference documents every visible Character Builder setting in v0.9.9x10. Unless stated otherwise, settings are **world settings**, can be changed only by a Game Master, and do not require a server restart. Saving the settings window affects future Character Creation, Level Up, Character Keeper, or runtime-assistance operations; it does not retroactively delete character content.
 
 ## Splash Tutorial
 
@@ -776,14 +770,6 @@ At least one method must remain enabled.
 - **Range:** 0–10080 whole minutes.
 - **Persistence:** The Actor stores the next eligible server timestamp, so reloading the world does not reset the cooldown.
 
-### Blind Skill & Tool Checks
-
-- **Scope:** World, GM-only.
-- **Default:** **Off**.
-- **Enabled:** Skill and Tool checks initiated by a player preserve D&D5e's native configuration dialog, including Normal/Advantage/Disadvantage, ability choice, and bonuses, but only that roll's final Chat visibility is forced to **Blind GM**.
-- **Player global roll mode:** Never changed.
-- **Unaffected:** Saving Throws, attacks, damage, Initiative, spell rolls, and checks initiated by a GM.
-
 ## Rules Automation Assistance
 
 ### Rules Automation Assistance
@@ -818,13 +804,23 @@ Each rule is enabled by default inside the saved rule set, but does nothing whil
 - **Concentration & Dependent Effects:** After all Character/Item post-roll providers resolve, a final failed Concentration save does **not** immediately end concentration. Character Builder posts a GM-only decision in Chat. **Keep Concentration** preserves the effect; **Drop Concentration** calls native `Actor.endConcentration()`, after which D&D5e handles dependent effects normally. A post-roll bonus that turns the save into a success never creates the decision card.
 - **Temporary Transformation Actor Cleanup:** After a player completes a native transformation revert, asks the active GM to remove only temporary Actor documents proven by D&D5e transformation flags to belong to that chain.
 - **Druid — Wild Shape Restore Lifecycle:** On native Wild Shape restore, clears remaining Wild Shape Temporary HP before the original Actor receives preserved state. If native damage reduces the transformed Druid's real HP to 0, invokes D&D5e's own Restore Transformation. Temporary HP reaching 0 by itself does not end Wild Shape.
-- **Managed Summons:** Materializes native D&D5e summons as linked managed Actors after `dnd5e.postSummon`, inherits ownership from the summoning Actor, preserves the native number of summons, and tracks each native summon invocation as one summon instance. The Ranger Primal Companion rule acts as a source-specific exclusive-companion policy. Concentration-linked summons are cleaned only after native concentration actually ends.
+- **Managed Summons:** Materializes native D&D5e summons as linked managed Actors after `dnd5e.postSummon`, inherits ownership from the summoning Actor, preserves the native number of summons, and tracks each native summon invocation as one summon instance. The Ranger Primal Companion and Paladin Find Steed rules act as source-specific exclusive policies. Concentration-linked summons are cleaned only after the concentrating Active Effect is confirmed gone, including native World-Time expiry.
 - **Managed Summons — Organize Companion Actors in Folders:** Stores managed summon Actors in a per-summoner Actor folder named `<FirstName> - Companions`. Disable this option to keep managed Actors at the Actor Directory root.
 - **Summon Profile Level Guard:** Immediately before D&D5e calculates/consumes Activity resources, blocks a native Summon Activity when its own source-authored `level.min` / `level.max` profile restrictions leave `availableProfiles` empty at the effective spell/feature level. No slot or Item use is consumed. The rule is generic and also applies to constrained Summons invoked by native free-cast Forward Activities.
 - **Weapon Mastery Chat Assistance:** Enriches the originating weapon Attack Activity card only when D&D5e confirms a mastery option for that Actor/weapon. The mastery name is a compact native link to the official D&D5e mastery reference. Graze adds a contextual damage button after a provable miss, Cleave adds a specialized weapon-damage button that omits a positive attack-ability modifier, and Topple shows only its calculated DC. Vex, Sap, Nick, Push, and Slow are link-only. No target, distance, turn, once-per-turn, or Action Economy state is tracked.
 - **Ranger — Primal Companion:** Completes only the native summon lifecycle gaps. The finalized native synthetic Beast is materialized as a Ranger-specific linked Actor, starts at its already-derived maximum HP, inherits the Ranger Actor's ownership, and replaces that Ranger's previous companion. D&D5e remains authoritative for AC, PB, Beast's Strike, damage, effects, and maximum HP.
-- **Paladin — Find Steed:** Uses the same Managed Summons materialization layer without reimplementing the Steed stat block. A newly summoned Steed starts at D&D5e's already-derived maximum HP, and a successful recast replaces only that caster's previous Find Steed managed instance.
+- **Paladin — Find Steed:** Completes only the native materialization/lifecycle gaps. The finalized native Steed starts at D&D5e's already-derived maximum HP and a successful new Find Steed replaces that caster's previous managed Find Steed instance. Profile eligibility, AC, attacks, maximum HP, and scaling remain native.
 - **Homebrew — Healing Potion: Maximum Healing as Action:** Disabled by default. Eligible Healing Potions keep their native Bonus Action healing and gain a Character Builder-managed Action Healing Activity that maximizes every numeric die with Foundry's native `minN` modifier. **Configure Potions** auto-recognizes official Healing Potions and lets the GM register third-party/homebrew consumables by drag-and-drop. The Assistance/Potion configuration windows are intentionally non-modal so the GM can keep them open while browsing World Items and Compendiums; only the focused Activity choice after a drop is modal when needed.
+
+## Resources & Homebrew — Blind Skill & Tool Checks
+
+- **Scope:** World, GM-only.
+- **Default:** **Off**.
+- **Enabled:** Skill and Tool checks initiated by non-GM users keep the complete native D&D5e roll configuration, including Normal/Advantage/Disadvantage, abilities, and bonuses, but the final Chat message is forced to Foundry's **Blind GM** visibility.
+- **Player visibility:** The player sees the blind/unknown result presentation and does not receive the numerical roll total.
+- **GM visibility:** GMs receive the complete roll result.
+- **Not affected:** Saving Throws, attacks, damage, Initiative, spell rolls, and checks initiated by a GM.
+- **Global Roll Mode:** Character Builder never changes the user's global Chat roll-mode selection; the override is per eligible roll only.
 
 ## Hit Point Advancement
 
@@ -917,7 +913,7 @@ The wrapper always continues the original call. It is used only to settle and cl
 
 ## Rest Recovery 5e
 
-Character Builder `0.9.9x9` includes an automatic compatibility adapter for the optional module **Rest Recovery 5e** (`rest-recovery`). It is not a dependency and no Character Builder setting is required.
+Character Builder `0.9.9x10` includes an automatic compatibility adapter for the optional module **Rest Recovery 5e** (`rest-recovery`). It is not a dependency and no Character Builder setting is required.
 
 Character Keeper continues to own only its staged character-maintenance choices. When it asks D&D5e to execute the actual rest, Rest Recovery may intercept `dnd5e.preShortRest` / `dnd5e.preLongRest`, open its own workflow, and return `false` from the original `actor.initiateRest()` call while it completes asynchronously. Character Builder recognizes that handoff when the module is active and waits for the same Actor's authoritative `dnd5e.restCompleted` event.
 

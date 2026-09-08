@@ -40,14 +40,6 @@ Enable **Character Builder (DnD 5e)** in the world after installation.
 
 Complete user documentation: [Character Builder Manual](docs/Character-Builder-Manual.md).
 
-## Runtime Effect Lifecycle
-
-Finite real-time Active Effects use Foundry v14's native **World Time / ActiveEffectRegistry** as the duration authority. Character Builder does not maintain a second timer. After Foundry marks a time-based effect expired, the module removes the expired Actor effect; expired concentration is ended through D&D5e's native concentration API so dependent effects and Managed Summons follow their existing lifecycle. Round/turn effects remain Combat-owned.
-
-Short/Long Rest cleanup is explicit rather than generic: a finite-duration effect is not removed merely because a Long Rest occurred. Native D&D5e rest time advances World Time, so remaining duration naturally carries through the rest when appropriate.
-
-Optional **Blind Skill & Tool Checks** can be enabled in Character Builder Settings. Player Skill/Tool rolls keep the native roll dialog and Advantage/Disadvantage choices, but the final message uses Foundry's Blind GM visibility without changing the user's global roll mode.
-
 ## Quick Start — Game Master
 
 1. Create or open a Player Character Actor.
@@ -198,7 +190,7 @@ Current validation includes structural Activity/Active Effect links, missing det
 
 ## Character Keeper and Rest Management
 
-After a successful native **Long Rest**, Character Keeper ends any remaining native concentration and performs a conservative transient-effect cleanup. Finite-duration/runtime effects are removed, while indefinite passive/source-derived effects and persistent conditions/custom effects are preserved unless their own data explicitly says they expire on a Long Rest.
+After a successful native **Long Rest**, Character Keeper still ends any remaining native concentration, but finite-duration effects are no longer treated as generic Long-Rest cleanup. Foundry VTT 14's native ActiveEffect registry owns seconds/minutes/hours/days against World Time; Character Builder removes an effect at Short/Long Rest only when that rest lifecycle is explicitly declared. A finite 10-hour effect therefore survives an 8-hour Long Rest with its remaining duration.
 
 
 Character Keeper opens before a Short or Long Rest only when the Actor has an optional supported action for that rest.
@@ -284,6 +276,8 @@ After one native Short Rest completes, the optional layer restores `floor(maximu
 
 The separate **Short Rest Homebrew Cooldown** setting uses Foundry server time and defaults to 5 minutes. It restricts only the additional homebrew recovery; the native Short Rest always continues normally. A value of 0 permits the homebrew layer on every completed Short Rest while transaction locks and rest-session idempotency still prevent duplicate clicks. Every applied recovery, cooldown result, or no-resource result is written to chat for auditing.
 
+**Blind Skill & Tool Checks** is an optional immersion homebrew. For non-GM users, native Skill and Tool roll configuration remains unchanged, but the final Chat message is forced to Foundry's Blind GM visibility on that one roll. Saving Throws, attacks, damage, Initiative, spell rolls, and the player's global Chat roll mode are untouched.
+
 <p align="center">
   <img src="assets/tutorial/rest-management.png" alt="Character Keeper optional Long Rest action" width="780">
 </p>
@@ -340,7 +334,7 @@ Character Builder also exposes a versioned **Resource Consumption Event** after 
 
 **Concentration & Dependent Effects** keeps D&D5e authoritative for concentration documents and target-effect cleanup. A Concentration roll is kept pending until the shared post-roll queue reaches its final total, including Character Builder and Item-origin providers. If the final result still fails, Character Builder leaves concentration active and posts a GM decision card in Chat. **Keep Concentration** preserves the current state; **Drop Concentration** calls the native `Actor.endConcentration()` API, after which D&D5e removes dependent effects normally. Character Builder also corrects the native concentration-request edge case where clicking a whispered DC request while another non-concentrating Actor is targeted would otherwise roll that wrong Actor. Non-concentration effects remain unaffected.
 
-**Managed Summons** runs after native D&D5e Summon Activities and materializes finalized summons as linked managed Actors without changing native summon count, placement, profiles, attacks, AC, PB, damage, or concentration rules. Managed Actors inherit ownership from the summoning Actor, may be organized in per-character `<FirstName> - Companions` folders, and are tracked by summoner, source, and summon instance. Source policies can add lifecycle rules such as the Ranger Primal Companion's exclusive active companion. Concentration-bound managed summons are cleaned up only after D&D5e confirms that concentration has actually ended.
+**Managed Summons** runs after native D&D5e Summon Activities and materializes finalized summons as linked managed Actors without changing native summon count, placement, profiles, attacks, AC, PB, damage, or concentration rules. Managed Actors inherit ownership from the summoning Actor, may be organized in per-character `<FirstName> - Companions` folders, and are tracked by summoner, source, and summon instance. Source policies include the Ranger Primal Companion and Paladin Find Steed as exclusive per-caster/source instances; Find Steed also initializes fresh current HP to D&D5e's already-derived maximum. Concentration-bound managed summons are cleaned only after the concentrating Active Effect is confirmed ended, including native World-Time expiry.
 
 
 **Temporary Transformation Actor Cleanup** completes the native D&D5e revert lifecycle when a player, rather than a GM, cancels a transformation. After D&D5e has restored the original character/token state, the active GM removes only temporary Actor documents whose native transformation flags prove they belong to that original Actor's transformation chain. The cleanup is generic to native transformations and never identifies Actors by creature name, type, folder, or ownership. Original character Actors and source-form Actors are never deleted by this rule.

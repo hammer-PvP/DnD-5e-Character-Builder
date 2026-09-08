@@ -64,6 +64,7 @@ export class ManagedSummonsService {
   static #socketReady = false;
   static #executing = new Set();
   static #cleaning = new Set();
+  static #confirmedConcentrationEnds = new Set();
 
   static initialize() {
     if (this.#initialized) return;
@@ -79,11 +80,19 @@ export class ManagedSummonsService {
     // Managed Summons never decides that Concentration has ended. It reacts
     // only to D&D5e's canonical post-end hook after the effect is truly gone.
     Hooks.on("dnd5e.endConcentration", (_actor, effect) => {
-      const concentrationUuid = effect?.uuid;
-      if (!concentrationUuid || !this.enabled()) return;
-      void this.#requestConcentrationCleanup(concentrationUuid).catch(error => {
-        console.warn(`${MODULE_ID} | Managed Summons concentration cleanup request failed.`, error);
-      });
+      this.#onConfirmedConcentrationEnd(effect, "dnd5e.endConcentration");
+    });
+
+    // Foundry v14's ActiveEffectRegistry owns finite World-Time expiry. When
+    // it deletes a concentration effect directly, D&D5e's endConcentration()
+    // method is intentionally not called. This post-delete hook is therefore
+    // a confirmation bridge only: Character Builder never deletes or expires
+    // the effect itself, it merely lets Managed Summons react after the
+    // concentrating ActiveEffect is already gone.
+    Hooks.on("deleteActiveEffect", (effect, _options, userId) => {
+      if (userId !== game.user?.id) return;
+      if (!this.#isConcentrationEffect(effect)) return;
+      this.#onConfirmedConcentrationEnd(effect, "deleteActiveEffect");
     });
 
     // Token presence is not summon existence. Manual Scene deletion, Scene cleanup,
@@ -324,6 +333,27 @@ export class ManagedSummonsService {
         summonerActorId: summoner.id
       });
     }
+  }
+
+  static #onConfirmedConcentrationEnd(effect, source) {
+    const concentrationUuid = String(effect?.uuid ?? "");
+    if (!concentrationUuid || !this.enabled() || !this.#isConcentrationEffect(effect)) return;
+    if (this.#confirmedConcentrationEnds.has(concentrationUuid)) return;
+    this.#confirmedConcentrationEnds.add(concentrationUuid);
+    setTimeout(() => this.#confirmedConcentrationEnds.delete(concentrationUuid), 2500);
+
+    void this.#requestConcentrationCleanup(concentrationUuid).catch(error => {
+      console.warn(`${MODULE_ID} | Managed Summons concentration cleanup request failed after ${source}.`, error);
+    });
+  }
+
+  static #isConcentrationEffect(effect) {
+    const concentrating = CONFIG.DND5E?.specialStatusEffects?.CONCENTRATING
+      ?? CONFIG.specialStatusEffects?.CONCENTRATING
+      ?? "concentrating";
+    return Boolean(effect?.documentName === "ActiveEffect"
+      && (effect.statuses?.has?.(concentrating)
+        || Array.from(effect.statuses ?? []).includes(concentrating)));
   }
 
   static async #requestConcentrationCleanup(concentrationUuid) {

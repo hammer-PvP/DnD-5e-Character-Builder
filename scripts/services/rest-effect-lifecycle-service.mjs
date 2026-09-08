@@ -3,12 +3,12 @@ import { MODULE_ID } from "../constants.mjs";
 /**
  * Explicit rest-timed Active Effect cleanup.
  *
- * Foundry v14's ActiveEffectRegistry owns finite clock durations and D&D5e's
- * rest workflow advances World Time. This service therefore never treats a
- * finite duration as proof that a rest should end an effect. It handles only
- * explicit Short/Long Rest lifecycle declarations. Long Rest also preserves
- * the previously validated Character Builder behavior of ending concentration
- * through Actor#endConcentration().
+ * Foundry v14's ActiveEffectRegistry is the sole authority for finite clock
+ * durations and D&D5e's rest workflow advances World Time. This service never
+ * treats a finite duration as proof that a rest should end an effect. It
+ * handles only explicit Short/Long Rest lifecycle declarations. Long Rest also
+ * preserves Character Builder's validated behavior of ending concentration via
+ * Actor#endConcentration().
  */
 export class RestEffectLifecycleService {
   static async apply(actor, { restType = "long", reason = "rest" } = {}) {
@@ -35,16 +35,29 @@ export class RestEffectLifecycleService {
       }
     }
 
-    const removable = Array.from(actor.effects ?? []).filter(effect => this.#expiresOnRest(effect, type));
-    const ids = removable.map(effect => effect.id).filter(Boolean);
-    if (ids.length) {
-      await actor.deleteEmbeddedDocuments("ActiveEffect", ids, {
-        characterBuilderRestEffectLifecycle: true,
-        characterBuilderRestType: type,
-        characterBuilderRestReason: reason
-      });
-      result.effectsRemoved = removable.map(effect => ({ id: effect.id, name: effect.name ?? "Active Effect" }));
-      result.changed = true;
+    // Resolve each document live immediately before deletion. Rest cleanup is
+    // not allowed to race the v14 ActiveEffectRegistry if World Time advanced
+    // during the native rest and already removed an effect.
+    const candidates = Array.from(actor.effects ?? []).filter(effect => this.#expiresOnRest(effect, type));
+    for (const candidate of candidates) {
+      const live = actor.effects?.get?.(candidate.id) ?? null;
+      if (!live || !this.#expiresOnRest(live, type)) continue;
+      try {
+        await live.delete({
+          characterBuilderRestEffectLifecycle: true,
+          characterBuilderRestType: type,
+          characterBuilderRestReason: reason
+        });
+        result.effectsRemoved.push({ id: candidate.id, name: candidate.name ?? "Active Effect" });
+        result.changed = true;
+      } catch (error) {
+        // If the native registry won the race after our live lookup, the
+        // desired state is already achieved. Suppress only the missing-doc
+        // case; surface every other failure.
+        const message = String(error?.message ?? error ?? "");
+        const missing = /ActiveEffect .*does not exist|does not exist in the EmbeddedCollection/i.test(message);
+        if (!missing) throw error;
+      }
     }
 
     return result;
@@ -63,7 +76,9 @@ export class RestEffectLifecycleService {
       if (this.#matchesRestText(declared, restType)) return true;
     }
 
-    // v14-native duration.expiry is an event identifier, not a timestamp.
+    // duration.expiry in Foundry v14 is an event identifier, not a deadline.
+    // Reading _source avoids compatibility shims and never touches legacy
+    // duration.seconds/rounds/turns/startTime fields.
     const duration = effect._source?.duration ?? {};
     const candidates = [
       effect.getFlag?.(MODULE_ID, "expiresOn"),

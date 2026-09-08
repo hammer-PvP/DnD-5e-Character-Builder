@@ -30,7 +30,6 @@ export class EffectLifecycleService {
   static #gates = new Map();
   static #reroutes = new Set();
   static #audit = new Map();
-  static #expiryFinalizing = new Set();
 
   static initialize() {
     if (this.#initialized) return;
@@ -43,19 +42,6 @@ export class EffectLifecycleService {
         this.#normalizePendingEffect(effect, data);
       } catch (error) {
         console.warn(`${MODULE_ID} | Could not normalize contextual effect lifecycle.`, error);
-      }
-    });
-
-    // Foundry v14's ActiveEffectRegistry is the sole authority for finite
-    // World-Time duration accounting. It marks duration.expired only after its
-    // own refresh/update completes. Character Builder reacts afterwards: it
-    // removes ordinary expired Actor effects for clean state, and routes an
-    // expired concentration effect through D&D5e's native endConcentration().
-    Hooks.on("updateActiveEffect", (effect, changed) => {
-      try {
-        this.#queueNativeExpiredEffectFinalization(effect, changed);
-      } catch (error) {
-        console.warn(`${MODULE_ID} | Could not finalize a native expired Active Effect.`, error);
       }
     });
 
@@ -104,17 +90,6 @@ export class EffectLifecycleService {
         console.warn(`${MODULE_ID} | Final concentration lifecycle action failed.`, error);
       });
     });
-  }
-
-  static async ready() {
-    if (!this.#isActiveGM()) return;
-    for (const actor of this.#worldActors()) {
-      for (const effect of Array.from(actor.effects ?? [])) {
-        if (this.#isWorldTimeDuration(effect) && effect.duration?.expired === true) {
-          this.#queueNativeExpiredEffectFinalization(effect, { duration: { expired: true } });
-        }
-      }
-    }
   }
 
   static enabled() {
@@ -172,77 +147,6 @@ export class EffectLifecycleService {
       ?? results?.message?.getFlag?.("dnd5e", "concentration")
       ?? null;
     return id ? actor?.effects?.get?.(id) ?? null : null;
-  }
-
-  static #queueNativeExpiredEffectFinalization(effect, changed) {
-    if (!this.#isActiveGM()) return;
-    if (effect?.documentName !== "ActiveEffect" || effect?.parent?.documentName !== "Actor") return;
-    if (!this.#isWorldTimeDuration(effect)) return;
-
-    const changedExpired = foundry.utils.getProperty(changed, "duration.expired");
-    if (changedExpired !== true && effect.duration?.expired !== true) return;
-
-    const key = String(effect.uuid ?? `${effect.parent.uuid}.${effect.id}`);
-    if (!key || this.#expiryFinalizing.has(key)) return;
-    this.#expiryFinalizing.add(key);
-
-    // Defer until the ActiveEffectRegistry's batch update has fully completed.
-    setTimeout(() => {
-      void this.#finalizeNativeExpiredEffect(effect).catch(error => {
-        console.warn(`${MODULE_ID} | Native expired-effect finalization failed.`, error);
-      }).finally(() => this.#expiryFinalizing.delete(key));
-    }, 0);
-  }
-
-  static async #finalizeNativeExpiredEffect(effect) {
-    if (!this.#isActiveGM()) return;
-    const actor = effect?.parent;
-    if (actor?.documentName !== "Actor" || !effect?.id) return;
-    const live = actor.effects?.get?.(effect.id) ?? null;
-    if (!live || live.duration?.expired !== true || !this.#isWorldTimeDuration(live)) return;
-
-    if (this.#isConcentration(live) && typeof actor.endConcentration === "function") {
-      // This preserves D&D5e's dnd5e.endConcentration hook and therefore the
-      // existing Managed Summons cleanup cascade.
-      await actor.endConcentration(live);
-      return;
-    }
-
-    // Core has already decided that the effect expired. Deleting now only
-    // clears the expired document/icon; it does not perform duration math.
-    await live.delete({
-      characterBuilderNativeExpiryCleanup: true,
-      characterBuilderNativeExpiryWorldTime: Number(game.time?.worldTime ?? 0)
-    });
-  }
-
-  static #isWorldTimeDuration(effect) {
-    const duration = effect?._source?.duration ?? {};
-    const value = Number(duration?.value);
-    if (!Number.isFinite(value) || value <= 0) return false;
-    const units = String(duration?.units ?? "").toLowerCase();
-    return new Set(["years", "months", "days", "hours", "minutes", "seconds"]).has(units);
-  }
-
-  static #worldActors() {
-    const actors = new Map();
-    const add = actor => {
-      if (actor?.documentName === "Actor" && actor?.uuid && actor?.effects) actors.set(String(actor.uuid), actor);
-    };
-    for (const actor of game.actors ?? []) add(actor);
-    for (const scene of game.scenes ?? []) for (const token of scene.tokens ?? []) add(token.actor);
-    return [...actors.values()];
-  }
-
-  static #activeGM() {
-    const preferred = game.users?.activeGM;
-    if (preferred?.active && preferred.isGM) return preferred;
-    return game.users?.contents?.filter(user => user.active && user.isGM)
-      .sort((a, b) => String(a.id).localeCompare(String(b.id)))[0] ?? null;
-  }
-
-  static #isActiveGM() {
-    return Boolean(game.user?.isGM && this.#activeGM()?.id === game.user.id);
   }
 
   static #normalizePendingEffect(effect, data) {
@@ -484,29 +388,16 @@ export class EffectLifecycleService {
     });
   }
 
-  static #isConcentration(effect) {
-    const concentrating = globalThis.CONFIG?.DND5E?.specialStatusEffects?.CONCENTRATING
-      ?? globalThis.CONFIG?.specialStatusEffects?.CONCENTRATING
-      ?? "concentrating";
-    return Boolean(effect?.statuses?.has?.(concentrating)
-      || Array.from(effect?.statuses ?? []).includes(concentrating));
-  }
-
   static #hasConcentration(actor) {
     return this.#concentrationEffects(actor).length > 0;
   }
 
   static #concentrationEffects(actor) {
     const effects = actor?.concentration?.effects;
-    if (effects) {
-      if (Array.isArray(effects) && effects.length) return effects;
-      if (Array.isArray(effects.contents) && effects.contents.length) return effects.contents;
-      try {
-        const rows = [...effects];
-        if (rows.length) return rows;
-      } catch (_error) {}
-    }
-    return Array.from(actor?.effects ?? []).filter(effect => this.#isConcentration(effect));
+    if (!effects) return [];
+    if (Array.isArray(effects)) return effects;
+    if (Array.isArray(effects.contents)) return effects.contents;
+    return [...effects];
   }
 
   static #actorFromSpeaker(speaker) {

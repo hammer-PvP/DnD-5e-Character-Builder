@@ -74,7 +74,6 @@ export class RulesAssistanceService {
   }
 
   static async ready() {
-    await EffectLifecycleService.ready();
     await AgonizingBlastBindingService.ready();
     await MageArmorAssistanceService.ready();
     await BardicInspirationAssistanceService.ready();

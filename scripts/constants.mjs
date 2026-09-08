@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.9x9";
-export const MODULE_BUILD = "internal-099x9-runtime-lifecycle-rebuild-r1";
+export const MODULE_VERSION = "0.9.9x10";
+export const MODULE_BUILD = "internal-099x10-world-time-native-lifecycle-r1";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {

@@ -1,23 +1,19 @@
 # Changelog
 
-## 0.9.9x9 — Native World-Time Lifecycle + Find Steed + Blind Checks
+## 0.9.9x10 — Native World-Time Lifecycle + Find Steed Completion
 
-### Active Effects — Foundry v14 World-Time authority
-- Standardized finite real-time Actor effects around Foundry v14's native `ActiveEffectRegistry`. Character Builder no longer calculates parallel deadlines or deletes effects while the registry is still refreshing. Seconds/minutes/hours/days/months/years expire from native World Time, including large clock jumps and time advanced by rests.
-- After Foundry has authoritatively marked a finite World-Time effect expired, Character Builder performs only final cleanup: ordinary expired Actor effects are removed after the registry batch completes, while expired concentration is routed through native `Actor#endConcentration()` so D&D5e dependent effects and Managed Summons receive their normal lifecycle hooks.
-- The implementation uses only the Foundry v14 duration schema (`start.time`, `duration.value`, `duration.units`, `duration.expired`); deprecated `duration.startTime`, `seconds`, `rounds`, and `turns` compatibility accessors are not used. Round/turn effects remain Combat-owned.
-
-### Rest effect lifecycle normalization
-- Short/Long Rest cleanup now removes only effects whose own lifecycle explicitly names that rest. A finite clock duration alone is never interpreted as a Long-Rest expiry.
-- Because native D&D5e rests advance World Time, a 10-hour effect taken through an 8-hour Long Rest naturally retains about 2 hours when it has no explicit Long-Rest expiry. Long Rest still ends native concentration through D&D5e's own API, preserving the previously validated concentration/summon cleanup behavior.
+### Active Effects — native World Time authority
+- Rebuilt the duration work from the validated x8 baseline. Character Builder no longer runs a second finite-duration deletion engine: Foundry VTT 14's native ActiveEffect registry is the sole authority for seconds/minutes/hours/days and World Time jumps.
+- Removed the old Long Rest fallback that treated any finite duration as proof of transience. Short/Long Rest cleanup now acts only on effects whose lifecycle explicitly declares that rest; a 10-hour effect therefore survives an 8-hour Long Rest with its remaining World Time duration.
+- Concentration remains native. Managed Summons now also treats deletion of the actual concentrating Active Effect as a confirmed concentration-end signal, so World-Time expiry can clean concentration-bound managed summons without Character Builder attempting to delete the same Active Effect or call a competing expiry path.
 
 ### Paladin — Find Steed
-- Added a narrow Managed Summons policy for **Find Steed**. Fresh materialization initializes Current HP to D&D5e's already-derived Max HP without recalculating HP, AC, attacks, spell-level scaling, or profile eligibility.
-- A successful new Find Steed materialization is exclusive per caster/source: the new Steed is created first, then that caster's previous managed Find Steed Actor/Token instances are removed.
+- Added a source-specific Managed Summons policy for the 2024 Find Steed spell. A fresh Steed starts at the maximum HP already derived by D&D5e instead of retaining the source profile's stale current HP.
+- Find Steed is exclusive by caster/source: a successful new casting keeps the newly materialized Steed and removes that caster's previous Character Builder-managed Find Steed Token/Actor instance. D&D5e remains authoritative for profiles, AC, attacks, maximum HP, scaling, and eligibility.
 
 ### Homebrew — Blind Skill & Tool Checks
-- Added **Blind Skill & Tool Checks** under Character Keeper / Homebrew settings, disabled by default. Player Skill and Tool checks retain the complete native D&D5e roll configuration, including Advantage/Disadvantage and bonuses, while only that roll's final Chat visibility is forced to **Blind GM**.
-- The player's global Chat roll mode is never changed. Saving Throws, attacks, damage, Initiative, spell rolls, and GM-initiated checks remain untouched.
+- Added the optional **Blind Skill & Tool Checks** world setting under Resources & Homebrew. Player Skill and Tool checks retain the full native roll dialog, Advantage/Disadvantage, abilities, and bonuses, but the final message is forced per-roll to Foundry's Blind GM visibility.
+- The player's global Chat roll mode is never changed. Saving Throws, attacks, damage, Initiative, spell rolls, and GM-initiated checks are unaffected.
 
 ## 0.9.9x8 — Druid Wild Shape Stabilization
 
