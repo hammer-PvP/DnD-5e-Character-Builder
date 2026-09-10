@@ -29,6 +29,7 @@ export class EffectLifecycleService {
   static #pending = new Map();
   static #gates = new Map();
   static #reroutes = new Set();
+  static #expiredConcentrationFinalizers = new Set();
   static #audit = new Map();
 
   static initialize() {
@@ -89,6 +90,23 @@ export class EffectLifecycleService {
       void this.#onRollResolutionFinalized(payload, roll).catch(error => {
         console.warn(`${MODULE_ID} | Final concentration lifecycle action failed.`, error);
       });
+    });
+
+    // Foundry v14 owns finite Active Effect expiry. In 5.3.3 the registry can
+    // mark the concentrating effect itself expired without invoking D&D5e's
+    // semantic Actor#endConcentration() lifecycle. Observe only that proven
+    // terminal state, wait until the native update has fully completed, then
+    // ask D&D5e to finish the still-live concentration once. Character Builder
+    // never expires or deletes ordinary duration effects here.
+    Hooks.on("updateActiveEffect", (effect, changes) => {
+      try {
+        if (!this.enabled() || !this.#isActiveGM()) return;
+        if (!this.#isConcentrationEffect(effect)) return;
+        if (!this.#updateMarksExpired(effect, changes)) return;
+        this.#scheduleExpiredConcentrationFinalization(effect);
+      } catch (error) {
+        console.warn(`${MODULE_ID} | Expired Concentration bridge failed to schedule.`, error);
+      }
     });
   }
 
@@ -386,6 +404,74 @@ export class EffectLifecycleService {
       rollKey: payload.rollKey,
       rollId: roll?.id ?? null
     });
+  }
+
+
+  static #updateMarksExpired(effect, changes) {
+    const changed = changes?.["duration.expired"]
+      ?? foundry.utils.getProperty(changes ?? {}, "duration.expired");
+    if (changed === true) return true;
+    return this.#effectIsExpired(effect);
+  }
+
+  static #effectIsExpired(effect) {
+    if (foundry.utils.getProperty(effect?._source ?? {}, "duration.expired") === true) return true;
+    // `duration.expired` is the v14 state bit. Do not touch the deprecated
+    // legacy pre-v14 duration compatibility accessors.
+    return effect?.duration?.expired === true;
+  }
+
+  static #scheduleExpiredConcentrationFinalization(effect) {
+    const actor = effect?.parent;
+    if (actor?.documentName !== "Actor" || !effect?.id) return;
+    const key = `${actor.uuid ?? `Actor.${actor.id}`}.ActiveEffect.${effect.id}`;
+    if (this.#expiredConcentrationFinalizers.has(key)) return;
+    this.#expiredConcentrationFinalizers.add(key);
+
+    // A zero-delay task runs after the post-update hook stack and therefore
+    // avoids issuing an embedded delete while the registry update that proved
+    // expiry is still being handled. Re-resolve every document before acting.
+    setTimeout(() => {
+      void this.#finalizeExpiredConcentration(actor.id, effect.id, key).catch(error => {
+        console.warn(`${MODULE_ID} | Could not finalize expired Concentration.`, error);
+      });
+    }, 0);
+  }
+
+  static async #finalizeExpiredConcentration(actorId, effectId, key) {
+    try {
+      if (!this.enabled() || !this.#isActiveGM()) return;
+      const actor = game.actors?.get?.(actorId) ?? null;
+      const effect = actor?.effects?.get?.(effectId) ?? null;
+      if (!actor || !effect || !this.#isConcentrationEffect(effect)) return;
+      if (!this.#effectIsExpired(effect)) return;
+      if (typeof actor.endConcentration !== "function") return;
+
+      const ended = await actor.endConcentration(effect);
+      if (ended?.length) {
+        this.#recordAudit(actor, {
+          action: "Finalized native World-Time expired Concentration",
+          effectId,
+          effectName: effect.name ?? "Concentration"
+        });
+      }
+    } finally {
+      this.#expiredConcentrationFinalizers.delete(key);
+    }
+  }
+
+  static #isConcentrationEffect(effect) {
+    const concentrating = CONFIG.DND5E?.specialStatusEffects?.CONCENTRATING
+      ?? CONFIG.specialStatusEffects?.CONCENTRATING
+      ?? "concentrating";
+    return Boolean(effect?.statuses?.has?.(concentrating)
+      || Array.from(effect?.statuses ?? []).includes(concentrating));
+  }
+
+  static #isActiveGM() {
+    if (!game.user?.isGM) return false;
+    const activeGM = game.users?.activeGM ?? null;
+    return !activeGM || activeGM.id === game.user.id;
   }
 
   static #hasConcentration(actor) {

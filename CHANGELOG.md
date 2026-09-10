@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.9.9x11 — Concentration Completion + Ghost Tool Reconciliation + Ammunition Assistance
+
+### World Time — residual Concentration finalization
+- Preserves the validated x10 model in which Foundry VTT 14 is the sole authority for finite Active Effect expiry. Character Builder still never deletes ordinary seconds/minutes/hours/days effects.
+- Added one post-expiry bridge for the concentrating Active Effect itself: after Foundry marks it expired, the active GM waits for the native update stack to finish, re-resolves the live Actor/effect, confirms that it still exists and is still expired, and then calls D&D5e's native `Actor.endConcentration()` once. This closes the x10 case where Bless target effects expired correctly but the caster's Concentration marker remained.
+
+### Character Creation / Validator — Ghost Tool Entries
+- Added transaction-final Tool reconciliation for D&D5e 5.3.3 `TraitAdvancement` rollback residue. Finish Character compares the completed Draft against the Actor's pre-commit Tool state and removes only newly materialized, unreferenced, default-shaped proficiency-0 Tool mappings; a pre-existing Tool entry is restored exactly instead of inferred from its current value.
+- Character Validator now performs the same provenance-first check retroactively. Final Trait grants/choices and canonical build references protect legitimate Tools. A provably orphaned default proficiency-0 mapping receives a safe repair; a zero-rank Tool containing meaningful custom configuration is preserved and reported for review.
+- The cleanup is intentionally Tool-specific in this release. The native source audit found the reproduced residual pattern in the dynamic `system.tools` MappingField; no speculative cleanup was added to unrelated Traits.
+
+### Homebrew — Ammunition Automation v1
+- Added **Homebrew — Ammunition Automation** as an opt-in Rules Assistance rule, **Off by default**. When disabled, Character Builder adds no ammunition policy and leaves D&D5e's native behavior untouched.
+- When enabled, eligible ammunition weapon attacks resolve compatible live consumable stacks across the Actor inventory, including Items stored in native Containers. One compatible stack is selected automatically; multiple stacks use a compact selector with labels such as `Arrow — 20`, `Arrow — 15 (Quiver)`, and `Arrow +1 — 5 (Quiver)`.
+- Players may remember a selected stack for that Weapon Attack Activity until it becomes unavailable or they choose **Ask every attack** from a subsequent attack-card footer. Depleted/removed preferences invalidate automatically.
+- The selected real Item ID is passed into D&D5e 5.3.3's native Attack Activity. D&D5e remains authoritative for attack/damage magical ammunition bonuses, attack-time quantity consumption, auto-destroy, and damage linkage. Character Builder does not rewrite the weapon or duplicate the ammunition mechanics.
+- The same Attack Roll message receives a compact remaining-ammunition footer after native consumption. Fired ammunition is consumed on the Attack Roll whether the attack hits or misses; cancelling before a roll consumes nothing.
+- No Character Builder-specific automation for poison, elemental riders, saves, conditions, or other special ammunition effects is introduced. Any mechanics D&D5e already natively understands remain system-owned.
+
 ## 0.9.9x10 — Native World-Time Lifecycle + Find Steed Completion
 
 ### Active Effects — native World Time authority

@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.9x10";
-export const MODULE_BUILD = "internal-099x10-world-time-native-lifecycle-r1";
+export const MODULE_VERSION = "0.9.9x11";
+export const MODULE_BUILD = "internal-099x11-concentration-tools-ammunition-r1";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -178,6 +178,14 @@ export const RULES_ASSISTANCE_DEFINITIONS = Object.freeze([
     label: "Weapon Mastery Chat Assistance",
     description: "Adds compact native-card mastery links plus deterministic Graze/Cleave damage and Topple DC assistance, without target, turn, or Action Economy tracking.",
     tag: "Chat Assistance"
+  }),
+  Object.freeze({
+    key: "ammunitionAutomation",
+    ruleId: "ammunition-automation",
+    label: "Homebrew — Ammunition Automation",
+    description: "Uses D&D5e's native ammunition mechanics with container-aware stack selection, optional per-weapon preference, automatic attack-time consumption, magical ammunition bonuses, and remaining quantity shown on the Attack Roll card.",
+    tag: "Homebrew",
+    defaultEnabled: false
   }),
   Object.freeze({
     key: "managedSummons",

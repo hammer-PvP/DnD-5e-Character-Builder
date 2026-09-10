@@ -3,6 +3,7 @@ import { AgonizingBlastBindingService } from "./agonizing-blast-binding-service.
 import { TemporaryActorService } from "./temporary-actor-service.mjs";
 import { AdvancementCompletionGateService } from "./advancement-completion-gate-service.mjs";
 import { InternalActorReferenceRebindingService } from "./internal-actor-reference-rebinding-service.mjs";
+import { GhostToolReconciliationService } from "./ghost-tool-reconciliation-service.mjs";
 
 /**
  * Applies a completed Character Creation Draft as one recoverable protected
@@ -64,6 +65,16 @@ export class ActorCommitService {
       transactionStarted = true;
 
       const draftData = this.#documentSource(draft);
+      const toolReconciliation = GhostToolReconciliationService.reconcileCreationSystem(
+        draft, draftData.system, snapshot.system
+      );
+      draftData.system = toolReconciliation.system;
+      if (toolReconciliation.removed.length || toolReconciliation.restored.length) {
+        console.info(`${MODULE_ID} | Character Creation reconciled Tool transaction residue for ${actor.name}.`, {
+          removed: toolReconciliation.removed,
+          restored: toolReconciliation.restored
+        });
+      }
       const characterName = String(draft.getFlag(MODULE_ID, "buildState")?.characterName ?? actor.name ?? "").trim()
         || actor.name;
       const prototypeToken = this.#plainClone(draftData.prototypeToken ?? {});
@@ -159,7 +170,11 @@ export class ActorCommitService {
           idempotencyToken: transactionToken,
           completedAt: Date.now(),
           completedBy: game.user.id,
-          draftItemCount: itemData.length
+          draftItemCount: itemData.length,
+          toolReconciliation: {
+            removed: toolReconciliation.removed,
+            restored: toolReconciliation.restored
+          }
         },
         [`flags.${MODULE_ID}.creationTransaction.status`]: "complete",
         [`flags.${MODULE_ID}.creationTransaction.completedAt`]: Date.now(),

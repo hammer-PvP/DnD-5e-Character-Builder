@@ -4,6 +4,7 @@ import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.
 import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
 import { AdditionalCantripEntitlementService } from "./additional-cantrip-entitlement-service.mjs";
 import { NativeSpellGrantProjectionService } from "./native-spell-grant-projection-service.mjs";
+import { GhostToolReconciliationService } from "./ghost-tool-reconciliation-service.mjs";
 
 const BUILD_TRAIT_OWNER_TYPES = new Set(["class", "subclass", "race", "background", "feat"]);
 const ALWAYS_PREPARED = SpellPreparationPolicyService.ALWAYS_PREPARED;
@@ -33,6 +34,7 @@ export class CharacterValidationBuildProjectionService {
     issues.push(...spellProjection.issues);
     issues.push(...await this.#scanGrantedSpellOwnership(actor, registry, graph));
     issues.push(...await this.#scanTraitEntitlements(actor, graph));
+    issues.push(...this.#scanGhostToolEntries(actor, graph));
 
     return {
       issues,
@@ -60,7 +62,8 @@ export class CharacterValidationBuildProjectionService {
       "trait-choice-mechanical-missing",
       "trait-choice-ledger-incomplete",
       "trait-choice-reconcile-existing",
-      "trait-choice-incomplete"
+      "trait-choice-incomplete",
+      "ghost-tool-entry"
     ]).has(kind);
   }
 
@@ -89,6 +92,8 @@ export class CharacterValidationBuildProjectionService {
         return this.#reconcileTraitChoices(actor, issue);
       case "trait-choice-incomplete":
         return this.#resolveTraitChoice(actor, issue);
+      case "ghost-tool-entry":
+        return this.#removeGhostToolEntry(actor, issue);
       default:
         return null;
     }
@@ -729,6 +734,85 @@ export class CharacterValidationBuildProjectionService {
   // -----------------------------------------------------------------------
   // Trait / proficiency projection
   // -----------------------------------------------------------------------
+
+  static #scanGhostToolEntries(actor, graph) {
+    const issues = [];
+    const authorized = GhostToolReconciliationService.authorizedToolKeys(actor);
+
+    // Canonical source grants are additional proof in case an older local
+    // Advancement copy lost part of its configuration ledger. Choice pools do
+    // not count: only deterministic grants or the final chosen ledger may
+    // justify a concrete Tool entry.
+    for (const node of graph?.nodes ?? []) {
+      const advancement = node?.sourceAdvancement;
+      if (String(advancement?.type ?? "") !== "Trait") continue;
+      if (String(advancement?.configuration?.mode ?? "") === "mastery") continue;
+      const applies = this.#traitAdvancementApplies(actor, node.owner, advancement);
+      if (applies !== true) continue;
+      const tokens = [
+        ...this.#collectionValues(advancement?.configuration?.grants),
+        ...this.#collectionValues(node?.local?.advancement?.value?.chosen)
+      ];
+      for (const token of tokens) {
+        const parts = String(token ?? "").split(":");
+        if (parts[0] === "tool" && parts.at(-1)) authorized.add(String(parts.at(-1)));
+      }
+    }
+
+    const rawTools = actor?._source?.system?.tools ?? actor?.toObject?.()?.system?.tools ?? {};
+    for (const [key, entry] of Object.entries(rawTools ?? {})) {
+      if (Number(entry?.value ?? 0) !== 0 || authorized.has(key)) continue;
+      const label = GhostToolReconciliationService.label(key);
+      if (!GhostToolReconciliationService.isSafeResidualEntry(key, entry)) {
+        issues.push({
+          id: `ghost-tool-review:${key}`,
+          kind: "ghost-tool-entry-review",
+          severity: "warning",
+          repairable: false,
+          repairMode: "review",
+          title: `${label} — Unreferenced Tool Configuration`,
+          summary: `${label} has no final Character Build entitlement, but it contains non-default Tool configuration.`,
+          details: "The Validator preserves this entry because a customized ability, bonus, or other independent configuration may be intentional. Review it manually instead of deleting it automatically.",
+          data: { toolKey: key }
+        });
+        continue;
+      }
+
+      issues.push({
+        id: `ghost-tool-entry:${key}`,
+        kind: "ghost-tool-entry",
+        severity: "error",
+        repairable: true,
+        repairMode: "safe",
+        repairLabel: "Remove Ghost Tool",
+        title: `${label} — Ghost Tool Entry`,
+        summary: `${label} remains materialized at proficiency 0, but no final Background, Species, Class, Subclass, Feat, or Trait Advancement references it.`,
+        details: "This matches the D&D5e 5.3.3 TraitAdvancement rollback residue pattern. The Validator can remove only this orphaned system.tools mapping entry from the revised Actor.",
+        data: { toolKey: key, toolLabel: label }
+      });
+    }
+    return issues;
+  }
+
+  static async #removeGhostToolEntry(actor, issue) {
+    const key = String(issue?.data?.toolKey ?? "");
+    if (!key) throw new Error("The Ghost Tool repair is missing its Tool key.");
+    const raw = actor?._source?.system?.tools?.[key] ?? null;
+    if (!raw) {
+      return { status: "repaired", issueId: issue.id, title: issue.title, message: `${issue.data?.toolLabel ?? key} was already absent.` };
+    }
+    if (Number(raw?.value ?? 0) !== 0 || !GhostToolReconciliationService.isSafeResidualEntry(key, raw)) {
+      throw new Error(`${issue.data?.toolLabel ?? key} is no longer a provable Ghost Tool entry; it was preserved.`);
+    }
+    const removed = await GhostToolReconciliationService.removeEntry(actor, key, { characterBuilderValidationRepair: true });
+    if (!removed) throw new Error(`${issue.data?.toolLabel ?? key} could not be removed from system.tools.`);
+    return {
+      status: "repaired",
+      issueId: issue.id,
+      title: issue.title,
+      message: `Removed orphaned ${issue.data?.toolLabel ?? key} Tool entry from the revised Actor.`
+    };
+  }
 
   static async #scanTraitEntitlements(actor, graph) {
     const issues = [];
