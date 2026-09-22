@@ -1,6 +1,7 @@
 import { MODULE_ID } from "../constants.mjs";
 import { ContextualRollModifierService } from "./contextual-roll-modifier-service.mjs";
 import { EffectLifecycleService } from "./effect-lifecycle-service.mjs";
+import { EffectSourceResolver } from "./effect-source-resolver.mjs";
 import { RulesAssistanceSettingsService } from "./rules-assistance-settings-service.mjs";
 
 const RUNTIME_RULE_ID = "contextual-roll-modifiers";
@@ -187,6 +188,12 @@ export class NativeContextualEffectService {
   }
 
   static #sourceItem(actor, concentration) {
+    const resolved = EffectSourceResolver.resolveSync(concentration);
+    if (resolved?.item) return resolved.item;
+
+    // Historical 5.3.3 concentration snapshots can still carry embedded item
+    // data rather than a resolvable UUID/document. Keep that final fallback
+    // only for migrated worlds.
     const data = concentration?.getFlag?.("dnd5e", "item") ?? concentration?.flags?.dnd5e?.item ?? {};
     return actor?.items?.get?.(data.id) ?? data.data ?? null;
   }

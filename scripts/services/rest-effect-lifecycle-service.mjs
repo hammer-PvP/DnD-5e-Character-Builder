@@ -76,17 +76,14 @@ export class RestEffectLifecycleService {
       if (this.#matchesRestText(declared, restType)) return true;
     }
 
-    // duration.expiry in Foundry v14 is an event identifier, not a deadline.
-    // Reading _source avoids compatibility shims and never touches legacy
-    // duration.seconds/rounds/turns/startTime fields.
-    const duration = effect._source?.duration ?? {};
+    // D&D5e 6.x natively owns duration.expiry (shortRest/longRest) and applied
+    // effect cleanup inside Actor#_rest(). Character Builder must not mirror
+    // those native declarations after the rest or it can race a document the
+    // system has already removed. Only legacy/custom CB-owned declarations
+    // remain our responsibility here.
     const candidates = [
       effect.getFlag?.(MODULE_ID, "expiresOn"),
-      effect.getFlag?.("dnd5e", "expiresOn"),
-      effect.flags?.[MODULE_ID]?.expiresOn,
-      effect.flags?.dnd5e?.expiresOn,
-      effect.flags?.dae?.specialDuration,
-      duration?.expiry
+      effect.flags?.[MODULE_ID]?.expiresOn
     ].flatMap(value => Array.isArray(value) ? value : [value]).filter(Boolean);
 
     return candidates.some(value => this.#matchesRestText(String(value), restType));

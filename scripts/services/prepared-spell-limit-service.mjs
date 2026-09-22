@@ -1,6 +1,7 @@
 import { MODULE_ID, SPELL_ACCESS_MODELS } from "../constants.mjs";
 import { ClassProgressionGuard } from "./class-progression-guard.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
+import { normalizedAdvancementName } from "../utils/advancement-utils.mjs";
 
 const PREPARED = SpellPreparationPolicyService.PREPARED;
 const ALWAYS_PREPARED = SpellPreparationPolicyService.ALWAYS_PREPARED;
@@ -147,7 +148,7 @@ export class PreparedSpellLimitService {
     const scaleAdvancement = advancements.find(advancement => {
       if (advancement?.type !== "ScaleValue") return false;
       const identifier = String(advancement.configuration?.identifier ?? "").trim().toLowerCase();
-      const title = String(advancement.title ?? "").trim().toLowerCase();
+      const title = normalizedAdvancementName(advancement);
       return identifier === "max-prepared" || title.includes("max prepared");
     });
     const scale = scaleAdvancement?.configuration?.scale ?? {};

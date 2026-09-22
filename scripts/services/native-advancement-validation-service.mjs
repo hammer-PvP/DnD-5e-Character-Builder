@@ -2,6 +2,7 @@ import { MODULE_ID } from "../constants.mjs";
 import { ManagedAdvancementRegistry } from "./managed-advancement-registry.mjs";
 import { NativeFeatChoiceGuard } from "./native-feat-choice-guard.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
+import { advancementName } from "../utils/advancement-utils.mjs";
 
 /**
  * Error raised when a source-native Advancement completed in a state that the
@@ -276,7 +277,7 @@ export class NativeAdvancementValidationService {
 
   static async #validateNativePrerequisites(draft, added, state, workflow) {
     for (const item of added) {
-      const validator = item.system?.validatePrerequisites;
+      const validator = item.system?.assertPrerequisites;
       if (typeof validator !== "function") continue;
       try {
         await validator.call(item.system, draft, {
@@ -339,7 +340,7 @@ export class NativeAdvancementValidationService {
           : this.#countEmbeddedIds(addedNode[String(targetClassLevel)] ?? addedNode, draft);
         if (selected >= expected) continue;
 
-        const title = advancement.title || owner.name || "Required Advancement choice";
+        const title = advancementName(advancement, owner.name || "Required Advancement choice");
         throw new StructuralLevelUpError(
           `${title} was not completed safely.`,
           {

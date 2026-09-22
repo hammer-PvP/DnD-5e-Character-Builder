@@ -3,6 +3,7 @@ import { DraftManager } from "./draft-manager.mjs";
 import { PactOfTheTomeService } from "./pact-of-the-tome-service.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
 import { AdditionalCantripEntitlementService } from "./additional-cantrip-entitlement-service.mjs";
+import { advancementName } from "../utils/advancement-utils.mjs";
 
 /**
  * Populates native Spell Items during creation. Preparation, slots, casting,
@@ -382,7 +383,7 @@ export class SpellAccessService {
     const advancement = advancements.find(entry => {
       if (entry.type !== "ScaleValue") return false;
       if (identifier && entry.configuration?.identifier === identifier) return true;
-      return title && String(entry.title ?? "").toLowerCase().includes(title);
+      return title && advancementName(entry).toLowerCase().includes(title);
     });
     if (!advancement) return 0;
 

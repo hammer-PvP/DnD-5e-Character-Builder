@@ -14,6 +14,7 @@ import { SpellPreparationPolicyService } from "./spell-preparation-policy-servic
 import { AgonizingBlastBindingService } from "./agonizing-blast-binding-service.mjs";
 import { AlwaysPreparedSpellReconciliationService } from "./always-prepared-spell-reconciliation-service.mjs";
 import { NativeFeatureCompatibilityService } from "./native-feature-compatibility-service.mjs";
+import { advancementName } from "../utils/advancement-utils.mjs";
 
 export class LevelUpRulesService {
   static async buildContext(sourceActor, draft, registry) {
@@ -717,7 +718,7 @@ export class LevelUpRulesService {
     const advancement = this.#advancementData(cls).find(entry => {
       if (entry.type !== "ScaleValue") return false;
       if (identifier && entry.configuration?.identifier === identifier) return true;
-      return title && String(entry.title ?? "").toLowerCase().includes(title);
+      return title && advancementName(entry).toLowerCase().includes(title);
     });
     if (!advancement) return 0;
     const rows = Object.entries(advancement.configuration?.scale ?? {})
@@ -801,7 +802,7 @@ export class LevelUpRulesService {
 
   static async #invocationContext(draft, cls, registry, stateChoices, pendingCantripOptions = [], selectedPendingCantrips = null) {
     const advancement = this.#advancementData(cls).find(entry =>
-      entry.type === "ItemChoice" && String(entry.title ?? "").toLowerCase() === "eldritch invocations"
+      entry.type === "ItemChoice" && advancementName(entry).toLowerCase() === "eldritch invocations"
     );
     if (!advancement) return this.#emptyInvocationContext();
     const state = LevelUpDraftManager.getState(draft);
@@ -1430,7 +1431,7 @@ export class LevelUpRulesService {
             .filter(([minimum]) => minimum <= Number(targetClassLevel))
             .sort((a, b) => a[0] - b[0]);
           const value = rows.at(-1)?.[1];
-          const title = advancement.title || advancement.configuration?.identifier || "Scale Increase";
+          const title = advancementName(advancement, advancement.configuration?.identifier || "Scale Increase");
           const key = `${owner.id}:scale:${title}`;
           summaries.set(key, {
             ownerName: owner.name,
@@ -1450,7 +1451,7 @@ export class LevelUpRulesService {
           : configuredGrants;
         if (choices.length || !applied.length) continue;
 
-        const title = this.#traitGrantTitle(advancement.title || "Proficiency or Trait Grant");
+        const title = this.#traitGrantTitle(advancementName(advancement, "Proficiency or Trait Grant"));
         const key = `${owner.id}:trait:${title}`;
         const existing = summaries.get(key) ?? {
           ownerName: owner.name,
@@ -1678,7 +1679,7 @@ export class LevelUpRulesService {
     if (!option) throw new Error("The selected Eldritch Invocation is no longer available.");
     const document = await fromUuid(option.uuid);
     if (!document) throw new Error(`Unable to load ${option.name}.`);
-    document.system?.validatePrerequisites?.(draft, {
+    document.system?.assertPrerequisites?.(draft, {
       level: Number(state.targetClassLevel),
       showMessage: false,
       throwError: true

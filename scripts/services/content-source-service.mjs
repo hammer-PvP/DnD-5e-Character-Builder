@@ -7,7 +7,7 @@ const RELEVANT_ITEM_TYPES = new Set([
 
 const DISCOVERY_FIELDS = [
   "name", "type", "system.identifier", "system.classIdentifier", "system.level",
-  "system.source.rules", "system.source.book"
+  "system.source"
 ];
 
 /**

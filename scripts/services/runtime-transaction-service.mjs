@@ -106,7 +106,7 @@ export class RuntimeTransactionService {
     const currentFlags = foundry.utils.deepClone(actor.flags?.[MODULE_ID] ?? {});
     const update = { system: foundry.utils.deepClone(snapshot.system) };
     for (const key of Object.keys(currentFlags)) {
-      if (!(key in snapshot.moduleFlags)) update[`flags.${MODULE_ID}.-=${key}`] = null;
+      if (!(key in snapshot.moduleFlags)) update[`flags.${MODULE_ID}.${key}`] = new foundry.data.operators.ForcedDeletion();
     }
     update[`flags.${MODULE_ID}`] = foundry.utils.deepClone(snapshot.moduleFlags);
     await actor.update(update, {

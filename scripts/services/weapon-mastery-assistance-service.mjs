@@ -2,20 +2,27 @@ import { MODULE_ID } from "../constants.mjs";
 import { RulesAssistanceSettingsService } from "./rules-assistance-settings-service.mjs";
 
 const RULE_ID = "weapon-mastery-chat-assistance";
-const BUTTON_ACTIONS = Object.freeze({
-  graze: "graze-damage",
-  cleave: "cleave-damage"
+const CHAT_ACTIONS = Object.freeze({
+  graze: "cbWeaponMasteryGraze",
+  cleave: "cbWeaponMasteryCleave"
 });
+const ACTION_MASTERIES = Object.freeze(Object.fromEntries(
+  Object.entries(CHAT_ACTIONS).map(([mastery, action]) => [action, mastery])
+));
 
 /**
- * Adds compact Weapon Mastery assistance to the native D&D5e attack Activity
- * chat card. D&D5e remains authoritative for whether the originating Actor can
- * use a mastery and, where the attack dialog offers more than one mastery, for
- * which mastery was actually selected on the roll.
+ * D&D5e 6.x Weapon Mastery chat assistance.
  *
- * No Actor state, target tracking, turn tracking, or Action Economy state is
- * created. Graze and Cleave only produce native DamageRoll chat messages; the
- * normal D&D5e target/selected-token application flow remains authoritative.
+ * The D&D5e system remains authoritative for weapon mastery ownership and for
+ * the mastery selected in the attack dialog. Character Builder only adds the
+ * small pieces of assistance that are not provided natively:
+ *
+ * - Graze/Cleave as a third structured usage-card action when eligible;
+ * - a compact Topple save DC beside the native mastery link;
+ * - native structured DamageRoll chat messages for Graze/Cleave damage.
+ *
+ * IMPORTANT: hit/miss never controls whether Graze/Cleave is visible. Doing so
+ * would disclose target AC / attack resolution to a player through UI state.
  */
 export class WeaponMasteryAssistanceService {
   static #initialized = false;
@@ -24,10 +31,13 @@ export class WeaponMasteryAssistanceService {
     if (this.#initialized) return;
     this.#initialized = true;
 
+    Hooks.on("dnd5e.preCreateUsageMessage", (activity, message) => this.#prepareUsageButtons(activity, message));
     Hooks.on("renderChatMessageHTML", (message, element) => this.#enrich(message, element));
     Hooks.on("renderChatMessage", (message, element) => this.#enrich(message, element));
+    Hooks.on("renderChatLog", () => setTimeout(() => this.refreshRenderedMessages(), 0));
+    Hooks.on("renderChatLogHTML", () => setTimeout(() => this.refreshRenderedMessages(), 0));
     Hooks.on("createChatMessage", message => this.#scheduleMessageOriginRefresh(message));
-    Hooks.on("dnd5e.rollAttack", rolls => this.#scheduleOriginRefresh(rolls));
+    Hooks.on("updateChatMessage", message => this.#scheduleMessageOriginRefresh(message));
   }
 
   static enabled() {
@@ -37,156 +47,252 @@ export class WeaponMasteryAssistanceService {
   static refreshRenderedMessages() {
     const messages = game.messages?.contents ?? [...(game.messages ?? [])];
     for (const message of messages) {
-      const element = document.querySelector?.(`[data-message-id="${message.id}"]`);
-      if (element) this.#enrich(message, element);
+      for (const element of this.#renderedMessageElements(message.id)) this.#enrich(message, element);
     }
+  }
+
+  /**
+   * libWrapper entry point for custom D&D5e 6.x usage-card actions.
+   *
+   * @returns {Promise<boolean>} True when Character Builder handled the action.
+   */
+  static async handleChatAction(activity, event, target, message) {
+    const mastery = ACTION_MASTERIES[target?.dataset?.action ?? ""];
+    if (!mastery) return false;
+    if (!this.enabled()) return true;
+
+    const context = this.#context(message, { activity });
+    try {
+      if (!context?.mastery || context.mastery !== mastery) {
+        throw new Error("The weapon mastery context changed. Roll the attack again before using this assistance action.");
+      }
+      if (!context.lastAttack) {
+        throw new Error(`Roll the attack before using ${this.#masteryLabel(mastery)}.`);
+      }
+      if (!context.item?.isOwner) {
+        throw new Error("You do not have permission to roll damage for the Actor that created this weapon card.");
+      }
+
+      // Never validate hit/miss here. Graze/Cleave availability must not disclose
+      // attack resolution or hidden target AC through a success/error response.
+      if (mastery === "graze") await this.#rollGrazeDamage(context, { event, originMessage: message });
+      else if (mastery === "cleave") await this.#rollCleaveDamage(context, { event, originMessage: message });
+    } catch (error) {
+      console.error(`${MODULE_ID} | Weapon Mastery assistance failed.`, error);
+      ui.notifications.error(error.message);
+    }
+    return true;
+  }
+
+  /**
+   * Add the default assisted mastery as a real D&D5e 6.x usage-card button.
+   * The descriptor is persisted on UsageMessageData.system.buttons and follows
+   * the native Activity.onChatAction dispatch path.
+   */
+  static #prepareUsageButtons(activity, message) {
+    if (!this.enabled()) return;
+    if (!this.#isWeaponAttack(activity)) return;
+
+    const mastery = this.#defaultMastery(activity.item);
+    const action = CHAT_ACTIONS[mastery];
+    if (!action) return;
+
+    const buttons = foundry.utils.getProperty(message, "data.system.buttons");
+    if (!Array.isArray(buttons) || buttons.some(button => button?.action === action)) return;
+    buttons.push({
+      action,
+      canGroup: false,
+      dataset: {},
+      icon: "fa-solid fa-burst",
+      label: { value: this.#masteryLabel(mastery) },
+      visibility: "creator"
+    });
   }
 
   static #enrich(message, element) {
     const root = this.#root(element);
     if (!root) return;
-    this.#clear(root);
+    this.#clearPresentation(root);
     if (!this.enabled()) return;
 
     const context = this.#context(message);
-    if (!context?.mastery) return;
+    if (!context?.activity || !this.#isWeaponAttack(context.activity)) return;
 
-    const card = root.querySelector?.(".chat-card.activation-card")
-      ?? root.querySelector?.(".chat-card");
-    if (!card) return;
+    const desiredAction = CHAT_ACTIONS[context.mastery] ?? null;
+    const customButtons = [...root.querySelectorAll?.("button[data-action]") ?? []]
+      .filter(button => ACTION_MASTERIES[button.dataset.action]);
 
-    const controls = card.querySelector?.(".card-buttons");
-    const action = BUTTON_ACTIONS[context.mastery];
-    const showGraze = context.mastery === "graze" && this.#isMiss(context.lastAttack);
-    const showButton = action && (context.mastery !== "graze" || showGraze);
-
-    if (showButton && controls) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.dataset.cbWeaponMasteryControl = "true";
-      button.dataset.cbWeaponMasteryAction = action;
-      button.dataset.cbWeaponMasteryMessageId = message.id;
-      button.innerHTML = `<i class="fa-solid fa-burst" inert></i><span>${context.mastery === "graze" ? "Graze Damage" : "Cleave Damage"}</span>`;
-      button.addEventListener("click", event => this.#onDamageButton(event, message, context.mastery));
-      controls.appendChild(button);
+    // A usage card may have been created before a different mastery was chosen
+    // in the attack dialog. Hide stale descriptors in this render only and add
+    // the actually selected mastery without rewriting the historical message.
+    for (const button of customButtons) {
+      button.hidden = !desiredAction || button.dataset.action !== desiredAction;
     }
 
-    const supplement = document.createElement("p");
-    supplement.className = "supplement cb-weapon-mastery-assistance";
-    supplement.dataset.cbWeaponMasteryControl = "true";
-
-    const link = this.#masteryLink(context.masteryConfig);
-    if (link) supplement.appendChild(link);
-    else supplement.textContent = context.masteryConfig?.label ?? context.mastery;
-
-    if (context.mastery === "topple") {
-      const dc = this.#toppleDc(context);
-      if (Number.isFinite(dc)) {
-        const value = document.createElement("span");
-        value.className = "cb-weapon-mastery-dc";
-        value.textContent = ` · DC ${dc}`;
-        supplement.appendChild(value);
-      }
+    if (desiredAction) {
+      let button = customButtons.find(candidate => candidate.dataset.action === desiredAction) ?? null;
+      if (!button) button = this.#insertDynamicAction(root, desiredAction, context.mastery);
+      if (button) this.#prepareActionButton(button, this.#masteryLabel(context.mastery));
     }
 
-    if (controls) controls.insertAdjacentElement("afterend", supplement);
-    else card.appendChild(supplement);
+    if (context.mastery === "topple" && context.lastAttack) this.#appendToppleDc(root, context);
   }
 
-  static #context(message) {
+  static #context(message, { activity=null }={}) {
     if (!message) return null;
-    if (message.getFlag?.("dnd5e", "messageType") === "roll") return null;
 
-    const flags = message.flags?.dnd5e ?? {};
-    if (String(flags.activity?.type ?? "") !== "attack") return null;
+    activity ??= message.getAssociatedActivity?.() ?? null;
+    if (!activity && message.type === "attack") activity = message.getAssociatedActivity?.() ?? null;
+    if (!this.#isWeaponAttack(activity)) return null;
 
-    const actor = message.getAssociatedActor?.()
-      ?? game.actors?.get?.(message.speaker?.actor)
-      ?? null;
-    if (!actor) return null;
+    const item = message.getAssociatedItem?.() ?? activity.item ?? null;
+    const actor = message.getAssociatedActor?.() ?? item?.actor ?? activity.actor ?? null;
+    if (!item || item.type !== "weapon" || !actor) return null;
 
-    const itemId = flags.item?.id ?? null;
-    const activityId = flags.activity?.id ?? null;
-    const item = itemId ? actor.items?.get?.(itemId) : null;
-    const activity = activityId ? item?.system?.activities?.get?.(activityId) : null;
-    if (!item || item.type !== "weapon" || !activity || activity.type !== "attack") return null;
+    const masteryOptions = this.#masteryOptions(item);
 
-    const masteryOptions = Array.from(item.system?.masteryOptions ?? []);
-    if (!masteryOptions.length) return null;
+    let lastAttack = null;
+    if (message.type === "attack") lastAttack = message;
+    else {
+      const attacks = message.getAssociatedRolls?.("attack") ?? [];
+      lastAttack = attacks.length ? attacks.at(-1) : null;
+    }
 
-    const associated = message.getAssociatedRolls?.("attack") ?? [];
-    const lastAttack = associated.length ? associated.at(-1) : null;
     const rolledMastery = String(
-      lastAttack?.getFlag?.("dnd5e", "roll.mastery")
+      lastAttack?.system?.mastery
       ?? lastAttack?.rolls?.[0]?.options?.mastery
       ?? ""
-    );
+    ).trim();
 
     let mastery = null;
-    if (rolledMastery && masteryOptions.some(option => option.value === rolledMastery)) mastery = rolledMastery;
-    // Before an attack is rolled, one native option is unambiguous and can be
-    // advertised on the Activity card. Once a roll exists, however, D&D5e's
-    // recorded roll mastery is authoritative; never infer a missing selection
-    // from the weapon's printed/default mastery.
-    else if (!lastAttack && masteryOptions.length === 1) mastery = masteryOptions[0].value;
-    if (!mastery) return { actor, item, activity, masteryOptions, lastAttack, mastery: null };
+    // On an actual D&D5e 6.x AttackMessage, system.mastery is the mastery the
+    // system itself accepted and recorded for this attack. Treat that value as
+    // authoritative even when the associated Item is a snapshot/clone whose
+    // prepared masteryOptions getter cannot be reconstructed after the fact.
+    // Usage cards still use masteryOptions as the ownership gate before a roll.
+    if (rolledMastery && CONFIG.DND5E.weaponMasteries?.[rolledMastery]) mastery = rolledMastery;
+    else mastery = this.#defaultMastery(item, masteryOptions);
 
-    const masteryConfig = CONFIG.DND5E.weaponMasteries?.[mastery];
-    if (!masteryConfig) return null;
+    const masteryConfig = mastery ? CONFIG.DND5E.weaponMasteries?.[mastery] ?? null : null;
     return { actor, item, activity, masteryOptions, lastAttack, mastery, masteryConfig };
   }
 
-  static async #onDamageButton(event, message, mastery) {
-    event.preventDefault();
-    event.stopPropagation();
-    const button = event.currentTarget;
-    if (button?.disabled) return;
-    button.disabled = true;
+  static #isWeaponAttack(activity) {
+    return Boolean(activity && activity.type === "attack" && activity.item?.type === "weapon");
+  }
+
+  /**
+   * D&D5e's masteryOptions getter is the authoritative ownership gate: it is
+   * null unless the Actor actually has mastery of this base weapon.
+   */
+  static #masteryOptions(item) {
     try {
-      const context = this.#context(message);
-      if (!context?.mastery || context.mastery !== mastery) {
-        throw new Error("The weapon mastery context changed. Roll the attack again before using this assistance button.");
-      }
-      if (!context.item.isOwner) {
-        throw new Error("You do not have permission to roll damage for the Actor that created this weapon card.");
-      }
-      if (mastery === "graze") {
-        if (!this.#isMiss(context.lastAttack)) {
-          throw new Error("Graze Damage is available only when the recorded attack missed its target.");
-        }
-        await this.#rollGrazeDamage(context, { event, originMessage: message });
-      } else if (mastery === "cleave") {
-        await this.#rollCleaveDamage(context, { event, originMessage: message });
-      }
-    } catch (error) {
-      console.error(`${MODULE_ID} | Weapon Mastery assistance failed.`, error);
-      ui.notifications.error(error.message);
-    } finally {
-      if (button) button.disabled = false;
+      return Array.from(item?.system?.masteryOptions ?? []);
+    } catch (_error) {
+      return [];
     }
   }
 
-  static async #rollGrazeDamage(context, { event, originMessage } = {}) {
+  static #defaultMastery(item, options=this.#masteryOptions(item)) {
+    if (!options.length) return null;
+    const printed = String(item?.system?.mastery ?? "").trim();
+    if (printed && options.some(option => String(option?.value ?? "") === printed)) return printed;
+    return options.length === 1 ? String(options[0]?.value ?? "") || null : null;
+  }
+
+  static #masteryLabel(mastery) {
+    const configured = CONFIG.DND5E.weaponMasteries?.[mastery]?.label;
+    if (configured) return game.i18n?.localize?.(configured) ?? configured;
+    return String(mastery ?? "").capitalize?.() ?? String(mastery ?? "");
+  }
+
+  static #prepareActionButton(button, label) {
+    if (!(button instanceof HTMLElement)) return;
+    button.setAttribute("aria-label", label);
+    button.dataset.tooltip = label;
+  }
+
+  static #insertDynamicAction(root, action, mastery) {
+    const anchor = root.querySelector?.("button[data-action=\"rollDamage\"]")
+      ?? root.querySelector?.("button[data-action=\"rollAttack\"]");
+    const list = anchor?.closest?.("ul");
+    if (!list) return null;
+
+    const entry = document.createElement("li");
+    entry.dataset.cbWeaponMasteryDynamic = "true";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "icon";
+    button.dataset.action = action;
+    button.dataset.cbWeaponMasteryDynamic = "true";
+    button.innerHTML = '<i class="fa-solid fa-burst" inert></i>';
+    entry.appendChild(button);
+    list.appendChild(entry);
+    this.#prepareActionButton(button, this.#masteryLabel(mastery));
+    return button;
+  }
+
+  static #appendToppleDc(root, context) {
+    const dc = this.#toppleDc(context);
+    if (!Number.isFinite(dc)) return;
+
+    const scopes = [];
+    if (context.lastAttack?.id) {
+      const summary = root.querySelector?.(`.card-summary[data-message-id="${context.lastAttack.id}"]`);
+      if (summary) scopes.push(summary);
+    }
+    scopes.push(root);
+
+    for (const scope of scopes) {
+      const reference = String(context.masteryConfig?.reference ?? "");
+      const label = this.#masteryLabel("topple").trim().toLowerCase();
+
+      // Prefer the native mastery link itself, then fall back to the mastery
+      // supplement text. This survives both the live AttackMessage render and
+      // chat-history/F5 re-renders without depending on a Usage-card wrapper.
+      let supplement = null;
+      if (reference) {
+        const link = [...scope.querySelectorAll?.("a[data-uuid]") ?? []]
+          .find(candidate => candidate.dataset.uuid === reference);
+        supplement = link?.closest?.("p.supplement") ?? null;
+      }
+      if (!supplement) {
+        const supplements = [...scope.querySelectorAll?.("p.supplement") ?? []];
+        supplement = supplements.find(row => row.textContent?.toLowerCase?.().includes(label)) ?? null;
+      }
+      if (!supplement || supplement.querySelector(".cb-weapon-mastery-dc")) continue;
+
+      const value = document.createElement("span");
+      value.className = "cb-weapon-mastery-dc";
+      const conKey = CONFIG.DND5E?.abilities?.con?.abbreviation ?? "DND5E.AbilityConAbbr";
+      const con = game.i18n?.localize?.(conKey) ?? "CON";
+      value.textContent = ` · DC ${dc} ${con}`;
+      supplement.appendChild(value);
+      return;
+    }
+  }
+
+  static async #rollGrazeDamage(context, { event, originMessage }={}) {
     const { activity, item, actor } = context;
     const base = this.#baseDamageContext(context);
     if (!base) throw new Error(`${item.name} has no native weapon damage to use for Graze.`);
 
-    const modifier = Number(activity.getRollData?.({ deterministic: true })?.mod ?? 0);
-    // D&D damage cannot become healing when a negative modifier is involved.
+    const modifier = this.#attackModifier(context);
     const amount = Math.max(0, Number.isFinite(modifier) ? modifier : 0);
     await this.#postDamageRoll({
       actor,
       activity,
+      context,
       formula: String(amount),
       data: {},
       options: this.#damageOptions(base),
-      flavor: `${item.name} - Graze Damage`,
+      flavor: `${item.name} - ${this.#masteryLabel("graze")}`,
       event,
       originMessage
     });
   }
 
-  static async #rollCleaveDamage(context, { event, originMessage } = {}) {
+  static async #rollCleaveDamage(context, { event, originMessage }={}) {
     const { activity, item, actor } = context;
     const base = this.#baseDamageContext(context);
     if (!base) throw new Error(`${item.name} has no native weapon damage to use for Cleave.`);
@@ -195,47 +301,68 @@ export class WeaponMasteryAssistanceService {
     const baseFormula = String(base.parts?.[0] ?? "").trim();
     if (baseFormula) parts.push(baseFormula);
 
-    // Cleave keeps the weapon's own prepared damage package, including an
-    // intrinsic/enchantment damage bonus and magical weapon/ammunition bonus,
-    // but does not import Actor damage riders or arbitrary extra damage parts.
-    const itemDamageBonus = String(item.system?.damageBonus ?? "").trim();
+    // D&D5e 6.x moved the prepared/effect damage-bonus target to damage.bonus.
+    const itemDamageBonus = String(item.system?.damage?.bonus ?? "").trim();
     if (itemDamageBonus && !/^0+(?:\.0+)?$/.test(itemDamageBonus)) parts.push(itemDamageBonus);
 
-    const modifier = Number(base.data?.mod ?? activity.getRollData?.({ deterministic: true })?.mod ?? 0);
+    const modifier = this.#attackModifier(context);
     if (Number.isFinite(modifier) && modifier < 0) parts.push("@mod");
     if (base.parts?.includes?.("@magicalBonus")) parts.push("@magicalBonus");
     if (base.parts?.includes?.("@ammoBonus")) parts.push("@ammoBonus");
 
     if (!parts.length) throw new Error(`${item.name} has no Cleave damage formula.`);
+    const data = foundry.utils.deepClone(base.data ?? {});
+    if (Number.isFinite(modifier)) data.mod = modifier;
     await this.#postDamageRoll({
       actor,
       activity,
+      context,
       formula: parts.join(" + "),
-      data: foundry.utils.deepClone(base.data ?? {}),
+      data,
       options: this.#damageOptions(base),
-      flavor: `${item.name} - Cleave Damage`,
+      flavor: `${item.name} - ${this.#masteryLabel("cleave")}`,
       event,
       originMessage
     });
   }
 
   static #baseDamageContext(context) {
-    const { activity, lastAttack, actor } = context;
-    const attackMode = lastAttack?.getFlag?.("dnd5e", "roll.attackMode")
-      ?? context.item.getFlag?.("dnd5e", `last.${activity.id}.attackMode`)
+    const { activity, lastAttack, actor, item } = context;
+    const attackMode = lastAttack?.system?.mode
+      ?? item.getFlag?.("dnd5e", `last.${activity.id}.attackMode`)
       ?? undefined;
-
-    let ammunition;
-    if (lastAttack) {
-      const storedData = lastAttack.getFlag?.("dnd5e", "roll.ammunitionData");
-      ammunition = storedData
-        ? new Item.implementation(storedData, { parent: actor })
-        : actor.items?.get?.(lastAttack.getFlag?.("dnd5e", "roll.ammunition"));
-    }
+    const ammunition = lastAttack?.system?.ammunitionItem
+      ?? (lastAttack?.system?.ammunition ? actor.items?.get?.(lastAttack.system.ammunition) : null)
+      ?? undefined;
 
     const config = activity.getDamageConfig?.({ attackMode, ammunition });
     const rolls = config?.rolls ?? [];
     return rolls.find(row => row.base) ?? rolls[0] ?? null;
+  }
+
+  static #attackModifier(context) {
+    const ability = String(
+      context.lastAttack?.system?.ability
+      ?? context.lastAttack?.rolls?.[0]?.options?.ability
+      ?? context.item?.getFlag?.("dnd5e", `last.${context.activity?.id}.ability`)
+      ?? ""
+    ).trim();
+    if (ability === "none") return 0;
+
+    const direct = Number(context.actor?.system?.abilities?.[ability]?.mod);
+    if (ability && Number.isFinite(direct)) return direct;
+
+    // Defensive fallback for unusual Activities that expose their effective
+    // attack modifier only through roll data.
+    const attackMode = context.lastAttack?.system?.mode
+      ?? context.lastAttack?.rolls?.[0]?.options?.attackMode
+      ?? undefined;
+    const rollData = context.activity?.getRollData?.({
+      deterministic: true,
+      roll: { ability: ability || undefined, attackMode }
+    }) ?? {};
+    const modifier = Number(rollData.mod ?? 0);
+    return Number.isFinite(modifier) ? modifier : 0;
   }
 
   static #damageOptions(base) {
@@ -247,94 +374,92 @@ export class WeaponMasteryAssistanceService {
     };
   }
 
-  static async #postDamageRoll({ actor, activity, formula, data, options, flavor, event, originMessage }) {
+  static async #postDamageRoll({ actor, activity, context, formula, data, options, flavor, event, originMessage }) {
     const DamageRoll = CONFIG.Dice?.DamageRoll;
     if (!DamageRoll) throw new Error("D&D5e DamageRoll is unavailable.");
     const roll = await new DamageRoll(formula, data, options).evaluate();
-    const dnd5eFlags = {
-      ...activity.messageFlags,
-      messageType: "roll",
-      roll: { type: "damage" }
-    };
-    if (originMessage?.id) dnd5eFlags.originatingMessage = originMessage.id;
 
-    // Post through the D&D5e roll pipeline's native final stage. This preserves
-    // the standard damage-roll ChatMessage shape, current target descriptors,
-    // and origin association without running the normal damage configuration
-    // pipeline that would re-add modifiers intentionally excluded by Graze or
-    // Cleave.
+    const origin = originMessage?.getOriginatingMessage?.() ?? originMessage ?? null;
+    const targets = context?.lastAttack?.system?.targets
+      ?? originMessage?.system?.targets
+      ?? [];
+    const system = {
+      ...activity.messageSources,
+      targets: foundry.utils.deepClone(Array.from(targets ?? []))
+    };
+    if (origin?.id) system.origin = origin.id;
+
     await DamageRoll.buildPost([roll], { event }, {
       create: true,
       data: {
         flavor,
         speaker: ChatMessage.getSpeaker({ actor }),
-        flags: { dnd5e: dnd5eFlags }
+        system,
+        type: "damage"
       }
     });
     return roll;
   }
 
-  static #isMiss(attackMessage) {
-    const roll = attackMessage?.rolls?.[0];
-    const targets = attackMessage?.getFlag?.("dnd5e", "targets") ?? [];
-    if (!roll || targets.length !== 1) return false;
-    const ac = Number(targets[0]?.ac);
-    if (!Number.isFinite(ac)) return false;
-    return !roll.isCritical && ((Number(roll.total) < ac) || Boolean(roll.isFumble));
-  }
-
   static #toppleDc(context) {
-    const proficiency = Number(context.actor?.system?.attributes?.prof);
-    const modifier = Number(context.activity?.getRollData?.({ deterministic: true })?.mod ?? 0);
+    const rawProficiency = context.actor?.system?.attributes?.prof;
+    const proficiency = Number(rawProficiency?.value ?? rawProficiency?.flat ?? rawProficiency);
+    const modifier = this.#attackModifier(context);
     if (!Number.isFinite(proficiency) || !Number.isFinite(modifier)) return null;
     return 8 + proficiency + modifier;
   }
 
-  static #masteryLink(config) {
-    const label = String(config?.label ?? "").trim();
-    const reference = String(config?.reference ?? "").trim();
-    if (!label) return null;
-    if (!reference) {
-      const span = document.createElement("span");
-      span.textContent = label;
-      return span;
-    }
-    const link = document.createElement("a");
-    link.className = "content-link";
-    link.draggable = true;
-    link.dataset.link = "";
-    link.dataset.uuid = reference;
-    link.dataset.tooltip = label;
-    link.textContent = label;
-    return link;
-  }
-
   static #scheduleMessageOriginRefresh(message) {
-    if (message?.getFlag?.("dnd5e", "messageType") !== "roll") return;
-    if (message?.getFlag?.("dnd5e", "roll.type") !== "attack") return;
-    const originId = message.getFlag?.("dnd5e", "originatingMessage");
-    if (!originId) return;
-    this.#refreshOriginSoon(originId);
-  }
-
-  static #scheduleOriginRefresh(rolls) {
-    const attackMessage = rolls?.map?.(roll => roll?.parent)
-      ?.find?.(parent => parent?.documentName === "ChatMessage") ?? null;
-    const originId = attackMessage?.getFlag?.("dnd5e", "originatingMessage");
-    if (!originId) return;
-    this.#refreshOriginSoon(originId);
+    if (!message) return;
+    if (message.type === "attack") {
+      const origin = message.getOriginatingMessage?.();
+      if (origin && origin !== message) this.#refreshOriginSoon(origin.id);
+      return;
+    }
+    if (message.type === "usage") this.#refreshOriginSoon(message.id);
   }
 
   static #refreshOriginSoon(originId) {
+    if (!originId) return;
     setTimeout(() => {
       const message = game.messages?.get?.(originId);
-      const element = document.querySelector?.(`[data-message-id="${originId}"]`);
-      if (message && element) this.#enrich(message, element);
+      if (!message) return;
+      for (const element of this.#renderedMessageElements(originId)) this.#enrich(message, element);
     }, 0);
   }
 
-  static #clear(root) {
-    root.querySelectorAll?.('[data-cb-weapon-mastery-control="true"]').forEach(element => element.remove());
+  static #clearPresentation(root) {
+    root.querySelectorAll?.('[data-cb-weapon-mastery-dynamic="true"]').forEach(element => {
+      const entry = element.closest?.("li[data-cb-weapon-mastery-dynamic=true]");
+      (entry ?? element).remove();
+    });
+    root.querySelectorAll?.(".cb-chat-action-label").forEach(element => element.remove());
+    root.querySelectorAll?.(".cb-weapon-mastery-dc").forEach(element => element.remove());
+    root.querySelectorAll?.("button.cb-labeled-chat-action").forEach(button => {
+      button.classList.remove("cb-labeled-chat-action");
+      if (ACTION_MASTERIES[button.dataset.action]) button.hidden = false;
+    });
+  }
+
+  static #renderedMessageElements(messageId) {
+    if (!messageId) return [];
+    const selector = `[data-message-id="${messageId}"]`;
+    const elements = [];
+    const seen = new Set();
+    const collect = root => {
+      for (const element of root?.querySelectorAll?.(selector) ?? []) {
+        if (!(element instanceof HTMLElement) || seen.has(element)) continue;
+        seen.add(element);
+        elements.push(element);
+      }
+    };
+
+    // Foundry v14 can keep chat markup in the live document or in a detached
+    // application root. Query both; an empty NodeList from one must not mask
+    // the other (the x2 nullish-coalescing lookup did exactly that).
+    collect(document);
+    collect(foundry.applications?.detached);
+    return elements;
   }
 
   static #root(element) {

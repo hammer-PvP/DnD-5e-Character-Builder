@@ -4,6 +4,7 @@ import { SourceRegistry } from "./source-registry.mjs";
 import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
 import { AdditionalCantripEntitlementService } from "./additional-cantrip-entitlement-service.mjs";
+import { advancementName } from "../utils/advancement-utils.mjs";
 
 const LAND_SPELLS = Object.freeze({
   arid: {
@@ -542,7 +543,7 @@ export class LevelUpFeatureService {
     if (!caster) return 0;
     const scale = caster.subclass?.toObject().system?.advancement ?? {};
     const advancement = Object.values(scale).find(entry => entry.type === "ScaleValue"
-      && String(entry.configuration?.identifier ?? entry.title ?? "").toLowerCase().includes("prepared"));
+      && String(entry.configuration?.identifier ?? advancementName(entry)).toLowerCase().includes("prepared"));
     const value = level => {
       const rows = Object.entries(advancement?.configuration?.scale ?? {})
         .map(([minimum, row]) => [Number(minimum), Number(row?.value ?? 0)])
@@ -1109,7 +1110,7 @@ export class LevelUpFeatureService {
         let index;
         try {
           index = await pack.getIndex({ fields: [
-            "name", "img", "type", "system.details.type.value", "system.details.cr", "system.attributes.movement.fly"
+            "name", "img", "type", "system.details.type.value", "system.details.cr", "system.attributes.movement.speeds.fly"
           ] });
         } catch (_error) { continue; }
         for (const entry of index) {
@@ -1118,7 +1119,7 @@ export class LevelUpFeatureService {
           if (String(creatureType).toLowerCase() !== "beast") continue;
           const cr = this.#crNumber(foundry.utils.getProperty(entry, "system.details.cr"));
           if (cr === null) continue;
-          const fly = Number(foundry.utils.getProperty(entry, "system.attributes.movement.fly") ?? 0) > 0;
+          const fly = Number(foundry.utils.getProperty(entry, "system.attributes.movement.speeds.fly") ?? 0) > 0;
           options.push({
             uuid: `Compendium.${pack.collection}.Actor.${entry._id}`,
             name: entry.name,
@@ -1187,7 +1188,7 @@ export class LevelUpFeatureService {
   static #scaleRawValue(cls, level, title) {
     const advancements = cls.toObject().system?.advancement ?? {};
     const advancement = Object.values(advancements).find(entry => entry.type === "ScaleValue"
-      && String(entry.title ?? "").toLowerCase().includes(title));
+      && advancementName(entry).toLowerCase().includes(title));
     const rows = Object.entries(advancement?.configuration?.scale ?? {})
       .map(([minimum, row]) => [Number(minimum), row?.value])
       .filter(([minimum]) => minimum <= level)

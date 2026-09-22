@@ -5,6 +5,7 @@ import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.
 import { AdvancementChoiceAnnotationService } from "./advancement-choice-annotation-service.mjs";
 import { CharacterValidationBuildProjectionService } from "./character-validation-build-projection-service.mjs";
 import { NativeSpellGrantProjectionService } from "./native-spell-grant-projection-service.mjs";
+import { advancementName } from "../utils/advancement-utils.mjs";
 
 const PHYSICAL_ITEM_TYPES = new Set(["weapon", "equipment", "consumable", "tool", "container", "loot"]);
 const CANONICAL_OWNER_TYPES = new Set(["class", "subclass", "race", "background", "feat"]);
@@ -216,8 +217,8 @@ export class CharacterValidationProgressionService {
           repairable: true,
           repairMode: "guided",
           repairLabel: "Resolve Missing Choice",
-          title: `${owner.name} — ${sourceAdvancement.title || "Advancement Choice"} Incomplete`,
-          summary: `${owner.name} requires ${expected} resolved choice${expected === 1 ? "" : "s"} from ${sourceAdvancement.title || "this Advancement"}, but only ${actual} could be proven.`,
+          title: `${owner.name} — ${advancementName(sourceAdvancement, "Advancement Choice")} Incomplete`,
+          summary: `${owner.name} requires ${expected} resolved choice${expected === 1 ? "" : "s"} from ${advancementName(sourceAdvancement, "this Advancement")}, but only ${actual} could be proven.`,
           details: "The parent feature is present, but its dependent Advancement is incomplete. The Validator reopens the same native D&D5e Advancement flow instead of inventing the missing choice.",
           data: {
             ownerId: owner.id,
@@ -531,7 +532,7 @@ export class CharacterValidationProgressionService {
               repairMode: "safe",
               repairLabel: "Restore Required Feature",
               title: `${owner.name} — Missing Required ${sourceItem.document.type === "spell" ? "Spell" : "Feature"}`,
-              summary: `${sourceItem.document.name} is a mandatory grant from ${sourceAdvancement.title || owner.name} and is not present on the Actor.`,
+              summary: `${sourceItem.document.name} is a mandatory grant from ${advancementName(sourceAdvancement, owner.name)} and is not present on the Actor.`,
               details: `The enabled source ${sourceItem.label} can restore the exact granted document and reconnect it to the revised Actor's progression record.`,
               data: {
                 ownerId: owner.id,
@@ -570,7 +571,7 @@ export class CharacterValidationProgressionService {
               repairMode: "safe",
               repairLabel: "Restore Native Spell Mechanics",
               title: `${spell.name} — Native Grant Mechanics Incomplete`,
-              summary: `${spell.name} is linked to ${sourceAdvancement.title || owner.name}, but its native D&D5e free-cast/use projection is incomplete.`,
+              summary: `${spell.name} is linked to ${advancementName(sourceAdvancement, owner.name)}, but its native D&D5e free-cast/use projection is incomplete.`,
               details: `The Validator will rebuild the expected spell projection from ${sourceItem.label} using D&D5e's native Spell Configuration and add only the missing required mechanics.`,
               data: {
                 spellId: spell.id,
@@ -610,7 +611,7 @@ export class CharacterValidationProgressionService {
                 repairMode: "safe",
                 repairLabel: "Keep Native Enriched Spell",
                 title: `${spell.name} — Redundant Normal Class Copy`,
-                summary: `${spell.name} has a native enriched grant from ${sourceAdvancement.title || owner.name} plus ${normalCopies.length} redundant normal ${classIdentifier} cop${normalCopies.length === 1 ? "y" : "ies"}.`,
+                summary: `${spell.name} has a native enriched grant from ${advancementName(sourceAdvancement, owner.name)} plus ${normalCopies.length} redundant normal ${classIdentifier} cop${normalCopies.length === 1 ? "y" : "ies"}.`,
                 details: "The native enriched ItemGrant copy is authoritative because it already contains normal casting plus the granted use/recovery/free-cast mechanics. Independent acquisitions from other classes, species, feats, or items are preserved.",
                 data: {
                   keepId: spell.id,
@@ -635,7 +636,7 @@ export class CharacterValidationProgressionService {
             repairMode: "safe",
             repairLabel: "Restore Always Prepared",
             title: `${spell.name} — Always Prepared State Missing`,
-            summary: `${spell.name} is granted by ${sourceAdvancement.title || owner.name} as Always Prepared, but the Actor currently stores it as a normal prepared/unprepared spell.`,
+            summary: `${spell.name} is granted by ${advancementName(sourceAdvancement, owner.name)} as Always Prepared, but the Actor currently stores it as a normal prepared/unprepared spell.`,
             details: "The spell itself is preserved. The Validator only restores the required preparation state and acquisition ownership for this grant.",
             data: {
               spellId: spell.id,
@@ -1098,8 +1099,8 @@ export class CharacterValidationProgressionService {
     const classIdentifier = this.#classIdentifier(owner, actor);
     const classItem = this.#classItem(owner, actor);
     await FeatureSpellOwnershipService.addOwner(spell, {
-      category: this.#slug(sourceAdvancement.title || owner.name || "validation-grant"),
-      label: sourceAdvancement.title || owner.name || "Native Spell Grant",
+      category: this.#slug(advancementName(sourceAdvancement, owner.name || "validation-grant")),
+      label: advancementName(sourceAdvancement, owner.name || "Native Spell Grant"),
       classIdentifier,
       classItemId: classItem?.id ?? null,
       subclassItemId: owner.type === "subclass" ? owner.id : null,
@@ -1176,7 +1177,7 @@ export class CharacterValidationProgressionService {
     if (owner && advancementId && rawAdvancement && configuredUuid) {
       const added = foundry.utils.deepClone(rawAdvancement.value?.added ?? {});
       for (const id of deleteIds) {
-        if (Object.hasOwn(added, id)) added[`-=${id}`] = null;
+        if (Object.hasOwn(added, id)) added[id] = new foundry.data.operators.ForcedDeletion();
       }
       added[keep.id] = configuredUuid;
       if (typeof owner.updateAdvancement === "function") {
@@ -1311,14 +1312,14 @@ export class CharacterValidationProgressionService {
   static #advancementSignature(advancement) {
     const type = String(advancement?.type ?? "");
     const level = this.#firstAdvancementLevel(advancement);
-    if (type === "Trait") return [type, level, String(advancement.configuration?.mode ?? "default"), this.#normalize(advancement.title)].join("|");
-    if (type === "ItemChoice") return [type, String(advancement.configuration?.restriction?.type ?? ""), String(advancement.configuration?.restriction?.subtype ?? ""), this.#normalize(advancement.title)].join("|");
+    if (type === "Trait") return [type, level, String(advancement.configuration?.mode ?? "default"), this.#normalize(advancementName(advancement))].join("|");
+    if (type === "ItemChoice") return [type, String(advancement.configuration?.restriction?.type ?? ""), String(advancement.configuration?.restriction?.subtype ?? ""), this.#normalize(advancementName(advancement))].join("|");
     if (type === "ItemGrant") {
       const ids = (advancement.configuration?.items ?? []).map(row => String(row?.uuid ?? "").split(".").at(-1)).filter(Boolean).sort().join(",");
       return [type, level, ids].join("|");
     }
-    if (type === "ScaleValue") return [type, String(advancement.configuration?.identifier ?? ""), this.#normalize(advancement.title)].join("|");
-    return [type, level, this.#normalize(advancement.title)].join("|");
+    if (type === "ScaleValue") return [type, String(advancement.configuration?.identifier ?? ""), this.#normalize(advancementName(advancement))].join("|");
+    return [type, level, this.#normalize(advancementName(advancement))].join("|");
   }
 
   static #advancementActive(advancement, level) {

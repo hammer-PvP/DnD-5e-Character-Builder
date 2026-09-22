@@ -941,7 +941,7 @@ export class AlwaysPreparedSpellReconciliationService {
     // not reliably reach the Advancement DataModel (the first live preparation-
     // only subclass grant exposed this at Paladin 2 -> 3).
     const added = foundry.utils.deepClone(raw.value?.added ?? {});
-    added[`-=${duplicateId}`] = null;
+    added[duplicateId] = new foundry.data.operators.ForcedDeletion();
     added[canonicalId] = receipt.configuredUuid;
     const nextValue = foundry.utils.deepClone(raw.value ?? {});
     nextValue.added = added;
@@ -963,7 +963,7 @@ export class AlwaysPreparedSpellReconciliationService {
     // Be defensive around migrated/legacy Advancement collection shapes. If the
     // normal DataModel update did not consume the nested deletion operator,
     // replace the complete advancement mapping with the exact desired snapshot.
-    // D&D5e itself uses `system.==advancement` for this migration-safe path.
+    // D&D5e uses a forced full-field replacement for this migration-safe path.
     if (Object.hasOwn(persisted, duplicateId) || persisted[canonicalId] !== receipt.configuredUuid) {
       const advancements = foundry.utils.deepClone(owner.toObject().system?.advancement ?? {});
       const target = advancements?.[receipt.advancementId];
@@ -979,7 +979,7 @@ export class AlwaysPreparedSpellReconciliationService {
         added: cleanAdded
       };
       await owner.update({
-        "system.==advancement": advancements
+        "system.advancement": foundry.data.operators.ForcedReplacement.create(advancements)
       }, {
         characterBuilderAlwaysPreparedReconciliation: true
       });

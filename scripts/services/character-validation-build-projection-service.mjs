@@ -5,6 +5,7 @@ import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mj
 import { AdditionalCantripEntitlementService } from "./additional-cantrip-entitlement-service.mjs";
 import { NativeSpellGrantProjectionService } from "./native-spell-grant-projection-service.mjs";
 import { GhostToolReconciliationService } from "./ghost-tool-reconciliation-service.mjs";
+import { advancementName } from "../utils/advancement-utils.mjs";
 
 const BUILD_TRAIT_OWNER_TYPES = new Set(["class", "subclass", "race", "background", "feat"]);
 const ALWAYS_PREPARED = SpellPreparationPolicyService.ALWAYS_PREPARED;
@@ -787,7 +788,7 @@ export class CharacterValidationBuildProjectionService {
         repairLabel: "Remove Ghost Tool",
         title: `${label} — Ghost Tool Entry`,
         summary: `${label} remains materialized at proficiency 0, but no final Background, Species, Class, Subclass, Feat, or Trait Advancement references it.`,
-        details: "This matches the D&D5e 5.3.3 TraitAdvancement rollback residue pattern. The Validator can remove only this orphaned system.tools mapping entry from the revised Actor.",
+        details: "This matches the D&D5e TraitAdvancement rollback residue pattern. The Validator can remove only this orphaned system.tools mapping entry from the revised Actor.",
         data: { toolKey: key, toolLabel: label }
       });
     }
@@ -904,7 +905,7 @@ export class CharacterValidationBuildProjectionService {
           repairMode: "safe",
           repairLabel: "Restore Trait",
           title: `${entitlement.owner.name} — ${this.#traitTokenLabel(token)} Missing`,
-          summary: `${this.#traitTokenLabel(token)} is a deterministic grant from ${entitlement.sourceAdvancement.title || entitlement.owner.name}, but the Actor's mechanical state no longer contains it.`,
+          summary: `${this.#traitTokenLabel(token)} is a deterministic grant from ${advancementName(entitlement.sourceAdvancement, entitlement.owner.name)}, but the Actor's mechanical state no longer contains it.`,
           details: "The source choice is already known; the Validator restores only the missing trait/proficiency state on the revised copy.",
           data: {
             ownerId: entitlement.owner.id,
@@ -937,7 +938,7 @@ export class CharacterValidationBuildProjectionService {
             repairable: false,
             repairMode: "review",
             title: `${entitlement.owner.name} — Recorded Trait Choice Needs Review`,
-            summary: `${this.#traitTokenLabel(token)} is recorded in ${entitlement.sourceAdvancement.title || "a Trait Advancement"} but is outside the current canonical choice pool.`,
+            summary: `${this.#traitTokenLabel(token)} is recorded in ${advancementName(entitlement.sourceAdvancement, "a Trait Advancement")} but is outside the current canonical choice pool.`,
             details: "The Validator preserves the existing choice because source editions, homebrew, or migration history may explain it.",
             data: { ownerId: entitlement.owner.id, token }
           });
@@ -958,7 +959,7 @@ export class CharacterValidationBuildProjectionService {
             repairMode: "safe",
             repairLabel: "Restore Recorded Choice",
             title: `${entitlement.owner.name} — Recorded ${this.#traitTokenLabel(token)} Missing`,
-            summary: `${this.#traitTokenLabel(token)} is still recorded as the legal choice for ${entitlement.sourceAdvancement.title || entitlement.owner.name}, but its proficiency/training state was removed from the Actor.`,
+            summary: `${this.#traitTokenLabel(token)} is still recorded as the legal choice for ${advancementName(entitlement.sourceAdvancement, entitlement.owner.name)}, but its proficiency/training state was removed from the Actor.`,
             details: "Because the exact original choice is proven by the Advancement ledger or Character Builder history, the Validator can restore the mechanical state without asking the GM to choose again.",
             data: {
               ownerId: entitlement.owner.id,
@@ -981,7 +982,7 @@ export class CharacterValidationBuildProjectionService {
           repairable: true,
           repairMode: "safe",
           repairLabel: "Reconcile Choice Ledger",
-          title: `${entitlement.owner.name} — ${entitlement.sourceAdvancement.title || "Trait Choice"} Ledger Incomplete`,
+          title: `${entitlement.owner.name} — ${advancementName(entitlement.sourceAdvancement, "Trait Choice")} Ledger Incomplete`,
           summary: `Character Builder history proves ${recoverableBadgeTokens.map(token => this.#traitTokenLabel(token)).join(" / ")}, but the native Advancement ledger no longer records ${recoverableBadgeTokens.length === 1 ? "that choice" : "those choices"}.`,
           details: "This repair restores only the choice ledger on the revised copy. It does not add another proficiency or change the Actor's mechanical state.",
           data: {
@@ -1037,8 +1038,8 @@ export class CharacterValidationBuildProjectionService {
           repairable: true,
           repairMode: "safe",
           repairLabel: "Reconcile Existing Choices",
-          title: `${entitlement.owner.name} — ${entitlement.sourceAdvancement.title || "Trait Choice"} Ownership Missing`,
-          summary: `${entitlement.sourceAdvancement.title || entitlement.owner.name} requires ${entitlement.expected} choice${entitlement.expected === 1 ? "" : "s"}; the Actor already has exactly the legal unclaimed state needed to satisfy the ${deficit} missing slot${deficit === 1 ? "" : "s"}.`,
+          title: `${entitlement.owner.name} — ${advancementName(entitlement.sourceAdvancement, "Trait Choice")} Ownership Missing`,
+          summary: `${advancementName(entitlement.sourceAdvancement, entitlement.owner.name)} requires ${entitlement.expected} choice${entitlement.expected === 1 ? "" : "s"}; the Actor already has exactly the legal unclaimed state needed to satisfy the ${deficit} missing slot${deficit === 1 ? "" : "s"}.`,
           details: `The Validator can link ${exclusive.map(token => this.#traitTokenLabel(token)).join(" / ")} to this entitlement without adding or upgrading any proficiency.`,
           data: {
             ownerId: entitlement.owner.id,
@@ -1060,8 +1061,8 @@ export class CharacterValidationBuildProjectionService {
         repairable: true,
         repairMode: "guided",
         repairLabel: candidates.length ? "Link or Resolve Choice" : "Resolve Missing Choice",
-        title: `${entitlement.owner.name} — ${entitlement.sourceAdvancement.title || "Trait Choice"} Incomplete`,
-        summary: `${entitlement.sourceAdvancement.title || entitlement.owner.name} requires ${entitlement.expected} choice${entitlement.expected === 1 ? "" : "s"}, but only ${proven} ${proven === 1 ? "is" : "are"} currently proven by its Advancement record or Character Builder history.`,
+        title: `${entitlement.owner.name} — ${advancementName(entitlement.sourceAdvancement, "Trait Choice")} Incomplete`,
+        summary: `${advancementName(entitlement.sourceAdvancement, entitlement.owner.name)} requires ${entitlement.expected} choice${entitlement.expected === 1 ? "" : "s"}, but only ${proven} ${proven === 1 ? "is" : "are"} currently proven by its Advancement record or Character Builder history.`,
         details: candidates.length
           ? `Existing legal but unclaimed Actor state may satisfy this entitlement: ${candidates.map(token => this.#traitTokenLabel(token)).join(" / ")}. Link an existing choice or reopen the native Advancement.`
           : "No existing unclaimed state can safely satisfy this entitlement. Reopen the native D&D5e Advancement to make the missing legal choice.",
@@ -1763,7 +1764,7 @@ export class CharacterValidationBuildProjectionService {
     return this.#advancementEntries(sourceClass).map(([, row]) => row).find(row => {
       if (row?.type !== "ScaleValue") return false;
       if (identifier && row.configuration?.identifier === identifier) return true;
-      return title && String(row.title ?? "").toLowerCase().includes(String(title).toLowerCase());
+      return title && advancementName(row).toLowerCase().includes(String(title).toLowerCase());
     }) ?? null;
   }
 

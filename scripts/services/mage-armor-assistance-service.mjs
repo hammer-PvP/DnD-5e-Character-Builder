@@ -133,7 +133,7 @@ export class MageArmorAssistanceService {
       return;
     }
 
-    const source = this.#resolveNativeSource(activity, context);
+    const source = await this.#resolveNativeSource(activity, context);
     if (!source.effect) {
       ui.notifications.warn("Mage Armor was cast, but its native Active Effect could not be located.");
       this.#recordAudit(activity.actor, {
@@ -151,8 +151,8 @@ export class MageArmorAssistanceService {
       sourceItemId: source.item?.id ?? context.sourceItemId,
       sourceActivityId: source.activity?.id ?? context.sourceActivityId,
       sourceEffectId: source.effect.id ?? source.effect._id,
-      spellLevel: Number(results?.message?.system?.spellLevel
-        ?? results?.message?.getFlag?.("dnd5e", "spellLevel")
+      sourceEffectUuid: source.effect.uuid ?? null,
+      spellLevel: Number(results?.message?.system?.level
         ?? activity.item?.system?.level
         ?? 1),
       scaling: results?.message?.system?.scaling ?? null
@@ -185,8 +185,12 @@ export class MageArmorAssistanceService {
     const sourceActor = await this.#resolveActor(request.sourceActorUuid);
     const sourceItem = sourceActor?.items?.get?.(request.sourceItemId) ?? null;
     const sourceActivity = this.#activities(sourceItem).find(row => row.id === request.sourceActivityId) ?? null;
-    const sourceEffect = this.#effects(sourceItem).find(row => (row.id ?? row._id) === request.sourceEffectId)
-      ?? this.#nativeMageArmorEffect(sourceActivity, sourceItem);
+    const externalEffect = request.sourceEffectUuid
+      ? await this.#resolveDocument(request.sourceEffectUuid)
+      : null;
+    const sourceEffect = externalEffect
+      ?? this.#effects(sourceItem).find(row => (row.id ?? row._id) === request.sourceEffectId)
+      ?? await this.#nativeMageArmorEffect(sourceActivity, sourceItem);
     if (!target || !sourceEffect) return null;
 
     const armor = this.#equippedBodyArmor(target);
@@ -298,8 +302,18 @@ export class MageArmorAssistanceService {
   static #resolveUseTarget(activity, messageConfig, mode) {
     if (mode === "self") return { actor: activity.actor };
 
-    const descriptors = foundry.utils.getProperty(messageConfig, "data.flags.dnd5e.targets") ?? [];
-    const actors = descriptors.map(row => this.#resolveActorSync(row?.uuid)).filter(Boolean);
+    // D&D5e 6.x seeds Activity usage targets on messageConfig.data.system.targets
+    // before preUseActivity fires. Keep the old flags read only as a historical
+    // fallback for migrated 5.3.3 flows.
+    const descriptors = foundry.utils.getProperty(messageConfig, "data.system.targets")
+      ?? foundry.utils.getProperty(messageConfig, "data.flags.dnd5e.targets")
+      ?? [];
+    const actors = Array.from(descriptors ?? [])
+      .map(row => {
+        if (typeof row === "string") return this.#resolveActorSync(row);
+        return this.#resolveActorSync(row?.actor ?? row?.token ?? row?.uuid);
+      })
+      .filter(Boolean);
     const unique = [...new Map(actors.map(actor => [actor.uuid ?? actor.id, actor])).values()];
     if (!unique.length) {
       return { actor: null, message: "Select one willing creature as the target of Mage Armor before casting it." };
@@ -310,7 +324,7 @@ export class MageArmorAssistanceService {
     return { actor: unique[0] };
   }
 
-  static #resolveNativeSource(activity, context) {
+  static async #resolveNativeSource(activity, context) {
     const actor = activity.actor;
     const item = actor?.items?.get?.(context.sourceItemId ?? activity.item?.id) ?? activity.item;
     const liveActivity = this.#activities(item).find(row => row.id === (context.sourceActivityId ?? activity.id))
@@ -318,14 +332,23 @@ export class MageArmorAssistanceService {
     return {
       item,
       activity: liveActivity,
-      effect: this.#nativeMageArmorEffect(liveActivity, item)
+      effect: await this.#nativeMageArmorEffect(liveActivity, item)
     };
   }
 
-  static #nativeMageArmorEffect(activity, item) {
+  static async #nativeMageArmorEffect(activity, item) {
+    let applicable = [];
+    try {
+      applicable = Array.from(await activity?.getApplicableEffects?.() ?? []);
+    } catch (error) {
+      console.warn(`${MODULE_ID} | Could not resolve D&D5e 6.x Mage Armor effect profiles.`, error);
+    }
+
+    // getApplicableEffects() is authoritative in D&D5e 6.x and resolves local
+    // or external Effect profiles asynchronously. The local Item effect scan is
+    // retained as a compatibility fallback for migrated/homebrew 5.3.3 Items.
     const candidates = [
-      ...(activity?.applicableEffects ?? []),
-      ...this.#activityEffectRefs(activity).map(ref => ref?.effect ?? item?.effects?.get?.(ref?._id ?? ref?.id)).filter(Boolean),
+      ...applicable,
       ...this.#effects(item)
     ];
     return candidates.find(effect => this.#isMageArmorEffect(effect)) ?? null;
@@ -402,6 +425,17 @@ export class MageArmorAssistanceService {
     if (Array.isArray(effects)) return effects;
     if (Array.isArray(effects.contents)) return effects.contents;
     return [...effects];
+  }
+
+  static async #resolveDocument(uuid) {
+    if (!uuid) return null;
+    try {
+      return globalThis.fromUuidSync?.(uuid, { strict: false })
+        ?? await globalThis.fromUuid?.(uuid, { strict: false })
+        ?? null;
+    } catch (_error) {
+      return null;
+    }
   }
 
   static #resolveActorSync(uuid) {

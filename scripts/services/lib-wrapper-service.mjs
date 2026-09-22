@@ -2,6 +2,7 @@ import { MODULE_ID } from "../constants.mjs";
 import { PlayerSheetIntegrityService } from "./player-sheet-integrity-service.mjs";
 import { TransformationActorCleanupService } from "./transformation-actor-cleanup-service.mjs";
 import { AmmunitionAssistanceService } from "./ammunition-assistance-service.mjs";
+import { WeaponMasteryAssistanceService } from "./weapon-mastery-assistance-service.mjs";
 
 const ADVANCEMENT_CLOSE_TARGET = "dnd5e.applications.advancement.AdvancementManager.prototype._onClose";
 const ACTOR_SHEET_ADD_TARGET = "dnd5e.applications.actor.BaseActorSheet.prototype._addDocument";
@@ -11,6 +12,7 @@ const ACTOR_DIRECTORY_CONTEXT_TARGET = "foundry.applications.sidebar.tabs.ActorD
 const DND5E_ACTOR_MODIFY_TOKEN_ATTRIBUTE_TARGET = "dnd5e.documents.Actor5e.prototype.modifyTokenAttribute";
 const DND5E_ACTOR_REVERT_ORIGINAL_FORM_TARGET = "dnd5e.documents.Actor5e.prototype.revertOriginalForm";
 const DND5E_ATTACK_ROLL_TARGET = "dnd5e.documents.activity.AttackActivity.prototype.rollAttack";
+const DND5E_ATTACK_CHAT_ACTION_TARGET = "dnd5e.documents.activity.AttackActivity.prototype._onChatAction";
 /**
  * Central libWrapper integration point.
  *
@@ -125,6 +127,15 @@ export class LibWrapperService {
           return AmmunitionAssistanceService.wrapRollAttack(this, wrapped, config, dialog, message);
         },
         "WRAPPER"
+      );
+      api.register(
+        MODULE_ID,
+        DND5E_ATTACK_CHAT_ACTION_TARGET,
+        async function (wrapped, event, target, message, ...args) {
+          if (await WeaponMasteryAssistanceService.handleChatAction(this, event, target, message)) return undefined;
+          return wrapped(event, target, message, ...args);
+        },
+        "MIXED"
       );
       api.register(
         MODULE_ID,

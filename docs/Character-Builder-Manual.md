@@ -1,8 +1,10 @@
 # Character Builder — Complete Manual
 
-**Version:** 0.9.9x11  
+**Version:** 0.9.x4  
 **Foundry VTT:** 14  
-**D&D5e:** 5.3.3
+**D&D5e:** 6.0.0–6.0.999 — staged migration / runtime normalization (verified target 6.0.2)
+
+> **Migration note:** v0.9.x4 continues the D&D5e 6.x normalization branch while preserving the v0.9.x1 creation/Level Up baseline and the live-validated x3 runtime behavior. Historical sections may still describe their last validated 5.3.3 behavior until each subsystem completes live regression.
 
 This is the single user-facing manual shipped in the installable Character Builder module. The root `README.md` remains the GitHub overview; internal development protocols and duplicated documentation assets are intentionally not distributed to installed worlds.
 
@@ -10,7 +12,7 @@ This is the single user-facing manual shipped in the installable Character Build
 
 # Character Builder
 
-**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14 and D&D5e 5.3.3. It supports a Modern D&D progression policy and a source-authored 2014 progression policy.
+**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14 and the staged D&D5e 6.x migration line. It supports a Modern D&D progression policy and a source-authored 2014 progression policy.
 
 It uses the official D&D5e documents and native Advancement system as its rules spine. Character Builder guides the choices, prepares them in drafts, validates the result, and commits the completed transaction to the live Actor.
 
@@ -21,7 +23,7 @@ It uses the official D&D5e documents and native Advancement system as its rules 
 ## Compatibility
 
 - Foundry VTT 14.367
-- D&D5e 5.3.3
+- D&D5e 6.0.0–6.0.999 (verified target 6.0.2)
 - Player's Handbook 2024 content package
 - SRD 5.2 Modern
 - SRD 5.1 Legacy and compatible 2014 compendiums through the Legacy progression mode

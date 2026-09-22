@@ -7,6 +7,7 @@ import { RestDecisionAssistanceService } from "./rest-decision-assistance-servic
 import { LongRestSpellPreparationService } from "./long-rest-spell-preparation-service.mjs";
 import { MemorizeSpellService } from "./memorize-spell-service.mjs";
 import { WarBondManagementService } from "./war-bond-management-service.mjs";
+import { advancementName } from "../utils/advancement-utils.mjs";
 
 const LAND_LABELS = Object.freeze({ arid: "Arid", polar: "Polar", temperate: "Temperate", tropical: "Tropical" });
 const LAND_RESISTANCES = Object.freeze({ arid: "fire", polar: "cold", temperate: "lightning", tropical: "poison" });
@@ -1935,7 +1936,7 @@ export class RuntimeFeatureService {
         let index;
         try {
           index = await pack.getIndex({ fields: [
-            "name", "img", "type", "system.details.type.value", "system.details.cr", "system.attributes.movement.fly"
+            "name", "img", "type", "system.details.type.value", "system.details.cr", "system.attributes.movement.speeds.fly"
           ] });
         } catch (_error) { continue; }
         for (const entry of index) {
@@ -1944,7 +1945,7 @@ export class RuntimeFeatureService {
           if (String(creatureType).toLowerCase() !== "beast") continue;
           const cr = this.#crNumber(foundry.utils.getProperty(entry, "system.details.cr"));
           if (cr === null || cr > maxCr) continue;
-          const fly = Number(foundry.utils.getProperty(entry, "system.attributes.movement.fly") ?? 0) > 0;
+          const fly = Number(foundry.utils.getProperty(entry, "system.attributes.movement.speeds.fly") ?? 0) > 0;
           if (fly && !flyAllowed) continue;
           options.push({
             uuid: `Compendium.${pack.collection}.Actor.${entry._id}`,
@@ -1985,7 +1986,7 @@ export class RuntimeFeatureService {
   static #scaleRawValue(cls, level, title) {
     const advancements = cls?.toObject?.().system?.advancement ?? cls?.system?.advancement ?? {};
     const advancement = Object.values(advancements).find(entry => entry.type === "ScaleValue"
-      && String(entry.title ?? "").toLowerCase().includes(String(title).toLowerCase()));
+      && advancementName(entry).toLowerCase().includes(String(title).toLowerCase()));
     const rows = Object.entries(advancement?.configuration?.scale ?? {})
       .map(([minimum, row]) => [Number(minimum), row?.value])
       .filter(([minimum]) => Number.isFinite(minimum) && minimum <= Number(level))

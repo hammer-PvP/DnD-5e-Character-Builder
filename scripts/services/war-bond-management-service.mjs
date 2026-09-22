@@ -193,7 +193,10 @@ export class WarBondManagementService {
     } catch (_error) { effects = []; }
     if (!effects.length) {
       effects = [...(actor?.items ?? [])].flatMap(item => [...(item.effects ?? [])].filter(effect =>
-        effect?.isAppliedEnchantment && String(effect.origin ?? "") === String(activity.uuid ?? "")
+        effect?.isAppliedEnchantment && Boolean(
+          effect.matchesOrigin?.(activity.uuid)
+          ?? (String(effect.origin ?? "") === String(activity.uuid ?? ""))
+        )
       ));
     }
     const seen = new Set();

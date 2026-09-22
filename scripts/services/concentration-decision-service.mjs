@@ -1,4 +1,5 @@
 import { MODULE_ID } from "../constants.mjs";
+import { EffectSourceResolver } from "./effect-source-resolver.mjs";
 
 const FLAG_KEY = "concentrationDecision";
 const ACTION_RESOLVE = "resolve-concentration-decision";
@@ -191,9 +192,9 @@ export class ConcentrationDecisionService {
   }
 
   static #concentrationName(effect) {
+    const resolved = EffectSourceResolver.resolveSync(effect);
     const itemRef = effect?.getFlag?.("dnd5e", "item") ?? effect?.flags?.dnd5e?.item ?? {};
-    const embedded = effect?.parent?.items?.get?.(itemRef.id);
-    return String(embedded?.name ?? itemRef.name ?? effect?.name ?? "Concentration")
+    return String(resolved?.item?.name ?? itemRef.name ?? effect?.name ?? "Concentration")
       .replace(/^Concentrating:\s*/i, "");
   }
 

@@ -1,5 +1,66 @@
 # Changelog
 
+## 0.9.x4 — D&D5e 6.x Residual Contract Normalization
+
+- Preserves the live-validated x3 behavior: persistent global Chat Action labels, Graze, Cleave, Bardic Inspiration, Concentration keep/drop and native expiry, Agonizing Blast, Wizard/Druid Keeper flows, War Bond, Wild Shape/Transform restore, Blind Skill/Tool Checks, and Managed Summons.
+- **Topple:** AttackMessage `system.mastery` is now authoritative after D&D5e has accepted the mastery for the roll, avoiding false negatives from reconstructed/snapshot Item `masteryOptions`. The DC enrichment also anchors directly to the native Topple mastery link/supplement and remains re-render/F5 safe. Usage-card mastery actions still use D&D5e `masteryOptions` as the pre-roll ownership gate.
+- **Mage Armor / Armor of Shadows:** migrated target capture to `messageConfig.data.system.targets`, usage spell level to `message.system.level`, and Activity Effect resolution to async `getApplicableEffects()`. External Effect-profile UUIDs are preserved across the GM socket path; local Item Effects remain a migrated/homebrew fallback.
+- **Lay on Hands — Remove Poison:** migrated source validation to `getAssociatedItem()` / `getAssociatedActivity()` / `getAssociatedActor()` and target resolution to structured `message.system.targets`, retaining old flags only as a historical-message fallback.
+- **Empowered Evocation:** migrated Cast→Damage ancestry from legacy `originatingMessage` flags to D&D5e 6.x `system.origin` / `getOriginatingMessage()` while preserving the existing latest-unused-cast fallback for damage paths that do not carry an explicit origin.
+- **Physical Item rarity:** Source Registry and Equipment Shop now index/read persisted `system.rarities[]` instead of the 5.3.3 `system.rarity` shim.
+- **Known Forms movement:** compendium Beast indexing now reads the canonical `system.attributes.movement.speeds.fly` path instead of the compatibility shim.
+- **Compatibility:** Foundry remains 14.367; D&D5e support is explicitly bounded to **6.0.0–6.0.999**, verified on the 6.0.2 contract line.
+
+## 0.9.x3 — D&D5e 6.x Chat Actions / Effect Source Normalization
+
+- Preserves the validated v0.9.x1 Creation/Level Up baseline and the working x2 Graze, Cleave, and Bardic Inspiration runtime behavior; this remains a migration/normalization patch rather than a feature redesign.
+- **Global Chat Action Label Layer:** D&D5e 6.x executable Activity actions now display the semantic label already supplied by the system (`aria-label`) beside their icon. The rule is generic across native action rows, so Attack, Damage, Refund Resource, Consume Resource, and future labeled Activity actions do not require Item-by-Item patches. Because the label is derived on every native render, it also survives chat reload/F5.
+- **Weapon Mastery:** Graze/Cleave remain structured third actions gated by D&D5e's native weapon mastery ownership. Hit/miss never controls their visibility or appearance. Topple enrichment now re-scans reloaded chat and appends a compact `DC <value> CON` beside the native Topple mastery line, using the ability actually recorded for the attack.
+- **Shared ActiveEffect Source Resolver:** added a D&D5e 6.x source-resolution layer that prefers `getSource()` / `getSourceActor()`, understands structured `system.origin`, Activity → Item → Actor chains, `matchesOrigin()`, native concentration Item references, and migrated 5.3.3 fallbacks. Bardic Inspiration, contextual effects, Concentration display, target-damage riders, Agonizing Blast binding, and War Bond origin matching now use the normalized contracts where applicable.
+- **Chat target/usage normalization:** source-target damage riders now prefer `message.system.targets` and `message.system.level`, retaining old flags only as historical migrated-message fallbacks.
+- **Native Active Effect lifecycle:** incorporates the x2a hotfix validated live with timed Bless expiry. Character Builder no longer duplicates D&D5e 6.x finite-duration or native Rest expiry deletion; module-specific consequences may still react to the system's delete lifecycle.
+- **D&D5e compatibility metadata:** minimum remains 6.0.0, verified target updated to 6.0.2, with no hard maximum gate. 6.0.2 is treated as a fixes-only system update and does not expand this patch's functional scope.
+
+## 0.9.x2a — D&D5e 6.x Active Effect lifecycle hotfix
+
+- Removed the legacy world-time Concentration finalization bridge. D&D5e 6.x now owns finite Active Effect expiry and native dependent cleanup; Character Builder no longer calls `Actor#endConcentration()` after `duration.expired`, avoiding a second delete of the same effect/dependents.
+- Narrowed post-rest effect cleanup so Character Builder no longer re-deletes native `duration.expiry` / D&D5e rest-expiry effects after the system rest workflow. CB-owned legacy/custom rest declarations remain supported.
+- No changes to the x2 Weapon Mastery or Bardic Inspiration behavior.
+
+# Character Builder v0.9.x2 — D&D5e 6.x Runtime / Chat Contracts Pass 1
+
+- Preserves the live-validated **v0.9.x1** Creation, Level Up, Advancement, Ghost Tool, Warlock 1→20, and migrated-Actor baseline. This patch translates existing runtime assistance instead of redesigning validated systems.
+- **Weapon Mastery Chat Assistance:** migrated the 5.3.3 flags/DOM contract to D&D5e 6.x structured Usage/Attack/Damage messages and public message association helpers.
+- **Attack Card UX:** native **Attack** and **Damage** actions now receive visible labels. Eligible **Graze** or **Cleave** appears as a third action in the same native action row.
+- **Mastery privacy:** Graze/Cleave visibility is gated by D&D5e's own `weapon.system.masteryOptions`, so the Actor must actually have mastery of that weapon. Hit/miss never controls button visibility, enabled state, or appearance.
+- **Graze / Cleave:** custom damage is posted as a D&D5e 6.x `type: "damage"` message with structured `system.activity`, `system.item`, `system.origin`, and target data. No legacy roll flags are created.
+- **Topple:** the calculated DC is appended beside D&D5e's native mastery link and uses the ability/attack mode actually recorded on the 6.x AttackMessage.
+- **Bardic Inspiration Assistance:** source resolution now prefers D&D5e 6.x `ActiveEffect.getSource()` / `getSourceActor()` and understands Activity → Item → Actor origins while retaining historical migrated-world fallbacks.
+- **Foundry v14 data operators:** runtime `-=...` deletion writes were replaced with `ForcedDeletion`; the migration-safe full Advancement replacement path uses `ForcedReplacement`.
+- D&D5e package compatibility remains minimum **6.0.0**, verified **6.0.1**, with no hard maximum gate.
+
+## 0.9.x1 — D&D5e 6.x Migration / Advancement Contracts
+
+- Continues the D&D5e 6.x compatibility migration from the x12 foundation snapshot.
+- Uses D&D5e 6.x `Advancement.name` instead of the deprecated live `Advancement.title` getter, while still reading legacy raw `title` only from historical Character Builder snapshots.
+- Normalizes ScaleValue/name matching globally, restoring class progression lookups such as Warlock Cantrips Known.
+- Normalizes managed Advancement detection globally, including Warlock Eldritch Invocations and Sorcerer Metamagic.
+- Migrates Feat prerequisite checks from deprecated `validatePrerequisites(actor, options)` to `assertPrerequisites(actor, options)`.
+- D&D5e package compatibility is minimum 6.0.0, verified 6.0.1, with no hard maximum gate.
+- Preserves existing Character Builder behavior; this is a compatibility/normalization build, not a feature redesign.
+
+## 0.9.9x12 — D&D5e 6.0.0 Foundation Pass 1: Content Source Indexing
+
+### Migration baseline
+- Starts the Character Builder compatibility line for **Foundry VTT 14.367+ / D&D5e 6.0.0**. D&D5e 5.3.3 is frozen and no new compatibility work is added to that system line.
+- This is a staged migration/test build, not a declaration that every Character Builder feature has already completed 6.0.0 regression. Existing behavior is intentionally preserved while contracts are normalized pass by pass.
+
+### Compendium / Content Sources
+- Updated `SourceRegistry` compendium indexing for D&D5e 6.0.0. Character Builder no longer requests `system.source.rules` as a child projection while D&D5e 6.0.0 already indexes the parent `system.source` object.
+- Updated `ContentSourceService` discovery for the same parent-object contract. This removes the Foundry backend projection collision that produced `Cannot create property 'rules' on number '1'` when opening Character Builder or Character Builder Settings.
+- Preserves the complete `system.source` object in source indexes instead of reconstructing or flattening its `rules` / `book` children.
+- No Character Creation, Level Up, Keeper, Validator, runtime-assistance, Managed Summons, roll, or Active Effect behavior was intentionally redesigned in this pass.
+
 ## 0.9.9x11 — Concentration Completion + Ghost Tool Reconciliation + Ammunition Assistance
 
 ### World Time — residual Concentration finalization

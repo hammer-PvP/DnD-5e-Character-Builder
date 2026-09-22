@@ -158,11 +158,13 @@ export class LayOnHandsAssistanceService {
     if (!message) return false;
     if (request.requesterId && message.author?.id && message.author.id !== request.requesterId) return false;
 
-    const dnd5e = message.flags?.dnd5e ?? {};
-    const itemId = dnd5e.item?.id ?? null;
-    const activityId = dnd5e.activity?.id ?? null;
-    if (itemId && itemId !== sourceItem.id) return false;
-    if (activityId && activityId !== sourceActivity.id) return false;
+    // D&D5e 6.x exposes the source documents through public ChatMessage helpers.
+    // Keep legacy flags only inside those system helpers rather than duplicating
+    // the old message.flags contract here.
+    const associatedItem = message.getAssociatedItem?.() ?? null;
+    const associatedActivity = message.getAssociatedActivity?.() ?? null;
+    if (associatedItem && associatedItem.id !== sourceItem.id) return false;
+    if (associatedActivity && associatedActivity.id !== sourceActivity.id) return false;
 
     const associatedActor = message.getAssociatedActor?.() ?? null;
     if (associatedActor && associatedActor.id !== sourceActor.id) return false;
@@ -171,11 +173,17 @@ export class LayOnHandsAssistanceService {
   }
 
   static #messageTargetUuids(message) {
-    const raw = message?.flags?.dnd5e?.targets
+    // TargetDescriptor5e stores Actor and Token UUIDs separately in 6.x. Actor
+    // UUID is the stable comparison key used by this assistance service.
+    const raw = message?.system?.targets
+      ?? message?.flags?.dnd5e?.targets
       ?? message?.getFlag?.("dnd5e", "targets")
       ?? [];
-    const rows = Array.isArray(raw) ? raw : [...(raw ?? [])];
-    return [...new Set(rows.map(row => typeof row === "string" ? row : row?.uuid).filter(Boolean))];
+    const rows = Array.from(raw ?? []);
+    return [...new Set(rows.map(row => {
+      if (typeof row === "string") return row;
+      return row?.actor ?? row?.uuid ?? row?.token ?? null;
+    }).filter(Boolean))];
   }
 
   static #qualifies(activity) {

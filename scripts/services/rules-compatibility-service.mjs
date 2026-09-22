@@ -1,4 +1,5 @@
 import { MODULE_ID, defaultSettings } from "../constants.mjs";
+import { advancementName } from "../utils/advancement-utils.mjs";
 
 /**
  * Applies the selected rules-generation policy to native D&D5e class
@@ -253,7 +254,7 @@ export class RulesCompatibilityService {
 
     const type = String(advancement.type ?? "").toLowerCase();
     if (!type.includes("itemchoice")) return false;
-    const text = `${advancement.title ?? ""} ${advancement.hint ?? ""} ${configuration.label ?? ""}`.toLowerCase();
+    const text = `${advancementName(advancement)} ${advancement.hint ?? ""} ${configuration.label ?? ""}`.toLowerCase();
     return /\b(subclass|archetype|primal path|bard college|divine domain|druid circle|martial archetype|monastic tradition|sacred oath|ranger archetype|roguish archetype|sorcerous origin|otherworldly patron|arcane tradition)\b/.test(text);
   }
 

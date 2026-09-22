@@ -411,11 +411,22 @@ export class RulesAssistanceService {
     this.#casts.set(key, rows);
     if (!rows.length) return null;
 
-    const originMessageId = foundry.utils.getProperty(message, "data.flags.dnd5e.originatingMessage")
-      ?? foundry.utils.getProperty(message, "flags.dnd5e.originatingMessage")
+    // D&D5e 6.x stores message ancestry in system.origin. At hook time this can
+    // be either a real ChatMessage or the message configuration that will
+    // create one, so support both shapes without consulting legacy flags.
+    const originDocument = message?.getOriginatingMessage?.() ?? null;
+    const originValue = foundry.utils.getProperty(message, "data.system.origin")
+      ?? foundry.utils.getProperty(message, "system.origin")
       ?? null;
+    const originMessageId = originDocument?.id
+      ?? originValue?.id
+      ?? originValue?._id
+      ?? (typeof originValue === "string" ? originValue : null);
     if (originMessageId) {
-      const exact = [...rows].reverse().find(row => !row.used && row.messageId === originMessageId);
+      const originMessage = game.messages?.get?.(originMessageId) ?? null;
+      const rootMessage = originMessage?.getOriginatingMessage?.() ?? originMessage;
+      const candidateIds = new Set([originMessageId, rootMessage?.id].filter(Boolean));
+      const exact = [...rows].reverse().find(row => !row.used && candidateIds.has(row.messageId));
       if (exact) return exact;
     }
     return [...rows].reverse().find(row => !row.used) ?? null;

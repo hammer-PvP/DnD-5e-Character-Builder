@@ -3,6 +3,7 @@ import { DraftManager } from "./draft-manager.mjs";
 import { LevelUpDraftManager } from "./level-up-draft-manager.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
 import { firstValue } from "../utils/safe-collections.mjs";
+import { advancementName } from "../utils/advancement-utils.mjs";
 
 /**
  * Shared mandatory ItemGrant integrity audit for both Character Creation and
@@ -237,7 +238,7 @@ export class ItemGrantIntegrityService {
             configuredUuid === uuid && this.#isGrantInstance(draft.items.get(id), origin)
           ).length;
           if (actual < expectedCount) {
-            failures.push(`${owner.name}: ${raw.title || "Item Grant"} (${actual}/${expectedCount})`);
+            failures.push(`${owner.name}: ${advancementName(raw, "Item Grant")} (${actual}/${expectedCount})`);
           }
         }
       }
@@ -598,7 +599,7 @@ export class ItemGrantIntegrityService {
       ownerType: owner.type,
       advancementId,
       advancementOrigin: `${owner.id}.${advancementId}`,
-      advancementTitle: raw.title || "Automatic Grant",
+      advancementTitle: advancementName(raw, "Automatic Grant"),
       level: Number(raw.level ?? 0),
       alwaysPrepared,
       castingMethod: item.system?.method ?? null,

@@ -1,3 +1,4 @@
+import { normalizedAdvancementName } from "../utils/advancement-utils.mjs";
 /**
  * Central registry for source-native Advancements whose final choice values are
  * completed by Character Builder after the visible native Advancement flow.
@@ -36,7 +37,7 @@ export class ManagedAdvancementRegistry {
       ?? source.type
       ?? ""
     ).trim().toLowerCase();
-    const title = String(advancement?.title ?? source.title ?? "").trim().toLowerCase();
+    const title = normalizedAdvancementName(advancement);
     return this.#rules.find(rule =>
       (!rule.classIdentifier || rule.classIdentifier === classIdentifier)
       && type.includes(String(rule.type).toLowerCase())

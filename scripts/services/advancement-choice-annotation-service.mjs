@@ -1,4 +1,5 @@
 import { MODULE_ID } from "../constants.mjs";
+import { advancementName } from "../utils/advancement-utils.mjs";
 
 /**
  * Stores compact read-only choice badges on the exact feature that owns each
@@ -431,7 +432,7 @@ export class AdvancementChoiceAnnotationService {
       advancement,
       kind: "trait",
       icon: mode === "expertise" ? "fa-solid fa-medal" : "fa-solid fa-list-check",
-      category: this.#traitCategory(selected, mode, advancement.title),
+      category: this.#traitCategory(selected, mode, advancementName(advancement)),
       values: labels
     });
   }
@@ -445,7 +446,7 @@ export class AdvancementChoiceAnnotationService {
       advancement,
       kind: "item-choice",
       icon: "fa-solid fa-puzzle-piece",
-      category: advancement.title || "Choice",
+      category: advancementName(advancement, "Choice"),
       values: names
     });
   }
@@ -459,7 +460,7 @@ export class AdvancementChoiceAnnotationService {
       advancement,
       kind: "optional-item-grant",
       icon: "fa-solid fa-gift",
-      category: advancement.title || "Granted Choice",
+      category: advancementName(advancement, "Granted Choice"),
       values: names
     });
   }
@@ -472,7 +473,7 @@ export class AdvancementChoiceAnnotationService {
     return {
       advancementId,
       advancementType: advancement.type,
-      advancementTitle: advancement.title || category,
+      advancementTitle: advancementName(advancement, category),
       level: Number(advancement.level ?? 0),
       kind,
       icon,

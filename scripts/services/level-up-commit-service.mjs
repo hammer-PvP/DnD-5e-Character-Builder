@@ -205,7 +205,7 @@ export class LevelUpCommitService {
       // then recreate lastLevelUp exactly from the current transaction.
       await actor.update({
         [`flags.${MODULE_ID}.levelUpHistory`]: history,
-        [`flags.${MODULE_ID}.-=lastLevelUp`]: null
+        [`flags.${MODULE_ID}.lastLevelUp`]: new foundry.data.operators.ForcedDeletion()
       }, {
         render: false,
         characterBuilderLevelUp: true,
@@ -221,9 +221,9 @@ export class LevelUpCommitService {
       await progress(94, stage, "Clearing the pending draft and finalizing the Level Up.");
       this.#assertToken(actor, token);
       await HitPointAdvancementService.clearLockedRoll(actor, { reason: "committed", archive: false, render: false });
-      const finalFlagCleanup = { [`flags.${MODULE_ID}.-=levelUpDraftId`]: null };
+      const finalFlagCleanup = { [`flags.${MODULE_ID}.levelUpDraftId`]: new foundry.data.operators.ForcedDeletion() };
       if (LevelUpService.settings().levelUpMode === "milestone") {
-        finalFlagCleanup[`flags.${MODULE_ID}.-=levelUpGrant`] = null;
+        finalFlagCleanup[`flags.${MODULE_ID}.levelUpGrant`] = new foundry.data.operators.ForcedDeletion();
       }
       await actor.update(finalFlagCleanup, {
         render: false,
@@ -449,7 +449,7 @@ export class LevelUpCommitService {
     // namespace before restoring it so no partial history/lastLevelUp/safety
     // marker survives a failed transaction.
     if (actor.flags?.[MODULE_ID] !== undefined) {
-      await actor.update({ [`flags.-=${MODULE_ID}`]: null }, {
+      await actor.update({ [`flags.${MODULE_ID}`]: new foundry.data.operators.ForcedDeletion() }, {
         characterBuilderLevelUpRollback: true,
         characterBuilderTransactionToken: token
       });

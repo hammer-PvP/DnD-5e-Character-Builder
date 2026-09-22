@@ -182,8 +182,9 @@ export class AgonizingBlastBindingService {
       if (current && this.#bindingKey(current) === this.#bindingKey(binding)) return true;
       const profile = effect.getFlag?.("dnd5e", "enchantmentProfile")
         ?? effect.flags?.dnd5e?.enchantmentProfile;
-      const origin = effect.origin ?? effect.getFlag?.("core", "originText") ?? effect.flags?.core?.originText;
-      return profile === binding.profileId && origin === activity.uuid;
+      const matchesOrigin = effect.matchesOrigin?.(activity.uuid)
+        ?? ((effect.origin ?? effect.getFlag?.("core", "originText") ?? effect.flags?.core?.originText) === activity.uuid);
+      return profile === binding.profileId && matchesOrigin;
     }) ?? null;
   }
 
@@ -199,8 +200,9 @@ export class AgonizingBlastBindingService {
       if (effect.type !== "enchantment") return false;
       const profile = effect.getFlag?.("dnd5e", "enchantmentProfile")
         ?? effect.flags?.dnd5e?.enchantmentProfile;
-      const origin = effect.origin ?? effect.getFlag?.("core", "originText") ?? effect.flags?.core?.originText;
-      if (profile === profileId && (!origin || origin === activity.uuid)) return true;
+      const legacyOrigin = effect.origin ?? effect.getFlag?.("core", "originText") ?? effect.flags?.core?.originText;
+      const matchesOrigin = effect.matchesOrigin?.(activity.uuid) ?? (legacyOrigin === activity.uuid);
+      if (profile === profileId && (!legacyOrigin || matchesOrigin)) return true;
       const changes = effect.system?.changes ?? effect.changes ?? [];
       return /agonizing blast/i.test(String(effect.name ?? ""))
         && changes.some(change => change.key === "system.damage.bonus"

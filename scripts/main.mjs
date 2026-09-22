@@ -180,9 +180,6 @@ Hooks.once("ready", async () => {
     ui.notifications.error("Character Builder requires the D&D5e system.");
     return;
   }
-  if (game.system.version !== "5.3.3" && game.user.isGM) {
-    ui.notifications.warn(`Character Builder ${MODULE_VERSION} was validated against D&D5e 5.3.3. Detected ${game.system.version}.`);
-  }
   await ActorCommitService.recoverOwnedInterruptedTransactions();
   await NativeFeatureCompatibilityService.ready();
   if (game.user.isGM) {

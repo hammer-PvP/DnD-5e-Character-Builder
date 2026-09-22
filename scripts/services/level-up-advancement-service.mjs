@@ -11,6 +11,7 @@ import { ManagedAdvancementRegistry } from "./managed-advancement-registry.mjs";
 import { ItemChoiceReplacementIntegrityService } from "./item-choice-replacement-integrity-service.mjs";
 import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
 import { RulesCompatibilityService } from "./rules-compatibility-service.mjs";
+import { normalizedAdvancementName } from "../utils/advancement-utils.mjs";
 
 export class LevelUpAdvancementService {
   static async apply(draft, registry) {
@@ -165,7 +166,7 @@ export class LevelUpAdvancementService {
       ?? advancement?.constructor?.metadata?.type
       ?? source.type
       ?? "";
-    const title = String(advancement?.title ?? source.title ?? "").trim().toLowerCase();
+    const title = normalizedAdvancementName(advancement);
     if (String(type).toLowerCase().includes("hitpoints") || title === "hit points") return true;
     return ManagedAdvancementRegistry.isManaged(advancement, { classIdentifier });
   }

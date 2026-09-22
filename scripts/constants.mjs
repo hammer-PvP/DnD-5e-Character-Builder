@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.9x11";
-export const MODULE_BUILD = "internal-099x11-concentration-tools-ammunition-r1";
+export const MODULE_VERSION = "0.9.x4";
+export const MODULE_BUILD = "dnd6-chat-effects-normalization-r2";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {

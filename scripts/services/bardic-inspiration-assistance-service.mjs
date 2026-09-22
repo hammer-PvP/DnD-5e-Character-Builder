@@ -2,6 +2,7 @@ import { MODULE_ID } from "../constants.mjs";
 import { ProtectedTransactionDialogService } from "./protected-transaction-dialog-service.mjs";
 import { RulesAssistanceSettingsService } from "./rules-assistance-settings-service.mjs";
 import { SharedRollResolutionQueueService } from "./shared-roll-resolution-queue-service.mjs";
+import { EffectSourceResolver } from "./effect-source-resolver.mjs";
 
 const RULE_ID = "bardic-inspiration-post-failure";
 const SOURCE_IDENTIFIER = "bardic-inspiration";
@@ -384,37 +385,12 @@ export class BardicInspirationAssistanceService {
   }
 
   static async #resolveEffectSource(effect) {
-    let sourceDocument = null;
-    const origin = String(effect.origin ?? effect.getFlag?.("dnd5e", "dependentOn") ?? "");
-    if (origin) {
-      try {
-        sourceDocument = await globalThis.fromUuid?.(origin);
-      } catch (_error) {
-        sourceDocument = globalThis.fromUuidSync?.(origin) ?? null;
-      }
-    }
-
-    if (sourceDocument?.documentName === "ActiveEffect") {
-      const item = sourceDocument.parent?.documentName === "Item" ? sourceDocument.parent : null;
-      return { effect: sourceDocument, item, actor: item?.actor ?? item?.parent ?? null };
-    }
-    if (sourceDocument?.documentName === "Item") {
-      return { effect: null, item: sourceDocument, actor: sourceDocument.actor ?? sourceDocument.parent ?? null };
-    }
-
-    const sourceId = String(effect.getFlag?.("dnd5e", "sourceId")
-      ?? effect.flags?.dnd5e?.sourceId
-      ?? effect._stats?.compendiumSource
-      ?? "");
-    if (sourceId) {
-      try {
-        const item = await globalThis.fromUuid?.(sourceId);
-        if (item?.documentName === "Item") return { effect: null, item, actor: item.actor ?? item.parent ?? null };
-      } catch (_error) {
-        // The embedded effect still remains a valid candidate if its official source token is present.
-      }
-    }
-    return { effect: null, item: null, actor: null };
+    const resolved = await EffectSourceResolver.resolve(effect);
+    return {
+      effect: resolved.effect ?? null,
+      item: resolved.item ?? null,
+      actor: resolved.actor ?? null
+    };
   }
 
   static #isNativeBardicSource(item, effect) {

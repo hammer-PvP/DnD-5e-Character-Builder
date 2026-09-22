@@ -6544,3 +6544,30 @@
 .cb-ammunition-selector .hint {
   margin: 6px 0 0;
 }
+
+/* v0.9.x3 — D&D5e 6.x global Chat Action Label Layer
+ *
+ * D&D5e 6 renders executable Activity actions in the icon-row whose leading
+ * marker is fa-circle-play. The system already persists/localizes each action's
+ * semantic label in aria-label. Present that label visually instead of
+ * rewriting individual Items, Activities, or ChatMessages. This survives chat
+ * reload/F5 because the rule applies to every native render. */
+.chat-log .message.compact .icon-row > i.fa-circle-play + ul button.icon[aria-label],
+.chat-popout .message.compact .icon-row > i.fa-circle-play + ul button.icon[aria-label] {
+  inline-size: auto;
+  min-inline-size: 64px;
+  padding-inline: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.chat-log .message.compact .icon-row > i.fa-circle-play + ul button.icon[aria-label]::after,
+.chat-popout .message.compact .icon-row > i.fa-circle-play + ul button.icon[aria-label]::after {
+  content: attr(aria-label);
+  font-size: var(--font-size-10);
+  line-height: 1;
+}
+

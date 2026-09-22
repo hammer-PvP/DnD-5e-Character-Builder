@@ -1,6 +1,7 @@
 import { MODULE_ID } from "../constants.mjs";
 import { SourceResolver } from "./source-resolver.mjs";
 import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
+import { normalizedAdvancementName } from "../utils/advancement-utils.mjs";
 
 const TextEditorImplementation = foundry.applications.ux.TextEditor.implementation;
 
@@ -248,7 +249,7 @@ export class MetamagicService {
   static #findAdvancement(cls) {
     return this.#advancementData(cls).find(entry => {
       if (String(entry.type ?? "") !== "ItemChoice") return false;
-      const title = String(entry.title ?? "").trim().toLowerCase();
+      const title = normalizedAdvancementName(entry);
       return title === "metamagic" || title === "metamagic options";
     }) ?? null;
   }
@@ -302,7 +303,7 @@ export class MetamagicService {
     const document = await fromUuid(option.uuid);
     if (!document) throw new Error(`Unable to load ${option.name}.`);
 
-    document.system?.validatePrerequisites?.(draft, {
+    document.system?.assertPrerequisites?.(draft, {
       level: Number(state.targetClassLevel),
       showMessage: false,
       throwError: true

@@ -649,8 +649,8 @@ export class ShopService {
   static #isMundaneBaseItem(option) {
     if (!option || !PHYSICAL_ITEM_TYPES.has(option.type)) return false;
     const system = option.system ?? {};
-    const rarity = String(system.rarity ?? "").trim().toLowerCase();
-    if (rarity && !["none", "mundane"].includes(rarity)) return false;
+    const rarities = this.#properties(system.rarities).map(value => String(value).trim().toLowerCase());
+    if (rarities.some(rarity => rarity && !["none", "mundane"].includes(rarity))) return false;
 
     const magicalBonus = Number(system.magicalBonus ?? system.armor?.magicalBonus ?? 0);
     if (magicalBonus) return false;

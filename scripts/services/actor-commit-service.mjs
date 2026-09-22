@@ -395,7 +395,7 @@ export class ActorCommitService {
     }
 
     const snapshotFlags = this.#plainClone(snapshot.flags?.[MODULE_ID] ?? {});
-    await actor.update({ [`flags.-=${MODULE_ID}`]: null }, { characterBuilderRollback: true });
+    await actor.update({ [`flags.${MODULE_ID}`]: new foundry.data.operators.ForcedDeletion() }, { characterBuilderRollback: true });
     if (Object.keys(snapshotFlags).length) {
       await actor.update({ [`flags.${MODULE_ID}`]: snapshotFlags }, { characterBuilderRollback: true });
     }

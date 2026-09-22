@@ -4,6 +4,7 @@ import { CharacterValidationProgressionService } from "./character-validation-pr
 import { NativeSpellGrantProjectionService } from "./native-spell-grant-projection-service.mjs";
 import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.mjs";
 import { InternalActorReferenceRebindingService } from "./internal-actor-reference-rebinding-service.mjs";
+import { advancementName } from "../utils/advancement-utils.mjs";
 
 const VALIDATION_FLAG = "characterValidation";
 const SCHEMA_VERSION = 1;
@@ -312,7 +313,7 @@ export class CharacterValidationService {
             repairable,
             repairLabel: "Restore Item",
             title: `${owner.name} — Missing Advancement Item`,
-            summary: `${advancement?.title || advancement?.type || "Advancement"} still records a granted or selected Item that is missing from the Actor.`,
+            summary: `${advancementName(advancement, advancement?.type || "Advancement")} still records a granted or selected Item that is missing from the Actor.`,
             details: repairable
               ? `The recorded source ${sourceDocument.name} can be restored with its original embedded Item ID, preserving the Advancement link.`
               : sourceAllowed
@@ -453,7 +454,7 @@ export class CharacterValidationService {
         : null;
       await FeatureSpellOwnershipService.addOwner(created, {
         category: this.#slug(owner.name || "validation-grant"),
-        label: sourceGrant.advancement.title || owner.name || "Native Spell Grant",
+        label: advancementName(sourceGrant.advancement, owner.name || "Native Spell Grant"),
         classIdentifier,
         classItemId: classItem?.id ?? null,
         subclassItemId: owner.type === "subclass" ? owner.id : null,

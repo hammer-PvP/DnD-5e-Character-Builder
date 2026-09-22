@@ -1,4 +1,5 @@
 import { MODULE_ID } from "../constants.mjs";
+import { advancementName } from "../utils/advancement-utils.mjs";
 
 /**
  * Repairs and validates native D&D5e ItemChoice replacement records without
@@ -35,7 +36,7 @@ export class ItemChoiceReplacementIntegrityService {
           });
 
           if (!original || !replacement) {
-            const title = advancement.title || owner.name || "Item Choice";
+            const title = advancementName(advancement, owner.name || "Item Choice");
             const message = `${title} contains an invalid native replacement record at level ${targetLevel}.`;
             if (throwOnFailure) {
               const error = new Error(message);
@@ -86,7 +87,7 @@ export class ItemChoiceReplacementIntegrityService {
           for (const field of ["original", "replacement"]) {
             const value = record[field];
             if (!this.ID_PATTERN.test(String(value ?? ""))) {
-              const error = new Error(`${advancement.title || owner.name || "Item Choice"} has an invalid ${field} embedded Item ID at level ${targetLevel}.`);
+              const error = new Error(`${advancementName(advancement, owner.name || "Item Choice")} has an invalid ${field} embedded Item ID at level ${targetLevel}.`);
               error.structuralLevelUp = true;
               error.reason = `Native ItemChoice replacement ${field} must be a 16-character embedded Item ID.`;
               error.diagnostic = JSON.stringify({ ownerId: owner.id, advancementId: advancement._id, targetLevel, field, value });

@@ -1,5 +1,6 @@
 import { MODULE_ID } from "../constants.mjs";
 import { RulesAssistanceSettingsService } from "./rules-assistance-settings-service.mjs";
+import { EffectSourceResolver } from "./effect-source-resolver.mjs";
 
 const RULE_ID = "source-target-damage-riders";
 const BINDING_FLAG = "sourceTargetDamageRiderBinding";
@@ -210,12 +211,17 @@ export class SourceTargetDamageRiderService {
       actors.push(actor);
     };
 
-    const descriptors = foundry.utils.getProperty(message, "flags.dnd5e.targets")
+    // D&D5e 6.x stores usage/roll targets on message.system.targets. Retain the
+    // flags fallback only for historical 5.3.3 messages that survived world
+    // migration.
+    const descriptors = message?.system?.targets
+      ?? foundry.utils.getProperty(message, "flags.dnd5e.targets")
       ?? message?.getFlag?.("dnd5e", "targets")
       ?? [];
     for (const descriptor of Array.from(descriptors ?? [])) {
-      const uuid = typeof descriptor === "string" ? descriptor : descriptor?.uuid;
-      const document = this.#fromUuid(uuid, message);
+      const actorUuid = typeof descriptor === "string" ? descriptor : descriptor?.actor;
+      const tokenUuid = typeof descriptor === "object" ? descriptor?.token : null;
+      const document = this.#fromUuid(actorUuid ?? tokenUuid, message);
       if (document?.documentName === "Actor") push(document);
       else if (document?.actor?.documentName === "Actor") push(document.actor);
     }
@@ -265,7 +271,7 @@ export class SourceTargetDamageRiderService {
 
     const origin = concentration ?? effect;
     const existing = Array.from(targetActor.effects ?? []).find(candidate =>
-      !candidate?.disabled && candidate.origin === origin.uuid
+      !candidate?.disabled && Boolean(candidate.matchesOrigin?.(origin.uuid) ?? (candidate.origin === origin.uuid))
     );
     if (existing) return existing;
 
@@ -274,7 +280,7 @@ export class SourceTargetDamageRiderService {
         dnd5e: {
           dependentOn: origin.uuid,
           scaling: message?.system?.scaling ?? 0,
-          spellLevel: message?.system?.spellLevel ?? sourceItem.system?.level ?? null
+          spellLevel: message?.system?.level ?? sourceItem.system?.level ?? null
         }
       }
     };
@@ -380,12 +386,14 @@ export class SourceTargetDamageRiderService {
       }
     }
 
-    const origin = this.#sourceFromUuid(effect.origin, effect);
-    if (origin?.sourceItem) return origin;
-
-    const dependent = effect.getFlag?.("dnd5e", "dependentOn");
-    const dependency = this.#sourceFromUuid(dependent, effect);
-    if (dependency?.sourceItem) return dependency;
+    const resolved = EffectSourceResolver.resolveSync(effect);
+    if (resolved?.item && resolved?.actor) {
+      return {
+        controllerActor: resolved.actor,
+        sourceItem: resolved.item,
+        anchorEffect: resolved.effect?.parent?.documentName === "Actor" ? resolved.effect : null
+      };
+    }
 
     return null;
   }

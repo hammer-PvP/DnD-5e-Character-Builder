@@ -114,7 +114,7 @@ export class GhostToolReconciliationService {
 
   static async removeEntry(actor, key, options = {}) {
     if (!actor?.system?.tools || !Object.prototype.hasOwnProperty.call(actor.system.tools, key)) return false;
-    await actor.update({ [`system.tools.-=${key}`]: null }, {
+    await actor.update({ [`system.tools.${key}`]: new foundry.data.operators.ForcedDeletion() }, {
       characterBuilderGhostToolCleanup: true,
       ...options
     });

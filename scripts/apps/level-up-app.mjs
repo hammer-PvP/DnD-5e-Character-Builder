@@ -12,6 +12,7 @@ import { WarlockProjectedCantripService } from "../services/warlock-projected-ca
 import { ModalStackService } from "../services/modal-stack-service.mjs";
 import { SourceFullDetailsApp } from "./source-full-details-app.mjs";
 import { AdvancementCompletionGateService } from "../services/advancement-completion-gate-service.mjs";
+import { advancementName } from "../utils/advancement-utils.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -686,7 +687,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       }
       row.entries.push({
         type: String(advancement?.type ?? "Advancement"),
-        title: String(advancement?.title ?? advancement?.type ?? "Subclass Advancement"),
+        title: advancementName(advancement, advancement?.type ?? "Subclass Advancement"),
         items
       });
       byLevel.set(level, row);

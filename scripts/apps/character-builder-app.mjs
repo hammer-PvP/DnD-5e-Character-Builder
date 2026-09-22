@@ -1,6 +1,7 @@
 import {
   MODULE_ID, ABILITIES, STANDARD_ARRAY, CUSTOM_ARRAY_SLOT_COUNT, POINT_BUY_COSTS, POINT_BUY_BUDGET, defaultSettings
 } from "../constants.mjs";
+import { advancementName } from "../utils/advancement-utils.mjs";
 import { SourceRegistry } from "../services/source-registry.mjs";
 import { DraftManager } from "../services/draft-manager.mjs";
 import { AdvancementService } from "../services/advancement-service.mjs";
@@ -254,7 +255,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         secrets: true
       });
       const advancementSummary = this.#advancementData(backgroundSource).map(entry => ({
-        title: entry.title || entry.type,
+        title: advancementName(entry, entry.type),
         hint: entry.hint || ""
       }));
       backgroundSelection = {

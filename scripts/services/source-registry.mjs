@@ -1,12 +1,13 @@
 import { MODULE_ID } from "../constants.mjs";
 import { ContentSourceService } from "./content-source-service.mjs";
+import { advancementName } from "../utils/advancement-utils.mjs";
 
 const TextEditorImplementation = foundry.applications.ux.TextEditor.implementation;
 
 const INDEX_FIELDS = [
   "name", "img", "type",
   "system.identifier",
-  "system.source.rules",
+  "system.source",
   "system.type.value",
   "system.type.subtype",
   "system.type.baseItem",
@@ -16,7 +17,7 @@ const INDEX_FIELDS = [
   "system.school",
   "system.prerequisites.level",
   "system.prerequisites.repeatable",
-  "system.rarity",
+  "system.rarities",
   "system.magicalBonus",
   "system.armor.magicalBonus",
   "system.properties",
@@ -230,7 +231,7 @@ export class SourceRegistry {
       advancements: advancements.map(advancement => ({
         id: advancement.id ?? advancement._id,
         type: advancement.constructor?.typeName ?? advancement.type,
-        title: advancement.title || advancement._defaultTitle || advancement.constructor?.metadata?.title || advancement.type,
+        title: advancementName(advancement, advancement._defaultTitle || advancement.constructor?.metadata?.title || advancement.type),
         hint: advancement.hint || "",
         level: advancement.level ?? advancement.levels?.[0] ?? 0
       }))
@@ -256,11 +257,12 @@ export class SourceRegistry {
   #matchesEquipmentEntry(item, entry, actor) {
     const typeValue = foundry.utils.getProperty(item, "system.type.value") ?? "";
     const subtype = foundry.utils.getProperty(item, "system.type.subtype") ?? "";
-    const rarity = foundry.utils.getProperty(item, "system.rarity") ?? "";
+    const rawRarities = foundry.utils.getProperty(item, "system.rarities") ?? [];
+    const rarities = rawRarities instanceof Set ? [...rawRarities] : Array.from(rawRarities ?? []);
     const bonus = Number(foundry.utils.getProperty(item, "system.magicalBonus") ??
       foundry.utils.getProperty(item, "system.armor.magicalBonus") ?? 0);
 
-    if (bonus || !["", "none", "common"].includes(String(rarity).toLowerCase())) return false;
+    if (bonus || rarities.some(rarity => !["", "none", "common"].includes(String(rarity).toLowerCase()))) return false;
 
     if (entry.requiresProficiency && actor) {
       if (entry.type === "weapon") {

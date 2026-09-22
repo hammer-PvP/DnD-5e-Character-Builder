@@ -229,7 +229,7 @@ export class EpicBoonService {
     });
     await actor.update({
       [`flags.${MODULE_ID}.${this.HISTORY_FLAG}`]: [...history, entry].slice(-50),
-      [`flags.${MODULE_ID}.-=${this.PENDING_FLAG}`]: null
+      [`flags.${MODULE_ID}.${this.PENDING_FLAG}`]: new foundry.data.operators.ForcedDeletion()
     }, { characterBuilderEpicBoonGift: true });
     ui.notifications.info(`${item.name} was added to ${actor.name}.`);
     actor.sheet?.render?.(false);
@@ -275,7 +275,7 @@ export class EpicBoonService {
       .map(([key, value]) => [`system.abilities.${key}.value`, value]));
     update[`flags.${MODULE_ID}.${this.PENDING_FLAG}`] = snapshot.pending;
     if (snapshot.historyExists) update[`flags.${MODULE_ID}.${this.HISTORY_FLAG}`] = snapshot.history;
-    else update[`flags.${MODULE_ID}.-=${this.HISTORY_FLAG}`] = null;
+    else update[`flags.${MODULE_ID}.${this.HISTORY_FLAG}`] = new foundry.data.operators.ForcedDeletion();
     await actor.update(update, { characterBuilderEpicBoonRollback: true });
     actor.sheet?.render?.(false);
   }

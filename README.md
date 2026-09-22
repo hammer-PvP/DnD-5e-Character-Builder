@@ -1,6 +1,8 @@
 # Character Builder
 
-**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14 and D&D5e 5.3.3. It supports a Modern D&D progression policy and a source-authored 2014 progression policy.
+**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14. **v0.9.x4 continues the staged D&D5e 6.x compatibility migration, closing the current Weapon Mastery chat pass and translating the remaining confirmed 5.3.3 runtime contracts in Mage Armor, Lay on Hands, Empowered Evocation, physical-item rarity, and Wild Shape movement indexing.**
+
+> **Migration status:** v0.9.x4 is a residual-contract normalization pass for D&D5e 6.x. Creation, Level Up, Advancement, and Ghost Tool repair remain based on the live-validated v0.9.x1 baseline; already validated x3 systems are preserved while remaining 5.3.3 paths are translated incrementally. This remains a development branch, not the final 6.x compatibility sign-off.
 
 It uses the official D&D5e documents and native Advancement system as its rules spine. Character Builder guides the choices, prepares them in drafts, validates the result, and commits the completed transaction to the live Actor.
 
@@ -10,8 +12,8 @@ It uses the official D&D5e documents and native Advancement system as its rules 
 
 ## Compatibility
 
-- Foundry VTT 14.367
-- D&D5e 5.3.3
+- Foundry VTT 14.367 or newer within v14
+- D&D5e 6.0.0–6.0.999 (verified target: 6.0.2)
 - Player's Handbook 2024 content package
 - SRD 5.2 Modern
 - SRD 5.1 Legacy and compatible 2014 compendiums through the Legacy progression mode

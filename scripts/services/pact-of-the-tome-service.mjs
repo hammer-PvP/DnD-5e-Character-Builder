@@ -1,6 +1,7 @@
 import { MODULE_ID } from "../constants.mjs";
 import { AdvancementChoiceAnnotationService } from "./advancement-choice-annotation-service.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
+import { normalizedAdvancementName } from "../utils/advancement-utils.mjs";
 
 /**
  * Reusable Pact of the Tome selection logic. The acquisition mode is used by
@@ -532,7 +533,7 @@ export class PactOfTheTomeService {
       const values = Object.values(added).flatMap(row => Object.keys(row ?? {}));
       if (values.includes(invocationItemId)) return id;
     }
-    return Object.entries(advancements).find(([, advancement]) => String(advancement?.title ?? "").toLowerCase() === "eldritch invocations")?.[0] ?? null;
+    return Object.entries(advancements).find(([, advancement]) => normalizedAdvancementName(advancement) === "eldritch invocations")?.[0] ?? null;
   }
 
 

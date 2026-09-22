@@ -251,7 +251,7 @@ export class HitPointAdvancementService {
     if (!lock) return;
     if (archive) await this.#archiveReset(actor, lock, reason);
     if (render === false) {
-      await actor.update({ [`flags.${MODULE_ID}.-=${this.LOCK_FLAG}`]: null }, {
+      await actor.update({ [`flags.${MODULE_ID}.${this.LOCK_FLAG}`]: new foundry.data.operators.ForcedDeletion() }, {
         render: false,
         characterBuilderHitPointLockCleanup: true
       });
