@@ -400,6 +400,9 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
         case "filter-prepare-spells":
           this.#setPreparedSpellFilter(target.dataset.filterMode);
           break;
+        case "clear-prepare-spells":
+          this.#clearPreparedSpellSelection();
+          break;
         case "open-war-bond-manager":
           await WarBondManagerApp.launch(this.actor, { featureItemId: this.#selectedAction()?.featureItemId ?? null });
           break;
@@ -652,15 +655,18 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
       : "";
     const title = "Discard Rest Changes";
     const content = `<p>Discard every confirmed and unconfirmed Character Keeper choice for this ${this.restLabel}?</p>${rollNotice}<p>The native rest has not started and the Actor will not be changed.</p>`;
-    const DialogV2 = foundry.applications.api.DialogV2;
-    const confirmed = DialogV2?.confirm
-      ? await DialogV2.confirm({
+    const confirmed = await ProtectedTransactionDialogService.confirm({
+      key: `discard-rest-changes:${this.actor.id}:${this.restType}`,
+      matchClass: "cb-discard-rest-changes-dialog",
+      dialogOptions: {
+        classes: ["dnd5e-character-builder", "character-builder", "cb-protected-transaction-dialog", "cb-discard-rest-changes-dialog"],
         window: { title, modal: true },
         content,
         yes: { label: "Discard Rest Changes", icon: "fa-solid fa-rotate-left" },
         no: { label: "Keep Changes", icon: "fa-solid fa-xmark" }
-      })
-      : await Dialog.confirm({ title, content, defaultYes: false });
+      },
+      fallback: () => Dialog.confirm({ title, content, defaultYes: false })
+    });
     if (!confirmed) return;
 
     this.#setBusy(true, "Discarding rest changes…");
@@ -698,12 +704,20 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     if (this.busy || this.externalMode) return;
     this.session = RestSessionService.get(this.actor) ?? this.session;
     if (!this.session?.nativeRestCompleted) return this.#cancelManagement();
-    const DialogV2 = foundry.applications.api.DialogV2;
     const title = "Discard Pending Character Keeper Changes";
     const content = `<p>The native ${this.restLabel} has already completed.</p><p>Discard the pending Character Keeper choices and close this session? The completed rest and its native recovery will remain in place.</p>`;
-    const confirmed = DialogV2?.confirm
-      ? await DialogV2.confirm({ window: { title, modal: true }, content, yes: { label: "Discard Pending Changes" }, no: { label: "Keep Session" } })
-      : await Dialog.confirm({ title, content, yes: () => true, no: () => false, defaultYes: false });
+    const confirmed = await ProtectedTransactionDialogService.confirm({
+      key: `recover-keeper-session:${this.actor.id}:${this.restType}`,
+      matchClass: "cb-recover-keeper-session-dialog",
+      dialogOptions: {
+        classes: ["dnd5e-character-builder", "character-builder", "cb-protected-transaction-dialog", "cb-recover-keeper-session-dialog"],
+        window: { title, modal: true },
+        content,
+        yes: { label: "Discard Pending Changes", icon: "fa-solid fa-rotate-left" },
+        no: { label: "Keep Session", icon: "fa-solid fa-xmark" }
+      },
+      fallback: () => Dialog.confirm({ title, content, yes: () => true, no: () => false, defaultYes: false })
+    });
     if (!confirmed) return;
     this.#setBusy(true, "Recovering Character Keeper session…");
     try {
@@ -814,6 +828,14 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
         if (preparedSpellItemIds.length > limit) throw new Error(`Choose no more than ${limit} ordinary prepared spell${limit === 1 ? "" : "s"}.`);
         return { classItemId, preparedSpellItemIds };
       }
+      case "replace-prepared-spell": {
+        const removeItemId = checkedValues("keeper.replacePrepared.removeItemId")[0] ?? "";
+        const addItemId = checkedValues("keeper.replacePrepared.addItemId")[0] ?? "";
+        if (!removeItemId || !addItemId || removeItemId === addItemId) {
+          throw new Error(`Choose one prepared ${action.className ?? action.classIdentifier ?? "class"} spell to replace and one different eligible spell to prepare.`);
+        }
+        return { classItemId: action.classItemId, removeItemId, addItemId };
+      }
       case "memorize-spell": {
         const removeItemId = checkedValues("keeper.memorize.removeItemId")[0] ?? "";
         const addItemId = checkedValues("keeper.memorize.addItemId")[0] ?? "";
@@ -856,6 +878,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
       "memorize-spell": "Confirm Spell Swap",
       "spell-slot-recovery": `Confirm ${action.label}`,
       "prepare-spells": `Confirm ${action.label}`,
+      "replace-prepared-spell": "Confirm Spell Replacement",
       "native-rest-feature": `Confirm ${action.label}`,
       "native-feature": action.immediateNative ? `Use ${action.label}` : `Open ${action.label}`
     };
@@ -879,6 +902,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
       isMemorizeSpell: kind === "memorize-spell",
       isSpellSlotRecovery: kind === "spell-slot-recovery",
       isPrepareSpells: kind === "prepare-spells",
+      isReplacePreparedSpell: kind === "replace-prepared-spell",
       isNativeRestFeature: kind === "native-rest-feature",
       isNativeFeature: kind === "native-feature"
     };
@@ -904,11 +928,20 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
   #setPreparedSpellFilter(mode) {
     const section = this.element?.querySelector?.("[data-spell-preparation]");
     if (!section) return;
-    section.dataset.preparedFilter = mode === "prepared" ? "prepared" : "all";
+    section.dataset.preparedFilter = ["current", "selected"].includes(mode) ? mode : "all";
     for (const button of section.querySelectorAll('[data-action="filter-prepare-spells"]')) {
       button.classList.toggle("active", button.dataset.filterMode === section.dataset.preparedFilter);
     }
     this.#applyPreparedSpellFilters();
+  }
+
+  #clearPreparedSpellSelection() {
+    const section = this.element?.querySelector?.("[data-spell-preparation]");
+    if (!section) return;
+    for (const input of section.querySelectorAll('[name="keeper.prepareSpells"]')) input.checked = false;
+    this.#refreshPreparedSpellOptions();
+    this.#refreshApplyButton();
+    this.#handleFormMutation();
   }
 
   #applyPreparedSpellFilters() {
@@ -917,14 +950,16 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     const target = section.querySelector(".cb-prepare-spells-groups");
     if (!target) return;
     const query = String(section.querySelector("[data-prepare-spells-search]")?.value ?? "").trim().toLowerCase();
-    const mode = section.dataset.preparedFilter === "prepared" ? "prepared" : "all";
+    const mode = ["current", "selected"].includes(section.dataset.preparedFilter) ? section.dataset.preparedFilter : "all";
 
     for (const row of target.querySelectorAll("[data-search]")) {
       const searchMatch = !query || String(row.dataset.search ?? row.textContent ?? "").toLowerCase().includes(query);
       const input = row.querySelector('[name="keeper.prepareSpells"]');
-      const preparedMatch = mode !== "prepared" || Boolean(input?.checked);
-      row.hidden = !(searchMatch && preparedMatch);
-      row.dataset.preparedSelected = input?.checked ? "true" : "false";
+      const current = row.dataset.preparedCurrent === "true";
+      const selected = Boolean(input?.checked);
+      const filterMatch = mode === "current" ? current : mode === "selected" ? selected : true;
+      row.hidden = !(searchMatch && filterMatch);
+      row.dataset.preparedSelected = selected ? "true" : "false";
     }
     for (const group of target.querySelectorAll(".cb-source-group")) {
       group.hidden = ![...group.querySelectorAll("[data-search]")].some(row => !row.hidden);

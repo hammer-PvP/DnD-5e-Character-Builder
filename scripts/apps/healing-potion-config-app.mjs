@@ -1,5 +1,6 @@
 import { MODULE_ID, defaultSettings } from "../constants.mjs";
 import { HealingPotionAssistanceService } from "../services/healing-potion-assistance-service.mjs";
+import { ModalStackService } from "../services/modal-stack-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 
@@ -73,7 +74,8 @@ export class HealingPotionConfigApp extends HandlebarsApplicationMixin(Applicati
 
       let activity = inspection.compatibleActivities[0];
       if (inspection.compatibleActivities.length > 1) {
-        const choice = await DialogV2.wait({
+        const choice = await ModalStackService.runDetachedSelection(() => DialogV2.wait({
+          classes: ["dnd5e-character-builder", "character-builder", "cb-potion-activity-picker"],
           window: { title: `Select Healing Activity — ${item.name}`, modal: true },
           content: `<p>This Item has more than one compatible Healing Activity. Choose the Activity that represents drinking the potion.</p>`,
           buttons: inspection.compatibleActivities.map(row => ({
@@ -82,6 +84,11 @@ export class HealingPotionConfigApp extends HandlebarsApplicationMixin(Applicati
             icon: "fa-solid fa-heart"
           })),
           rejectClose: false
+        }), {
+          ownerApp: this,
+          label: "Healing Potion Activity",
+          message: "Choose the Healing Activity or cancel to return to Configure Potions.",
+          match: app => app?.element?.classList?.contains?.("cb-potion-activity-picker")
         });
         if (!choice) return;
         activity = inspection.compatibleActivities.find(row => row.id === choice);

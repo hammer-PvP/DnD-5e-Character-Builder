@@ -10,6 +10,7 @@ import { AdvancementChoiceAnnotationService } from "../services/advancement-choi
 import { MetadataReconciliationService } from "../services/metadata-reconciliation-service.mjs";
 import { WarlockProjectedCantripService } from "../services/warlock-projected-cantrip-service.mjs";
 import { ModalStackService } from "../services/modal-stack-service.mjs";
+import { ProtectedTransactionDialogService } from "../services/protected-transaction-dialog-service.mjs";
 import { SourceFullDetailsApp } from "./source-full-details-app.mjs";
 import { AdvancementCompletionGateService } from "../services/advancement-completion-gate-service.mjs";
 import { advancementName } from "../utils/advancement-utils.mjs";
@@ -26,6 +27,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     this.commitDialog = null;
     this.commitInProgress = false;
     this.commitTransactionToken = null;
+    this.commitModalToken = null;
     this.metadataReconciled = false;
   }
 
@@ -259,18 +261,21 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
         case "cancel-commit":
           if (!this.commitInProgress) {
             this.commitDialog = null;
+            this.#releaseCommitDialog();
             this.render({ force: true });
           }
           break;
         case "restart-after-failed-commit":
           if (!this.commitInProgress) {
             this.commitDialog = null;
+            this.#releaseCommitDialog();
             await this.#restartClassSelection({ skipConfirmation: true });
           }
           break;
         case "close-critical-commit":
           if (!this.commitInProgress) {
             this.commitDialog = null;
+            this.#releaseCommitDialog();
             await this.close();
           }
           break;
@@ -483,6 +488,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       stage: "Ready to Commit",
       detail: "The live Actor has not been changed yet."
     };
+    this.#protectCommitDialog();
     this.render({ force: true });
   }
 
@@ -494,6 +500,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     // Guard before the first await.
     this.commitInProgress = true;
     this.busy = true;
+    this.#protectCommitDialog();
     this.commitTransactionToken = foundry.utils.randomID?.(24) ?? crypto.randomUUID();
     this.commitDialog = {
       ...(this.commitDialog ?? {}),
@@ -533,6 +540,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       this.busy = false;
       this.commitTransactionToken = null;
       this.commitDialog = null;
+      this.#releaseCommitDialog();
       await super.close();
       this.actor.sheet?.render(false);
     } catch (error) {
@@ -601,6 +609,24 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     });
   }
 
+  #protectCommitDialog() {
+    if (this.commitModalToken) {
+      ModalStackService.refresh({ focus: true });
+      return this.commitModalToken;
+    }
+    this.commitModalToken = ModalStackService.beginRoot(this, {
+      label: "Level Up Commit",
+      message: "Complete or cancel the Level Up transaction before using another window."
+    });
+    return this.commitModalToken;
+  }
+
+  #releaseCommitDialog() {
+    if (!this.commitModalToken) return;
+    ModalStackService.end(this.commitModalToken, { closeDescendants: true, restoreFocus: true });
+    this.commitModalToken = null;
+  }
+
   #focusCommitDialog() {
     const dialog = this.element?.querySelector?.(".cb-commit-transaction-dialog");
     dialog?.focus?.();
@@ -637,6 +663,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       ui.notifications.warn("The Level Up commit is in progress and cannot be closed.");
       return this;
     }
+    this.#releaseCommitDialog();
     return super.close(options);
   }
 
@@ -1434,26 +1461,29 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   async #confirm({ title, content, yes }) {
-    const DialogV2 = foundry.applications.api.DialogV2;
-    if (DialogV2?.confirm) {
-      return DialogV2.confirm({
+    const key = `level-up-confirm:${this.actor?.id ?? "actor"}:${String(title ?? "confirm").toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+    return ProtectedTransactionDialogService.confirm({
+      key,
+      matchClass: "cb-level-up-transaction-confirm-dialog",
+      dialogOptions: {
+        classes: ["dnd5e-character-builder", "character-builder", "cb-protected-transaction-dialog", "cb-level-up-transaction-confirm-dialog"],
         window: { title, modal: true },
         content,
         yes: { label: yes, icon: "fa-solid fa-check" },
         no: { label: "Cancel", icon: "fa-solid fa-xmark" }
-      });
-    }
-    return new Promise(resolve => {
-      new Dialog({
-        title,
-        content,
-        buttons: {
-          yes: { label: yes, callback: () => resolve(true) },
-          no: { label: "Cancel", callback: () => resolve(false) }
-        },
-        default: "no",
-        close: () => resolve(false)
-      }).render(true);
+      },
+      fallback: () => new Promise(resolve => {
+        new Dialog({
+          title,
+          content,
+          buttons: {
+            yes: { label: yes, callback: () => resolve(true) },
+            no: { label: "Cancel", callback: () => resolve(false) }
+          },
+          default: "no",
+          close: () => resolve(false)
+        }).render(true);
+      })
     });
   }
 }

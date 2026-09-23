@@ -51,10 +51,13 @@ export class LevelUpRulesService {
       }
     }
     const existingSpells = draft.items.filter(item => item.type === "spell");
-    const existingIdentifiers = new Set(existingSpells
-      .filter(item => this.#isNormalClassSpell(item, cls))
+    const existingNormalClassSpells = existingSpells.filter(item => this.#isNormalClassSpell(item, cls));
+    const existingIdentifiers = new Set(existingNormalClassSpells
       .map(item => item.system?.identifier)
       .filter(Boolean));
+    const existingNormalByIdentifier = new Map(existingNormalClassSpells
+      .map(item => [String(item.system?.identifier ?? ""), item])
+      .filter(([key]) => Boolean(key)));
     const unavailableChoiceInfo = new Map();
     for (const spell of existingSpells) {
       const spellIdentifier = String(spell.system?.identifier ?? "");
@@ -104,8 +107,15 @@ export class LevelUpRulesService {
 
     let spellCount = 0;
     let automaticSpells = [];
+    let rangerPreparationIncrease = 0;
     if (model === "fullList") {
       automaticSpells = leveledPool.filter(option => !existingIdentifiers.has(option.identifier));
+      if (identifier === "ranger") {
+        const oldPrepared = this.#scaleValue(cls, oldClassLevel, { identifier: "max-prepared", title: "max prepared" });
+        const newPrepared = this.#scaleValue(cls, newClassLevel, { identifier: "max-prepared", title: "max prepared" });
+        rangerPreparationIncrease = Math.max(0, newPrepared - oldPrepared);
+        spellCount = rangerPreparationIncrease;
+      }
     } else if (model === "limited") {
       if (subclassCaster) {
         spellCount = LevelUpFeatureService.subclassCasterPreparedCount(subclassCaster, oldClassLevel, newClassLevel);
@@ -119,8 +129,39 @@ export class LevelUpRulesService {
     }
     if (model === "limited") spellCount += releasedPreparedSpellCount;
 
-    const spellOptions = leveledPool
-      .map(option => this.#decorateSpellOption(
+    const rangerAlwaysPreparedIdentifiers = identifier === "ranger" && model === "fullList"
+      ? new Set(existingSpells.filter(spell =>
+        this.#spellClassIdentifier(spell, draft) === identifier
+        && (Number(spell.system?.prepared ?? 0) === SpellPreparationPolicyService.ALWAYS_PREPARED
+          || (spell.getFlag(MODULE_ID, "featureSpellOwners") ?? []).some(owner => owner?.alwaysPrepared)))
+        .map(spell => String(spell.system?.identifier ?? "")).filter(Boolean))
+      : new Set();
+    if (identifier === "ranger" && model === "fullList") {
+      for (const spellIdentifier of rangerAlwaysPreparedIdentifiers) selectedSpellSet.delete(spellIdentifier);
+    }
+    const spellOptions = identifier === "ranger" && model === "fullList"
+      ? leveledPool.map(option => {
+        const existing = existingNormalByIdentifier.get(option.identifier) ?? null;
+        const featureAlwaysPrepared = rangerAlwaysPreparedIdentifiers.has(String(option.identifier));
+        const checked = !featureAlwaysPrepared && selectedSpellSet.has(option.identifier);
+        const state = Number(existing?.system?.prepared ?? SpellPreparationPolicyService.UNPREPARED);
+        const alreadyPrepared = state === SpellPreparationPolicyService.PREPARED
+          || state === SpellPreparationPolicyService.ALWAYS_PREPARED;
+        const disabled = featureAlwaysPrepared || alreadyPrepared;
+        return {
+          ...option,
+          checked,
+          disabled: !checked && disabled,
+          disabledReason: featureAlwaysPrepared
+            ? "Always Prepared by a Ranger class or subclass feature; it does not consume an ordinary preparation slot."
+            : alreadyPrepared
+              ? "Already prepared; choose an ordinary unprepared Ranger spell for the new preparation slot."
+              : "",
+          levelLabel: this.#levelLabel(option.system?.level),
+          school: option.system?.school ?? ""
+        };
+      })
+      : leveledPool.map(option => this.#decorateSpellOption(
         option,
         selectedSpellSet,
         new Set([...selectedSavantSet, ...replacementSet]),
@@ -258,11 +299,13 @@ export class LevelUpRulesService {
       maximumSpellLevel,
       cantripCount,
       spellCount,
+      rangerPreparationIncrease,
+      isRangerPreparationIncrease: identifier === "ranger" && model === "fullList" && rangerPreparationIncrease > 0,
       releasedPreparedSpellCount,
       releasedPreparedSpells,
       preparedReconciliationCount: preparedReconciliationPlans.length,
       selectedCantripCount: (stateChoices.cantrips ?? []).length,
-      selectedSpellCount: (stateChoices.spells ?? []).length,
+      selectedSpellCount: selectedSpellSet.size,
       requiredSpellSelections,
       selectedSpellSelections,
       spellSelectionComplete: baseSelectionComplete && spellReplacementComplete && cantripReplacementComplete
@@ -306,7 +349,7 @@ export class LevelUpRulesService {
         threshold: this.#cantripScalingThreshold(Number(state.targetCharacterLevel)),
         note: `Cantrip damage scaling is validated against total character level ${state.targetCharacterLevel}, not ${cls.name} level ${newClassLevel}.`
       },
-      note: this.#ruleNote(model, cls.name, spellCount, automaticSpells.length)
+      note: this.#ruleNote(model, cls.name, spellCount, automaticSpells.length, identifier)
     };
   }
 
@@ -452,6 +495,7 @@ export class LevelUpRulesService {
       ...spellAccess
     });
     for (const identifier of selectedSpells) {
+      if (context.classIdentifier === "ranger" && context.model === "fullList") continue;
       const magicalSecret = context.magicalSecrets.active && !context.magicalSecrets.bardBaseSpellIdentifiers.includes(identifier);
       entries.push({
         option: selectedByIdentifier.get(identifier),
@@ -466,8 +510,18 @@ export class LevelUpRulesService {
       option: selectedByIdentifier.get(identifier), category: "wizard-savant", prepared: 0,
       featureItemId: context.savant.featureItemId
     });
+    const rangerPreparedIdentifiers = context.classIdentifier === "ranger" && context.model === "fullList"
+      ? new Set(selectedSpells)
+      : new Set();
     for (const group of context.automaticGroups) {
-      for (const option of group.items) entries.push({ option, category: "full-list", prepared: 0, accessModel: "fullList" });
+      for (const option of group.items) entries.push({
+        option,
+        category: "full-list",
+        prepared: rangerPreparedIdentifiers.has(option.identifier)
+          ? SpellPreparationPolicyService.PREPARED
+          : SpellPreparationPolicyService.UNPREPARED,
+        accessModel: "fullList"
+      });
     }
     if (addReplacementIdentifier) {
       const magicalSecret = context.magicalSecrets.active && !context.magicalSecrets.bardBaseSpellIdentifiers.includes(addReplacementIdentifier);
@@ -498,6 +552,21 @@ export class LevelUpRulesService {
     }
 
     const createdSpellIds = await this.#createSpells(draft, cls, uniqueEntries, state);
+    if (context.classIdentifier === "ranger" && context.model === "fullList" && selectedSpells.length) {
+      const selectedSet = new Set(selectedSpells);
+      const updates = draft.items
+        .filter(item => item.type === "spell"
+          && this.#isNormalClassSpell(item, cls)
+          && selectedSet.has(String(item.system?.identifier ?? ""))
+          && Number(item.system?.prepared ?? 0) === SpellPreparationPolicyService.UNPREPARED)
+        .map(item => ({ _id: item.id, "system.prepared": SpellPreparationPolicyService.PREPARED }));
+      if (updates.length) {
+        await draft.updateEmbeddedDocuments("Item", updates, {
+          characterBuilderLevelUp: true,
+          characterBuilderRangerPreparationIncrease: true
+        });
+      }
+    }
     let deleted = 0;
     if (removeSpellId) {
       await draft.deleteEmbeddedDocuments("Item", [removeSpellId]);
@@ -1927,7 +1996,11 @@ export class LevelUpRulesService {
     return value === 0 ? "Cantrip" : `Level ${value}`;
   }
 
-  static #ruleNote(model, className, spellCount, automaticCount) {
+  static #ruleNote(model, className, spellCount, automaticCount, classIdentifier = "") {
+    if (model === "fullList" && classIdentifier === "ranger") {
+      const preparation = spellCount > 0 ? ` Prepare ${spellCount} additional spell${spellCount === 1 ? "" : "s"} because the Ranger prepared-spell limit increased.` : " The prepared-spell limit did not increase at this Ranger level.";
+      return `${className} automatically receives ${automaticCount} newly accessible class-list spell${automaticCount === 1 ? "" : "s"}.${preparation}`;
+    }
     if (model === "fullList") return `${className} automatically receives ${automaticCount} newly accessible class-list spells; only new cantrip choices require input.`;
     if (model === "spellbook") return `${className} adds ${spellCount} Wizard spellbook spells at this class level, before any Savant bonus.`;
     if (model === "limited") return `${className} gains ${spellCount} new prepared spell${spellCount === 1 ? "" : "s"} from the class list at this class level.`;

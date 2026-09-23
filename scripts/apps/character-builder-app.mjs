@@ -62,6 +62,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     this.commitDialog = null;
     this.commitInProgress = false;
     this.commitTransactionToken = null;
+    this.commitModalToken = null;
     this.rollBusy = false;
     this.abilityBackgroundBusy = false;
     this.arrayAssignmentBusy = false;
@@ -578,11 +579,15 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       case "return-to-review-after-failed-creation":
         if (!this.commitInProgress) {
           this.commitDialog = null;
+          this.#releaseCommitDialog();
           this.render({ force: true });
         }
         break;
       case "close-critical-creation-commit":
-        if (!this.commitInProgress) await super.close();
+        if (!this.commitInProgress) {
+          this.#releaseCommitDialog();
+          await super.close();
+        }
         break;
       case "discard":
         await this.#discard();
@@ -1419,6 +1424,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       stage: "Ready to Create",
       detail: "The original Actor has not been changed yet."
     };
+    this.#protectCommitDialog();
     this.render({ force: true });
   }
 
@@ -1429,6 +1435,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     }
     this.commitInProgress = true;
     this.busy = true;
+    this.#protectCommitDialog();
     this.commitTransactionToken = foundry.utils.randomID?.(32) ?? crypto.randomUUID();
     this.commitDialog = {
       ...(this.commitDialog ?? {}),
@@ -1486,6 +1493,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       this.busy = false;
       this.commitTransactionToken = null;
       this.commitDialog = null;
+      this.#releaseCommitDialog();
       await super.close();
       const instanceKey = this.actor?.uuid ?? this.actor?.id;
       if (instanceKey && CharacterBuilderApp.#instances.get(instanceKey) === this) {
@@ -1537,6 +1545,24 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     if (detail) detail.textContent = this.commitDialog.detail;
   }
 
+  #protectCommitDialog() {
+    if (this.commitModalToken) {
+      ModalStackService.refresh({ focus: true });
+      return this.commitModalToken;
+    }
+    this.commitModalToken = ModalStackService.beginRoot(this, {
+      label: "Character Creation Commit",
+      message: "Complete or cancel the Character Creation transaction before using another window."
+    });
+    return this.commitModalToken;
+  }
+
+  #releaseCommitDialog() {
+    if (!this.commitModalToken) return;
+    ModalStackService.end(this.commitModalToken, { closeDescendants: true, restoreFocus: true });
+    this.commitModalToken = null;
+  }
+
   #focusCommitDialog() {
     const dialog = this.element?.querySelector?.(".cb-commit-transaction-dialog");
     dialog?.focus?.();
@@ -1553,6 +1579,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       ui.notifications.warn("The Character Creation commit is in progress and cannot be closed.");
       return this;
     }
+    this.#releaseCommitDialog();
     const result = await super.close(options);
     const key = this.actor?.uuid ?? this.actor?.id;
     if (key && CharacterBuilderApp.#instances.get(key) === this) {
@@ -1565,15 +1592,18 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     if (this.commitInProgress) return this.#focusCommitDialog();
     const title = "Discard Character Builder Draft";
     const content = "<p>Delete the current Character Builder draft? The original Actor will remain unchanged.</p>";
-    const DialogV2 = foundry.applications?.api?.DialogV2;
-    const confirmed = DialogV2?.confirm
-      ? await DialogV2.confirm({
+    const confirmed = await ProtectedTransactionDialogService.confirm({
+      key: `discard-character-builder-draft:${this.actor.id}`,
+      matchClass: "cb-discard-character-builder-draft-dialog",
+      dialogOptions: {
+        classes: ["dnd5e-character-builder", "character-builder", "cb-protected-transaction-dialog", "cb-discard-character-builder-draft-dialog"],
         window: { title, modal: true },
         content,
         yes: { label: "Discard Draft", icon: "fa-solid fa-trash" },
         no: { label: "Keep Draft", icon: "fa-solid fa-xmark" }
-      })
-      : await Dialog.confirm({ title, content, defaultYes: false });
+      },
+      fallback: () => Dialog.confirm({ title, content, defaultYes: false })
+    });
     if (!confirmed) return;
     await DraftManager.discard(this.actor);
     this.close();
@@ -1875,6 +1905,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
           return groups;
         }, {}),
         spells: [...new Set(form.getAll("spellAccess.spells").map(String))],
+        preparedSpells: [...new Set(form.getAll("spellAccess.preparedSpells").map(String))],
         pactOfTheTomeCantrips: [...new Set(form.getAll("spellAccess.pactOfTheTome.cantrips").map(String))],
         pactOfTheTomeRituals: [...new Set(form.getAll("spellAccess.pactOfTheTome.rituals").map(String))]
       },

@@ -6,8 +6,9 @@ import { AdditionalCantripEntitlementService } from "./additional-cantrip-entitl
 import { advancementName } from "../utils/advancement-utils.mjs";
 
 /**
- * Populates native Spell Items during creation. Preparation, slots, casting,
- * and rest behavior remain entirely under the D&D5e Actor sheet.
+ * Populates native Spell Items during creation. Spell Items, slots, and casting
+ * remain native D&D5e data; Character Builder only governs class-authorized
+ * preparation choices and their timing.
  */
 export class SpellAccessService {
   static async buildContext(draft, registry) {
@@ -40,6 +41,7 @@ export class SpellAccessService {
     const cantripCount = this.#scaleValue(cls, classLevel, { title: "cantrips known" });
     const additionalCantripGrants = AdditionalCantripEntitlementService.grants(draft, cls);
     const maxPrepared = this.#scaleValue(cls, classLevel, { identifier: "max-prepared" });
+    const initialPreparedCount = model === "fullList" && identifier === "ranger" ? maxPrepared : 0;
     const spellCount = model === "spellbook" ? (classLevel === 1 ? 6 : 2)
       : model === "limited" ? maxPrepared : 0;
 
@@ -52,11 +54,18 @@ export class SpellAccessService {
     const selectedCantrips = new Set(saved.classIdentifier === identifier ? saved.cantrips ?? [] : []);
     const savedAdditionalCantrips = saved.classIdentifier === identifier ? (saved.additionalCantrips ?? {}) : {};
     const selectedSpells = new Set(saved.classIdentifier === identifier ? saved.spells ?? [] : []);
-    const decorate = (option, selected) => {
+    const alwaysPreparedIdentifiers = identifier === "ranger" && model === "fullList"
+      ? await this.#alwaysPreparedClassSpellIdentifiers(draft, cls)
+      : new Set();
+    const selectedPreparedSpells = new Set((saved.classIdentifier === identifier ? saved.preparedSpells ?? [] : [])
+      .filter(spellIdentifier => !alwaysPreparedIdentifiers.has(String(spellIdentifier))));
+    const decorate = (option, selected, { disabled = false, disabledReason = "" } = {}) => {
       const level = Number(option.system?.level ?? 0);
       return {
         ...option,
-        selected: selected.has(option.identifier),
+        selected: !disabled && selected.has(option.identifier),
+        disabled: Boolean(disabled || option.disabled),
+        disabledReason: disabledReason || option.disabledReason || "",
         level,
         levelLabel: level === 0 ? "Cantrip" : `Level ${level}`
       };
@@ -76,7 +85,16 @@ export class SpellAccessService {
         filterTarget: `#cb-additional-cantrip-options-${grant.key}`
       };
     });
-    const spellOptions = leveled.map(option => decorate(option, selectedSpells));
+    const spellSelectionState = initialPreparedCount > 0 ? selectedPreparedSpells : selectedSpells;
+    const spellOptions = leveled.map(option => {
+      const alwaysPrepared = initialPreparedCount > 0 && alwaysPreparedIdentifiers.has(String(option.identifier));
+      return decorate(option, spellSelectionState, {
+        disabled: alwaysPrepared,
+        disabledReason: alwaysPrepared
+          ? "Always Prepared by a Ranger class feature; this spell does not consume one of your ordinary prepared-spell choices."
+          : ""
+      });
+    });
     const automaticSpells = model === "fullList" ? spellOptions : [];
     const pactOfTheTome = identifier === "warlock"
       ? await PactOfTheTomeService.buildContext(draft, registry, {
@@ -108,11 +126,14 @@ export class SpellAccessService {
       additionalCantripCount: additionalCantripGrants.reduce((sum, grant) => sum + grant.count, 0),
       additionalCantripSections,
       spellCount,
+      initialPreparedCount,
       selectedCantripCount: selectedCantrips.size,
       selectedSpellCount: selectedSpells.size,
+      selectedPreparedCount: selectedPreparedSpells.size,
       needsCantripChoice: cantripCount > 0,
       needsAdditionalCantripChoice: additionalCantripSections.length > 0,
       needsSpellChoice: ["limited", "spellbook"].includes(model) && spellCount > 0,
+      needsPreparedChoice: initialPreparedCount > 0,
       cantripGroups: registry.groupOptions(cantripOptions),
       spellGroups: registry.groupOptions(spellOptions),
       automaticSpellGroups: registry.groupOptions(automaticSpells),
@@ -148,6 +169,7 @@ export class SpellAccessService {
     const selectedCantrips = [...new Set(formData.getAll("spellAccess.cantrips").map(String))];
     const selectedAdditionalCantrips = this.#additionalCantripSelections(formData, context.additionalCantripSections ?? []);
     const selectedSpells = [...new Set(formData.getAll("spellAccess.spells").map(String))];
+    const selectedPreparedSpells = [...new Set(formData.getAll("spellAccess.preparedSpells").map(String))];
     const selectedTomeCantrips = [...new Set(formData.getAll("spellAccess.pactOfTheTome.cantrips").map(String))];
     const selectedTomeRituals = [...new Set(formData.getAll("spellAccess.pactOfTheTome.rituals").map(String))];
 
@@ -161,6 +183,9 @@ export class SpellAccessService {
     }
     if (context.needsSpellChoice) {
       this.#validateSelections(selectedSpells, context.spellCount, validSpells, "spell");
+    }
+    if (context.needsPreparedChoice) {
+      this.#validateSelections(selectedPreparedSpells, context.initialPreparedCount, validSpells, "prepared spell");
     }
 
     const documents = [];
@@ -181,7 +206,14 @@ export class SpellAccessService {
     }
 
     if (model === "fullList") {
-      for (const option of validSpells.values()) documents.push({ option, prepared: 0, category: "full-list" });
+      const preparedIdentifiers = new Set(selectedPreparedSpells);
+      for (const option of validSpells.values()) documents.push({
+        option,
+        prepared: preparedIdentifiers.has(option.identifier)
+          ? SpellPreparationPolicyService.PREPARED
+          : SpellPreparationPolicyService.UNPREPARED,
+        category: "full-list"
+      });
     } else {
       for (const selected of selectedSpells) documents.push({
         option: validSpells.get(selected),
@@ -252,7 +284,7 @@ export class SpellAccessService {
         mode: "acquisition",
         selectedCantrips: selectedTomeCantrips,
         selectedRituals: selectedTomeRituals,
-        pendingPreparedIdentifiers: [...selectedCantrips, ...selectedSpells],
+        pendingPreparedIdentifiers: [...selectedCantrips, ...selectedSpells, ...selectedPreparedSpells],
         transactionId: `creation:${draft.id}`,
         classItem: cls
       });
@@ -315,6 +347,7 @@ export class SpellAccessService {
         cantrips: selectedCantrips,
         additionalCantrips: selectedAdditionalCantrips,
         spells: model === "fullList" ? [...validSpells.keys()] : selectedSpells,
+        preparedSpells: model === "fullList" ? selectedPreparedSpells : [],
         pactOfTheTomeCantrips: selectedTomeCantrips,
         pactOfTheTomeRituals: selectedTomeRituals
       },
@@ -342,6 +375,90 @@ export class SpellAccessService {
       selected[section.key] = [...new Set(formData.getAll(section.fieldName).map(String))];
     }
     return selected;
+  }
+
+  static async #alwaysPreparedClassSpellIdentifiers(draft, cls) {
+    const classIdentifier = String(cls?.system?.identifier ?? "").trim().toLowerCase();
+    if (!classIdentifier) return new Set();
+    const identifiers = new Set();
+
+    // Native D&D5e ItemGrant materialization normally creates these spells as
+    // the class features are applied. Prefer the live draft state because it
+    // already reflects source priority and any native preparation metadata.
+    for (const spell of draft.items.filter(item => item?.type === "spell" && Number(item.system?.level ?? 0) > 0)) {
+      if (Number(spell.system?.prepared ?? 0) !== SpellPreparationPolicyService.ALWAYS_PREPARED) continue;
+      if (this.#classIdentifierForItem(spell, draft) !== classIdentifier) continue;
+      const identifier = String(spell.system?.identifier ?? "").trim();
+      if (identifier) identifiers.add(identifier);
+    }
+
+    // The feature Item can exist before its nested spell grant is materialized.
+    // Read its native ItemGrant configuration as a second, source-driven guard
+    // so an Always Prepared spell can never consume a Ranger ordinary slot.
+    for (const owner of draft.items) {
+      if (owner?.type === "spell" || this.#classIdentifierForItem(owner, draft) !== classIdentifier) continue;
+      for (const advancement of this.#advancementData(owner)) {
+        if (advancement?.type !== "ItemGrant") continue;
+        if (Number(advancement.configuration?.spell?.prepared ?? 0) !== SpellPreparationPolicyService.ALWAYS_PREPARED) continue;
+        for (const entry of advancement.configuration?.items ?? []) {
+          const uuid = typeof entry === "string" ? entry : entry?.uuid;
+          if (!uuid) continue;
+          const document = await fromUuid(uuid);
+          const identifier = String(document?.system?.identifier ?? "").trim();
+          if (document?.type === "spell" && identifier) identifiers.add(identifier);
+        }
+      }
+    }
+    return identifiers;
+  }
+
+  static #classIdentifierForItem(item, draft, seen = new Set()) {
+    if (!item || seen.has(item.id)) return null;
+    if (item.id) seen.add(item.id);
+    if (item.type === "class") return String(item.system?.identifier ?? "").trim().toLowerCase() || null;
+    if (item.type === "subclass") {
+      const parent = item.system?.classIdentifier ?? item.system?.class?.identifier ?? item.system?.class;
+      return String(parent ?? "").trim().toLowerCase() || null;
+    }
+
+    const flags = item.flags?.[MODULE_ID] ?? {};
+    const explicit = flags.classIdentifier ?? flags.levelUpSpell?.classIdentifier;
+    if (explicit) return String(explicit).trim().toLowerCase();
+    const ownerClass = (flags.featureSpellOwners ?? []).find(owner => owner?.classIdentifier)?.classIdentifier;
+    if (ownerClass) return String(ownerClass).trim().toLowerCase();
+
+    const sourceItem = String(item.system?.sourceItem ?? "").trim();
+    const classMatch = /^class:([^:]+)$/i.exec(sourceItem);
+    if (classMatch?.[1]) return classMatch[1].trim().toLowerCase();
+
+    const references = [
+      sourceItem,
+      item.getFlag?.("dnd5e", "advancementRoot"),
+      item.getFlag?.("dnd5e", "advancementOrigin")
+    ].filter(Boolean);
+    for (const reference of references) {
+      const owner = this.#ownerItemFromReference(reference, draft);
+      if (!owner || owner.id === item.id) continue;
+      const inherited = this.#classIdentifierForItem(owner, draft, seen);
+      if (inherited) return inherited;
+    }
+    return null;
+  }
+
+  static #ownerItemFromReference(reference, draft) {
+    const raw = String(reference ?? "").trim();
+    if (!raw || !draft?.items) return null;
+    if (draft.items.get(raw)) return draft.items.get(raw);
+    const tokens = raw.split(".").filter(Boolean);
+    const itemMarker = tokens.lastIndexOf("Item");
+    if (itemMarker >= 0 && tokens[itemMarker + 1] && draft.items.get(tokens[itemMarker + 1])) {
+      return draft.items.get(tokens[itemMarker + 1]);
+    }
+    for (let index = tokens.length - 1; index >= 0; index--) {
+      const candidate = draft.items.get(tokens[index]);
+      if (candidate) return candidate;
+    }
+    return null;
   }
 
   static #modelFor(cls) {
@@ -429,7 +546,10 @@ export class SpellAccessService {
 
   static #modelNote(model, className, spellCount) {
     if (model === "fullList") {
-      return `${className} receives every currently accessible leveled spell on the Actor. The native D&D5e sheet manages preparation.`;
+      if (String(className ?? "").trim().toLowerCase() === "ranger") {
+        return `${className} receives the full currently accessible class spell list. Choose the initial prepared list now; later preparation changes follow the Ranger's class timing.`;
+      }
+      return `${className} receives every currently accessible leveled spell on the Actor. Character Builder manages rule-authorized preparation windows.`;
     }
     if (model === "spellbook") {
       return `Choose ${spellCount} starting spellbook spells. Unselected spells remain unavailable until learned later.`;
@@ -448,11 +568,14 @@ export class SpellAccessService {
       additionalCantripCount: 0,
       additionalCantripSections: [],
       spellCount: 0,
+      initialPreparedCount: 0,
       selectedCantripCount: 0,
       selectedSpellCount: 0,
+      selectedPreparedCount: 0,
       needsCantripChoice: false,
       needsAdditionalCantripChoice: false,
       needsSpellChoice: false,
+      needsPreparedChoice: false,
       cantripGroups: [],
       spellGroups: [],
       automaticSpellGroups: [],

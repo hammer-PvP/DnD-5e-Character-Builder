@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.x4";
-export const MODULE_BUILD = "dnd6-chat-effects-normalization-r2";
+export const MODULE_VERSION = "0.9.913";
+export const MODULE_BUILD = "post-migration-spell-authority-r1";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -287,10 +287,12 @@ export const SPELL_ACCESS_MODELS = {
 };
 
 // Spell access and the rules timing for changing prepared spells are separate
-// concerns. A Ranger has full-list access but changes its prepared list on
-// Level Up, while Cleric/Druid/Paladin use the same access model at Long Rest.
+// concerns. Ranger keeps full-list access, selects its initial/expanded ordinary
+// prepared list during progression, then may replace one spell after a Long Rest.
+// Cleric/Druid/Paladin/Wizard retain their class-specific Long Rest preparation policy.
 export const SPELL_PREPARATION_CADENCES = Object.freeze({
   longRest: "longRest",
+  longRestReplaceOne: "longRestReplaceOne",
   levelUp: "levelUp",
   special: "special"
 });
@@ -300,7 +302,7 @@ export const SPELL_PREPARATION_CADENCE_BY_CLASS = Object.freeze({
   cleric: SPELL_PREPARATION_CADENCES.longRest,
   druid: SPELL_PREPARATION_CADENCES.longRest,
   paladin: SPELL_PREPARATION_CADENCES.longRest,
-  ranger: SPELL_PREPARATION_CADENCES.levelUp,
+  ranger: SPELL_PREPARATION_CADENCES.longRestReplaceOne,
   sorcerer: SPELL_PREPARATION_CADENCES.levelUp,
   warlock: SPELL_PREPARATION_CADENCES.levelUp,
   wizard: SPELL_PREPARATION_CADENCES.longRest

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.913 — Post-Migration Spell Authority + Ranger 2024 Preparation
+
+- Returns to the normal `v0.9.9xx` development line after the temporary `v0.9.x1–x4` D&D5e 6.x migration series. Runtime migration fixes from x4 are preserved.
+- **Spell Preparation Authority:** direct player edits to `Spell.system.prepared` are now governed independently from any one Keeper screen. Protected class spell preparation cannot be bypassed through the native sheet, alternate sheets, macros, or direct player Item updates; GM administration and Character Builder-authorized transactions remain available.
+- **Caster audit boundary:** Bard, Cleric, Druid, Paladin, Ranger, Sorcerer, Warlock, and Wizard now share the same preparation-authority resolver while keeping their own cadence/policy.
+- **Ranger 2024 — Character Creation:** the full eligible Ranger class list is still materialized, but creation now requires the initial ordinary prepared list. Level 1 selects exactly two eligible level-1 Ranger spells. Always Prepared class-feature spells are excluded from ordinary preparation slots.
+- **Ranger 2024 — Level Up:** when `@scale.ranger.max-prepared` increases, the Level Up flow asks only for the additional `+N` ordinary prepared spells. Levels where the limit does not increase create no preparation choice. Newly unlocked Ranger list spells are still materialized automatically.
+- **Ranger 2024 — Long Rest:** Character Keeper adds an optional one-for-one replacement transaction: choose one ordinary prepared Ranger spell to remove and one eligible ordinary unprepared Ranger spell to prepare. Always Prepared / feature-granted spells cannot be removed or used to consume the ordinary limit.
+- **Keeper preparation UX:** full-refresh preparation screens gain stable `All`, `Prepared Only`, and `Selected Only` filters plus an explicit `Clear Selection` action while preserving pending choices across filtering/search.
+- **Transactional Modal Safety:** Character Creation discard, Level Up confirmations, and Character Keeper discard/recovery confirmations now use the shared protected-transaction modal layer with background blocking, deterministic foreground ordering, and single-submit protection.
+- **Configure Potions UX:** multi-Activity Healing Potion selection is now kept inside the protected modal stack so the picker cannot be lost behind the configuration window. Healing mechanics are unchanged.
+- **Player Sheet Integrity:** existing HP/Token-HUD protection remains authoritative at the native Token attribute boundary, including zero-value edits, without intercepting normal damage/healing Activities.
+- **Compatibility:** Foundry VTT 14.367+; D&D5e 6.0.0–6.0.999. No generic normalization of upstream PHB legacy ActiveEffect paths is introduced in this release.
+
 ## 0.9.x4 — D&D5e 6.x Residual Contract Normalization
 
 - Preserves the live-validated x3 behavior: persistent global Chat Action labels, Graze, Cleave, Bardic Inspiration, Concentration keep/drop and native expiry, Agonizing Blast, Wizard/Druid Keeper flows, War Bond, Wild Shape/Transform restore, Blind Skill/Tool Checks, and Managed Summons.

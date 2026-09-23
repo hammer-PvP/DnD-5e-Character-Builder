@@ -450,6 +450,39 @@
       </section>
       {{/if}}
 
+      {{#if spellAccess.needsPreparedChoice}}
+      <section class="cb-spell-section cb-ranger-initial-preparation" data-spell-selection data-maximum="{{spellAccess.initialPreparedCount}}">
+        <div class="cb-inline-heading">
+          <div>
+            <h3>Choose Initial Prepared {{spellAccess.className}} Spells</h3>
+            <p class="hint">The full class list will be added to the Actor. Choose exactly {{spellAccess.initialPreparedCount}} ordinary spell{{#unless (dnd5eCharacterBuilderEq spellAccess.initialPreparedCount 1)}}s{{/unless}} to begin prepared.</p>
+          </div>
+          <span data-selection-count>{{spellAccess.selectedPreparedCount}} / {{spellAccess.initialPreparedCount}}</span>
+        </div>
+        <input type="search" placeholder="Search eligible {{spellAccess.className}} spells" data-filter-target="#cb-initial-prepared-spell-options">
+        <div id="cb-initial-prepared-spell-options" class="cb-spell-groups">
+          {{#each spellAccess.spellGroups}}
+          <section class="cb-source-group">
+            <h4>{{label}}</h4>
+            <div class="cb-spell-grid">
+              {{#each items}}
+              <article class="cb-spell-option {{#if disabled}}duplicate-disabled{{/if}}" data-search="{{search}}" data-spell-option title="{{disabledReason}}">
+                <label class="cb-spell-toggle" title="{{#if disabled}}{{disabledReason}}{{else}}Prepare {{name}}{{/if}}">
+                  <input type="checkbox" name="spellAccess.preparedSpells" value="{{identifier}}" data-spell-identifier="{{identifier}}" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{checked selected}} {{#if disabled}}disabled{{/if}}>
+                </label>
+                <button type="button" class="cb-spell-details" data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}} details">
+                  <img src="{{img}}" alt="">
+                  <span><strong>{{name}}</strong><small>{{levelLabel}}</small></span>
+                </button>
+              </article>
+              {{/each}}
+            </div>
+          </section>
+          {{/each}}
+        </div>
+      </section>
+      {{/if}}
+
       {{#if spellAccess.pactOfTheTome.active}}
       <section class="cb-spell-section cb-pact-tome-section" data-pact-tome-selection>
         {{> "modules/dnd5e-character-builder/templates/partials/pact-of-the-tome-selection.hbs"
@@ -466,7 +499,7 @@
           <h3>Automatically Added Class Spells</h3>
           <span>{{spellAccess.automaticSpellCount}} spells</span>
         </div>
-        <p class="hint">These spells will be placed on the Actor as unprepared class spells. The native sheet displays the preparation limit.</p>
+        <p class="hint">The full eligible class list is materialized on the Actor. Ordinary prepared state is controlled by Character Builder class rules; Always Prepared feature spells remain separate.</p>
         <div class="cb-spell-groups cb-automatic-spells">
           {{#each spellAccess.automaticSpellGroups}}
           <section class="cb-source-group">

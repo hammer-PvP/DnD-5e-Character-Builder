@@ -6,9 +6,11 @@ import { SpellPreparationPolicyService } from "./spell-preparation-policy-servic
 const ACTION_PREFIX = "prepare-spells-";
 
 /**
- * Character Keeper assistance for classes whose ordinary prepared list may be
- * changed when a Long Rest finishes. The service stages Item IDs only; it does
- * not touch the Actor until the authoritative native Long Rest has completed.
+ * Character Keeper assistance for class spell preparation at Long Rest.
+ *
+ * Full-refresh classes stage their complete ordinary prepared list. Ranger 2024
+ * uses the same source-of-truth infrastructure but a different transaction:
+ * exactly one optional 1:1 prepared-spell replacement per completed Long Rest.
  */
 export class LongRestSpellPreparationService {
   static isActionId(actionId) {
@@ -40,18 +42,27 @@ export class LongRestSpellPreparationService {
       const candidates = PreparedSpellLimitService.ordinaryClassSpells(actor, cls);
       if (!limit || !candidates.length) continue;
       const identifier = String(cls.system?.identifier ?? "").trim().toLowerCase();
-      const label = `Prepare ${cls.name} Spells`;
+      const replaceOne = SpellPreparationCadenceService.replacesOneAtLongRest(cls);
+      if (replaceOne) {
+        const prepared = candidates.filter(spell => Number(spell.system?.prepared ?? 0) === SpellPreparationPolicyService.PREPARED);
+        const available = candidates.filter(spell => Number(spell.system?.prepared ?? 0) === SpellPreparationPolicyService.UNPREPARED);
+        if (!prepared.length || !available.length) continue;
+      }
+      const label = replaceOne ? `Replace ${cls.name} Spell` : `Prepare ${cls.name} Spells`;
       const accessModel = PreparedSpellLimitService.accessModelForClass(cls);
       rows.push({
         id: this.actionId(cls.id),
         label,
-        kind: "prepare-spells",
-        description: accessModel === "spellbook"
-          ? `Review the level 1+ ${cls.name} spells in this spellbook and set the prepared list for the next adventuring day.`
-          : `Review the level 1+ ${cls.name} spells available to this class and set the prepared list for the next adventuring day.`,
+        kind: replaceOne ? "replace-prepared-spell" : "prepare-spells",
+        description: replaceOne
+          ? `Optionally replace exactly one ordinary prepared ${cls.name} spell with one eligible unprepared spell after this Long Rest.`
+          : accessModel === "spellbook"
+            ? `Review the level 1+ ${cls.name} spells in this spellbook and set the prepared list for the next adventuring day.`
+            : `Review the level 1+ ${cls.name} spells available to this class and set the prepared list for the next adventuring day.`,
         img: cls.img ?? "icons/sundries/books/book-open-purple.webp",
         classItemId: cls.id,
         classIdentifier: identifier,
+        className: cls.name,
         complete: Boolean(session?.completedActionIds?.includes(this.actionId(cls.id))),
         native: false,
         order: 5
@@ -76,6 +87,10 @@ export class LongRestSpellPreparationService {
       throw new Error("The class that owns this Long Rest spell-preparation choice is no longer eligible.");
     }
 
+    if (SpellPreparationCadenceService.replacesOneAtLongRest(cls)) {
+      return this.#replacementContext(actor, action, cls, operation);
+    }
+
     const limit = PreparedSpellLimitService.maxPrepared(cls);
     const candidates = this.#sorted(PreparedSpellLimitService.ordinaryClassSpells(actor, cls));
     const candidateIds = new Set(candidates.map(spell => spell.id));
@@ -89,18 +104,7 @@ export class LongRestSpellPreparationService {
       selected: selectedIds.has(spell.id),
       current: Number(spell.system?.prepared ?? 0) === SpellPreparationPolicyService.PREPARED
     }));
-    const locked = this.#sorted([...(actor?.items ?? [])].filter(spell => spell?.type === "spell"
-      && Number(spell.system?.level ?? 0) > 0
-      && PreparedSpellLimitService.belongsToClass(actor, spell, cls)
-      && PreparedSpellLimitService.isExcludedGrant(spell)))
-      .map(spell => this.#spellRow(spell, {
-        selected: true,
-        locked: true,
-        lockedLabel: Number(spell.system?.prepared ?? 0) === SpellPreparationPolicyService.ALWAYS_PREPARED
-          ? "Always Prepared"
-          : "Feature Prepared"
-      }));
-
+    const locked = this.#lockedRows(actor, cls);
     const selectedCount = selectedIds.size;
     return {
       ...action,
@@ -136,6 +140,26 @@ export class LongRestSpellPreparationService {
     if (!cls || cls.type !== "class" || !this.managesClass(cls)) {
       throw new Error("This class can no longer change its prepared spells on a Long Rest.");
     }
+
+    if (SpellPreparationCadenceService.replacesOneAtLongRest(cls)) {
+      const removeItemId = String(payload?.removeItemId ?? "");
+      const addItemId = String(payload?.addItemId ?? "");
+      if (!removeItemId || !addItemId || removeItemId === addItemId) {
+        throw new Error(`Choose one prepared ${cls.name} spell to replace and one different eligible spell to prepare.`);
+      }
+      const candidates = PreparedSpellLimitService.ordinaryClassSpells(actor, cls);
+      const byId = new Map(candidates.map(spell => [String(spell.id), spell]));
+      const remove = byId.get(removeItemId);
+      const add = byId.get(addItemId);
+      if (!remove || Number(remove.system?.prepared ?? 0) !== SpellPreparationPolicyService.PREPARED) {
+        throw new Error("The spell selected for removal is no longer an ordinary prepared spell for this class.");
+      }
+      if (!add || Number(add.system?.prepared ?? 0) !== SpellPreparationPolicyService.UNPREPARED) {
+        throw new Error("The replacement is no longer an eligible unprepared spell for this class.");
+      }
+      return true;
+    }
+
     const limit = PreparedSpellLimitService.maxPrepared(cls);
     if (!limit) throw new Error(`${cls.name} no longer has a valid prepared-spell limit.`);
     const candidates = PreparedSpellLimitService.ordinaryClassSpells(actor, cls);
@@ -151,6 +175,30 @@ export class LongRestSpellPreparationService {
     this.validateOperation(actor, actionId, payload);
     const classItemId = this.classItemIdFromActionId(actionId);
     const cls = actor.items.get(classItemId);
+
+    if (SpellPreparationCadenceService.replacesOneAtLongRest(cls)) {
+      const removeItemId = String(payload.removeItemId);
+      const addItemId = String(payload.addItemId);
+      await actor.updateEmbeddedDocuments("Item", [
+        { _id: removeItemId, "system.prepared": SpellPreparationPolicyService.UNPREPARED },
+        { _id: addItemId, "system.prepared": SpellPreparationPolicyService.PREPARED }
+      ], {
+        characterBuilderRuntimeManagement: true,
+        characterBuilderLongRestSpellPreparation: true,
+        characterBuilderRangerSpellReplacement: true,
+        characterBuilderTransactionId: transactionId
+      });
+      return {
+        changed: true,
+        changedSpells: 2,
+        classItemId,
+        classIdentifier: String(cls.system?.identifier ?? "").trim().toLowerCase(),
+        removeItemId,
+        addItemId,
+        transactionId
+      };
+    }
+
     const selected = new Set((payload?.preparedSpellItemIds ?? []).map(String));
     const candidates = PreparedSpellLimitService.ordinaryClassSpells(actor, cls);
     const updates = [];
@@ -176,6 +224,50 @@ export class LongRestSpellPreparationService {
       preparedSpellItemIds: [...selected],
       transactionId
     };
+  }
+
+  static #replacementContext(actor, action, cls, operation = null) {
+    const candidates = this.#sorted(PreparedSpellLimitService.ordinaryClassSpells(actor, cls));
+    const removeItemId = String(operation?.removeItemId ?? "");
+    const addItemId = String(operation?.addItemId ?? "");
+    const prepared = candidates
+      .filter(spell => Number(spell.system?.prepared ?? 0) === SpellPreparationPolicyService.PREPARED)
+      .map(spell => this.#spellRow(spell, { selected: spell.id === removeItemId, current: true }));
+    const available = candidates
+      .filter(spell => Number(spell.system?.prepared ?? 0) === SpellPreparationPolicyService.UNPREPARED)
+      .map(spell => this.#spellRow(spell, { selected: spell.id === addItemId, current: false }));
+    return {
+      ...action,
+      replacement: {
+        classItemId: cls.id,
+        classIdentifier: String(cls.system?.identifier ?? "").trim().toLowerCase(),
+        className: cls.name,
+        classLevel: Number(cls.system?.levels ?? 0),
+        cadence: SpellPreparationCadenceService.forClass(cls),
+        cadenceLabel: SpellPreparationCadenceService.label(cls),
+        prepared,
+        available,
+        preparedCount: prepared.length,
+        availableCount: available.length,
+        removeItemId,
+        addItemId,
+        locked: this.#lockedRows(actor, cls)
+      }
+    };
+  }
+
+  static #lockedRows(actor, cls) {
+    return this.#sorted([...(actor?.items ?? [])].filter(spell => spell?.type === "spell"
+      && Number(spell.system?.level ?? 0) > 0
+      && PreparedSpellLimitService.belongsToClass(actor, spell, cls)
+      && PreparedSpellLimitService.isExcludedGrant(spell)))
+      .map(spell => this.#spellRow(spell, {
+        selected: true,
+        locked: true,
+        lockedLabel: Number(spell.system?.prepared ?? 0) === SpellPreparationPolicyService.ALWAYS_PREPARED
+          ? "Always Prepared"
+          : "Feature Prepared"
+      }));
   }
 
   static #spellRow(spell, { selected = false, current = false, locked = false, lockedLabel = "" } = {}) {

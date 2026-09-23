@@ -2,7 +2,7 @@ import { MODULE_ID } from "../constants.mjs";
 import { ClassProgressionGuard } from "./class-progression-guard.mjs";
 import { PlayerSheetIntegritySettingsService } from "./player-sheet-integrity-settings-service.mjs";
 import { PreparedSpellLimitService } from "./prepared-spell-limit-service.mjs";
-import { LongRestSpellPreparationService } from "./long-rest-spell-preparation-service.mjs";
+import { SpellPreparationAuthorityService } from "./spell-preparation-authority-service.mjs";
 
 const REFUND_ACTION = "refundResource";
 const RULES = Object.freeze({
@@ -106,11 +106,10 @@ export class PlayerSheetIntegrityService {
     // ActivityUsageDialog itself.
     Hooks.on("dnd5e.preUseActivity", (activity, usageConfig) => this.guardUnpreparedSpellUse(activity, usageConfig));
 
-    // Keeper-managed Long Rest preparation is independent from the Sheet
-    // Integrity master switch. Block direct player Item updates as the
-    // authoritative boundary so alternate sheets and macros cannot bypass the
-    // preparation window. GM changes and authorized Character Builder
-    // transactions remain allowed.
+    // Spell preparation authority is enforced at the Item update boundary,
+    // independent from any one Keeper screen. This prevents alternate sheets,
+    // macros, or native controls from bypassing class-specific preparation
+    // timing while preserving GM and authorized Character Builder updates.
     Hooks.on("preUpdateItem", (item, changes, options, userId) =>
       this.guardKeeperManagedPreparationUpdate(item, changes, options, userId));
   }
@@ -223,21 +222,19 @@ export class PlayerSheetIntegrityService {
 
   static guardKeeperManagedPreparationUpdate(item, changes = {}, options = {}, userId = null) {
     const actor = item?.actor ?? item?.parent ?? null;
-    if (!LongRestSpellPreparationService.enabled() || item?.type !== "spell" || !ClassProgressionGuard.isProtectedActor(actor)) return true;
+    if (item?.type !== "spell" || !ClassProgressionGuard.isProtectedActor(actor)) return true;
     if (ClassProgressionGuard.isAuthorized(options)) return true;
-    const user = userId ? globalThis.game?.users?.get?.(userId) ?? globalThis.game?.user : globalThis.game?.user;
-    if (!user || user.isGM) return true;
-    const owns = actor?.testUserPermission ? actor.testUserPermission(user, "OWNER") : actor?.isOwner;
-    if (!owns) return true;
 
     const hasFlat = Object.prototype.hasOwnProperty.call(changes ?? {}, "system.prepared");
     const hasNested = Object.prototype.hasOwnProperty.call(changes?.system ?? {}, "prepared");
     if (!hasFlat && !hasNested) return true;
     const next = Number(hasFlat ? changes["system.prepared"] : changes.system.prepared);
     if (next === Number(item.system?.prepared ?? 0)) return true;
-    if (!LongRestSpellPreparationService.managesSpell(actor, item)) return true;
 
-    this.#warn(`${item.name} preparation is managed by Character Keeper. Make this change during a Long Rest, or ask the GM to edit the sheet.`);
+    const user = userId ? globalThis.game?.users?.get?.(userId) ?? globalThis.game?.user : globalThis.game?.user;
+    const authority = SpellPreparationAuthorityService.mayChangeFromSheet(actor, item, { user });
+    if (authority.allowed) return true;
+    this.#warn(authority.message);
     return false;
   }
 
@@ -289,7 +286,7 @@ export class PlayerSheetIntegrityService {
     const actor = item?.actor ?? item?.parent;
     const integrityProtected = this.protects(actor);
     const keeperPreparationProtected = this.#keeperPreparationProtects(actor)
-      && LongRestSpellPreparationService.managesSpell(actor, item);
+      && SpellPreparationAuthorityService.managesSpell(actor, item);
     if (!root || item?.documentName !== "Item" || (!integrityProtected && !keeperPreparationProtected)) return;
 
     if (integrityProtected) {
@@ -730,14 +727,8 @@ export class PlayerSheetIntegrityService {
   }
 
   static #mayChangePreparationFromSheet(actor, spell) {
-    if (!actor || spell?.type !== "spell" || Number(spell.system?.level ?? 0) <= 0) return { allowed: true };
     if (!this.#keeperPreparationProtects(actor)) return { allowed: true };
-    if (!LongRestSpellPreparationService.managesSpell(actor, spell)) return { allowed: true };
-    const cls = PreparedSpellLimitService.owningClassForSpell(actor, spell);
-    return {
-      allowed: false,
-      message: `${cls?.name ?? "This class"} spell preparation is managed through Character Keeper during a Long Rest. The GM can still change preparation directly from the sheet.`
-    };
+    return SpellPreparationAuthorityService.mayChangeFromSheet(actor, spell);
   }
 
   static #wouldBlockUnpreparedSpellUse(actor, spell, mode = PlayerSheetIntegritySettingsService.unpreparedSpellUsageMode()) {
@@ -787,7 +778,7 @@ export class PlayerSheetIntegrityService {
     return !game.user?.isGM
       && ClassProgressionGuard.isProtectedActor(actor)
       && actor?.isOwner
-      && LongRestSpellPreparationService.enabled();
+      && SpellPreparationAuthorityService.enabled();
   }
 
   static #actorInCombat(actor) {

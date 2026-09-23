@@ -8,11 +8,12 @@ import {
  *
  * This deliberately does not describe how a class gains spell access. Access
  * model and preparation cadence are independent: Ranger is the canonical
- * example (full-list access, Level Up cadence), while Wizard uses a spellbook
- * but refreshes its ordinary prepared list at Long Rest.
+ * example (full-list access, one-for-one replacement at Long Rest), while
+ * Wizard uses a spellbook and refreshes its ordinary prepared list at Long Rest.
  */
 export class SpellPreparationCadenceService {
   static LONG_REST = SPELL_PREPARATION_CADENCES.longRest;
+  static LONG_REST_REPLACE_ONE = SPELL_PREPARATION_CADENCES.longRestReplaceOne;
   static LEVEL_UP = SPELL_PREPARATION_CADENCES.levelUp;
   static SPECIAL = SPELL_PREPARATION_CADENCES.special;
 
@@ -24,7 +25,11 @@ export class SpellPreparationCadenceService {
   }
 
   static allowsLongRest(clsOrIdentifier) {
-    return this.forClass(clsOrIdentifier) === this.LONG_REST;
+    return [this.LONG_REST, this.LONG_REST_REPLACE_ONE].includes(this.forClass(clsOrIdentifier));
+  }
+
+  static replacesOneAtLongRest(clsOrIdentifier) {
+    return this.forClass(clsOrIdentifier) === this.LONG_REST_REPLACE_ONE;
   }
 
   static allowsLevelUp(clsOrIdentifier) {
@@ -34,6 +39,7 @@ export class SpellPreparationCadenceService {
   static label(clsOrIdentifier) {
     switch (this.forClass(clsOrIdentifier)) {
       case this.LONG_REST: return "Long Rest";
+      case this.LONG_REST_REPLACE_ONE: return "Long Rest — Replace One";
       case this.LEVEL_UP: return "Level Up";
       case this.SPECIAL: return "Special Rule";
       default: return "Unknown";

@@ -4,6 +4,7 @@ import { EpicBoonService } from "../services/epic-boon-service.mjs";
 import { ProgressionToolService } from "../services/progression-tool-service.mjs";
 import { RestAccessService } from "../services/rest-access-service.mjs";
 import { PartyGroupService } from "../services/party-group-service.mjs";
+import { ProtectedTransactionDialogService } from "../services/protected-transaction-dialog-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -366,14 +367,18 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
   }
 
   async #confirm({ title, content, yes }) {
-    const DialogV2 = foundry.applications.api.DialogV2;
-    if (DialogV2?.confirm) {
-      return DialogV2.confirm({
-        window: { title, modal: true }, content,
+    const key = `character-builder-tool-confirm:${String(title ?? "confirm").toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+    return ProtectedTransactionDialogService.confirm({
+      key,
+      matchClass: "cb-character-builder-tool-confirm-dialog",
+      dialogOptions: {
+        classes: ["dnd5e-character-builder", "character-builder", "cb-protected-transaction-dialog", "cb-character-builder-tool-confirm-dialog"],
+        window: { title, modal: true },
+        content,
         yes: { label: yes, icon: "fa-solid fa-check" },
         no: { label: "Cancel", icon: "fa-solid fa-xmark" }
-      });
-    }
-    return Dialog.confirm({ title, content, yes: () => true, no: () => false, defaultYes: false });
+      },
+      fallback: () => Dialog.confirm({ title, content, yes: () => true, no: () => false, defaultYes: false })
+    });
   }
 }

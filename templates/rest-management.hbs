@@ -165,7 +165,9 @@
             <input type="search" placeholder="Search {{selected.preparation.className}} spells" data-filter-target="#cb-prepare-spells-{{selected.preparation.classItemId}}" data-prepare-spells-search>
             <div class="cb-prepare-spells-filter-buttons" role="group" aria-label="Prepared spell filter">
               <button type="button" class="active" data-action="filter-prepare-spells" data-filter-mode="all">All</button>
-              <button type="button" data-action="filter-prepare-spells" data-filter-mode="prepared">Prepared</button>
+              <button type="button" data-action="filter-prepare-spells" data-filter-mode="current">Prepared Only</button>
+              <button type="button" data-action="filter-prepare-spells" data-filter-mode="selected">Selected Only</button>
+              <button type="button" data-action="clear-prepare-spells" title="Clear the pending ordinary prepared-spell selection">Clear Selection</button>
             </div>
           </div>
           <div id="cb-prepare-spells-{{selected.preparation.classItemId}}" class="cb-prepare-spells-groups">
@@ -174,7 +176,7 @@
               <header><strong>{{label}}</strong><small>Ordinary preparation</small></header>
               <div class="cb-keeper-card-list">
                 {{#each spells}}
-                <article class="cb-keeper-radio-card cb-prepare-spell-card {{#if selected}}selected{{/if}}" data-search="{{search}}" data-prepared-selected="{{#if selected}}true{{else}}false{{/if}}">
+                <article class="cb-keeper-radio-card cb-prepare-spell-card {{#if selected}}selected{{/if}}" data-search="{{search}}" data-prepared-selected="{{#if selected}}true{{else}}false{{/if}}" data-prepared-current="{{#if current}}true{{else}}false{{/if}}">
                   <label class="cb-keeper-select-zone" title="{{#if selected}}Unprepare {{name}}{{else}}Prepare {{name}}{{/if}}">
                     <input type="checkbox" name="keeper.prepareSpells" value="{{id}}" {{#if selected}}checked{{/if}}>
                   </label>
@@ -283,6 +285,46 @@
             {{/each}}
           </div>
           <p class="cb-notice"><i class="fa-solid fa-shield-halved"></i> Character Builder only toggles the Active Effects already supplied by the source-native Fiendish Resilience Item; it does not create a separate resistance mechanic.</p>
+        </section>
+        {{/if}}
+
+        {{#if selected.isReplacePreparedSpell}}
+        <section class="cb-keeper-section cb-memorize-spell cb-ranger-replace-spell">
+          <header class="cb-choice-section-header">
+            <div><h3>Replace One {{selected.replacement.className}} Spell</h3><p>After this Long Rest, replace exactly one ordinary prepared spell with one ordinary unprepared spell. Always Prepared and feature-granted spells are excluded.</p></div>
+          </header>
+          <div class="cb-memorize-columns">
+            <section>
+              <header><span class="cb-kicker">Prepared {{selected.replacement.className}} Spells</span><strong>Choose one to remove</strong><small>{{selected.replacement.preparedCount}} eligible</small></header>
+              <div class="cb-memorize-list">
+                {{#each selected.replacement.prepared}}
+                <label class="cb-memorize-spell-card {{#if selected}}selected remove{{/if}}">
+                  <input type="radio" name="keeper.replacePrepared.removeItemId" value="{{id}}" {{#if selected}}checked{{/if}}>
+                  <img src="{{img}}" alt="">
+                  <span><strong>{{name}}</strong><small>{{levelLabel}}</small></span>
+                  <i class="fa-solid fa-minus"></i>
+                </label>
+                {{else}}<p class="cb-notice">No ordinary prepared spell is eligible to replace.</p>{{/each}}
+              </div>
+            </section>
+            <div class="cb-memorize-swap-arrow"><i class="fa-solid fa-arrow-right-arrow-left"></i><span>1 : 1</span></div>
+            <section>
+              <header><span class="cb-kicker">Available {{selected.replacement.className}} Spells</span><strong>Choose one to prepare</strong><small>{{selected.replacement.availableCount}} eligible</small></header>
+              <div class="cb-memorize-list">
+                {{#each selected.replacement.available}}
+                <label class="cb-memorize-spell-card {{#if selected}}selected add{{/if}}">
+                  <input type="radio" name="keeper.replacePrepared.addItemId" value="{{id}}" {{#if selected}}checked{{/if}}>
+                  <img src="{{img}}" alt="">
+                  <span><strong>{{name}}</strong><small>{{levelLabel}}</small></span>
+                  <i class="fa-solid fa-plus"></i>
+                </label>
+                {{else}}<p class="cb-notice">No ordinary unprepared spell is eligible as a replacement.</p>{{/each}}
+              </div>
+            </section>
+          </div>
+          {{#if selected.replacement.locked.length}}
+          <p class="cb-notice"><i class="fa-solid fa-lock"></i> {{selected.replacement.locked.length}} feature-granted or Always Prepared spell{{#unless (dnd5eCharacterBuilderEq selected.replacement.locked.length 1)}}s are{{else}} is{{/unless}} excluded from this replacement.</p>
+          {{/if}}
         </section>
         {{/if}}
 
