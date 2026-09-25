@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.913";
-export const MODULE_BUILD = "post-migration-spell-authority-r1";
+export const MODULE_VERSION = "0.9.914";
+export const MODULE_BUILD = "creation-flow-species-rest-r1";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {

@@ -1,13 +1,14 @@
 import { MODULE_ID } from "../constants.mjs";
 
 /**
- * Global foreground coordinator for Character Builder modal workflows.
+ * Foreground coordinator for Character Builder transactional workflows.
  *
- * Foundry and D&D5e may open a detached Compendium Browser, picker, or dialog
- * instead of a DOM child of the application that launched it. This service
- * treats those windows as a real modal stack: only the top entry is interactive,
- * all lower applications are inert, and parent windows cannot be raised or
- * submitted until the child is resolved or cancelled.
+ * The stack protects z-order, not the entire Foundry UI. Character Builder and
+ * native Advancement windows stay above ordinary applications, while inspection
+ * and reference windows (Compendium Browser, Item/Journal details, pickers) are
+ * allowed above the transaction. No global inert state, blur, or pointer-event
+ * trap is applied. Structural Actor safety remains the responsibility of the
+ * transaction and Player Sheet Integrity services.
  */
 export class ModalStackService {
   static #initialized = false;
@@ -77,7 +78,6 @@ export class ModalStackService {
       ?? this.findForegroundOwnerElement({ excludeApp: app });
     const token = Symbol(label);
     const entry = this.#entry(app, token, label);
-    const overlay = this.#createOverlay(message);
     this.#scope = {
       token: Symbol(`${label}:scope`),
       label,
@@ -86,8 +86,6 @@ export class ModalStackService {
       ownerElement: resolvedOwner,
       ownerFocus: globalThis.document?.activeElement ?? null,
       entries: [entry],
-      overlay,
-      blocked: new Map(),
       closingApps: new WeakSet(),
       released: false
     };
@@ -114,10 +112,7 @@ export class ModalStackService {
 
     const token = Symbol(label);
     this.#scope.entries.push(this.#entry(app, token, label));
-    if (message) {
-      this.#scope.message = message;
-      this.#setOverlayMessage(this.#scope.overlay, message);
-    }
+    if (message) this.#scope.message = message;
     this.#scheduleSync({ focus: true });
     return token;
   }
@@ -277,7 +272,6 @@ export class ModalStackService {
     }
 
     if (!this.#scope?.entries?.length) {
-      if (document.body?.classList?.contains?.("cb-protected-transaction-active")) return;
       const owner = this.findForegroundOwnerElement({ excludeApp: app });
       if (this.#isDialogApplication(app) && this.#isCharacterBuilderElement(owner)) {
         this.beginRoot(app, {
@@ -288,7 +282,7 @@ export class ModalStackService {
       }
       return;
     }
-    if (this.#isChildOfActiveStack(app) || this.#isSelectionApplication(app)) {
+    if (this.#isChildOfActiveStack(app) || this.#isReferenceApplication(app)) {
       this.pushChild(app, {
         label: this.#applicationLabel(app),
         message: "Complete or cancel the active selection to return to the previous window."
@@ -372,6 +366,32 @@ export class ModalStackService {
     return this.#isDialogApplication(app);
   }
 
+  static #isReferenceApplication(app) {
+    if (this.#isSelectionApplication(app)) return true;
+    const element = this.#applicationElement(app);
+    if (this.#isReferenceElement(element)) return true;
+    const document = app?.document ?? app?.object ?? null;
+    if (document?.pack || document?.compendium) return true;
+    return false;
+  }
+
+  static #isReferenceElement(element) {
+    if (!element) return false;
+    const haystack = `${String(element.id ?? "")} ${this.#classNames(element).join(" ")}`.toLowerCase();
+    return haystack.includes("compendium")
+      || haystack.includes("item-sheet")
+      || haystack.includes("journal-sheet")
+      || haystack.includes("document-sheet")
+      || haystack.includes("file-picker")
+      || haystack.includes("document-select")
+      || haystack.includes("item-select")
+      || haystack.includes("spell-select");
+  }
+
+  static #isStackElement(element) {
+    return (this.#scope?.entries ?? []).some(entry => entry.element === element);
+  }
+
   static #isDialogApplication(app) {
     const element = this.#applicationElement(app);
     const classes = new Set([
@@ -404,46 +424,27 @@ export class ModalStackService {
   static #attachListeners() {
     if (this.#listeners || !globalThis.document?.addEventListener) return;
 
-    const blockOutside = event => {
+    // Outside interaction is never cancelled. After Foundry finishes handling
+    // the click, ordinary applications are simply kept below the active
+    // transaction. Reference/inspection applications are intentionally exempt.
+    const preservePriority = event => {
       const top = this.topElement;
       if (!top?.isConnected || this.#eventInside(event, top)) return;
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      event.stopImmediatePropagation?.();
-      this.#scheduleSync({ focus: true });
-    };
-    const refocus = event => {
-      const top = this.topElement;
-      if (!top?.isConnected || this.#eventInside(event, top)) return;
-      event.stopPropagation?.();
-      event.stopImmediatePropagation?.();
-      queueMicrotask(() => this.focusTop());
+      const application = event.target?.closest?.(".application") ?? null;
+      if (application && this.#isStackElement(application)) return;
+      if (application && this.#isReferenceElement(application)) return;
+      this.#scheduleSync({ focus: false });
     };
 
-    this.#listeners = {
-      pointerdown: blockOutside,
-      mousedown: blockOutside,
-      click: blockOutside,
-      contextmenu: blockOutside,
-      touchstart: blockOutside,
-      wheel: blockOutside,
-      keydown: blockOutside,
-      submit: blockOutside,
-      focusin: refocus
-    };
-
+    this.#listeners = { pointerdown: preservePriority, click: preservePriority };
     for (const [name, handler] of Object.entries(this.#listeners)) {
-      const options = name === "wheel" || name === "touchstart" ? { capture: true, passive: false } : true;
-      document.addEventListener(name, handler, options);
+      document.addEventListener(name, handler, true);
     }
   }
 
   static #detachListeners() {
     if (!this.#listeners || !globalThis.document?.removeEventListener) return;
-    for (const [name, handler] of Object.entries(this.#listeners)) {
-      const options = name === "wheel" || name === "touchstart" ? { capture: true, passive: false } : true;
-      document.removeEventListener(name, handler, options);
-    }
+    for (const [name, handler] of Object.entries(this.#listeners)) document.removeEventListener(name, handler, true);
     this.#listeners = null;
   }
 
@@ -495,8 +496,6 @@ export class ModalStackService {
     const scope = this.#scope;
     if (!scope?.entries?.length || scope.released) return;
 
-    // Refresh elements and discard stale children from the top down. The root
-    // itself is released by its owner lifecycle rather than by a timing guess.
     for (const entry of scope.entries) {
       entry.element = this.#applicationElement(entry.app) ?? entry.element;
       if (entry.element?.isConnected) entry.connectedOnce = true;
@@ -507,73 +506,36 @@ export class ModalStackService {
       scope.entries.pop();
     }
 
-    const top = this.#topEntry();
-    const topElement = top?.element;
-    if (!top || !topElement?.isConnected) return;
+    const connectedEntries = scope.entries.filter(entry => entry.element?.isConnected);
+    const top = connectedEntries.at(-1);
+    if (!top?.element) return;
 
-    if (!scope.overlay?.isConnected) document.body?.append?.(scope.overlay);
-    document.body?.classList?.add?.("cb-modal-stack-active");
-
-    const candidates = new Set(this.#applicationElements());
-    if (scope.ownerElement?.isConnected) candidates.add(scope.ownerElement);
-    for (const entry of scope.entries) if (entry.element?.isConnected) candidates.add(entry.element);
-
-    const desiredBlocked = new Set([...candidates].filter(element => element !== topElement));
-    for (const [element, snapshot] of [...scope.blocked.entries()]) {
-      if (!element?.isConnected || !desiredBlocked.has(element)) {
-        this.#restoreElement(element, snapshot);
-        scope.blocked.delete(element);
-      }
-    }
-    for (const element of desiredBlocked) this.#blockElement(scope, element);
-    if (scope.blocked.has(topElement)) {
-      this.#restoreElement(topElement, scope.blocked.get(topElement));
-      scope.blocked.delete(topElement);
+    const stackElements = new Set(connectedEntries.map(entry => entry.element));
+    let maximum = 0;
+    for (const element of this.#applicationElements()) {
+      if (stackElements.has(element)) continue;
+      maximum = Math.max(maximum, this.#zIndex(element));
     }
 
-    top.app?.bringToFront?.();
-    top.app?.bringToTop?.();
-    const backgroundMaximum = this.#maximumApplicationZ(topElement, scope.overlay);
-    let topZ = this.#zIndex(topElement);
-    if (!Number.isFinite(topZ) || topZ <= backgroundMaximum) {
-      topZ = backgroundMaximum + 2;
-      topElement.style.zIndex = String(topZ);
-    }
-    if (scope.overlay) scope.overlay.style.zIndex = String(Math.max(1, topZ - 1));
+    // Keep the root above ordinary Foundry applications and each legitimate
+    // inspection child above its parent. No application is made inert.
+    connectedEntries.forEach((entry, index) => {
+      entry.element.style.zIndex = String(maximum + 2 + (index * 2));
+    });
+    try { top.app?.bringToFront?.(); } catch (_error) {}
+    try { top.app?.bringToTop?.(); } catch (_error) {}
+    // bringToFront may assign a lower z-index on some Foundry applications;
+    // restore the deterministic stack one microtask later as well.
+    const topZ = maximum + 2 + ((connectedEntries.length - 1) * 2);
+    top.element.style.zIndex = String(topZ);
 
-    if (focus) this.#focusElement(topElement);
-  }
-
-  static #blockElement(scope, element) {
-    if (!element || scope.blocked.has(element)) return;
-    const snapshot = {
-      inert: Boolean(element.inert),
-      ariaBusy: element.getAttribute?.("aria-busy"),
-      hadClass: element.classList?.contains?.("cb-modal-stack-blocked") ?? false
-    };
-    scope.blocked.set(element, snapshot);
-    element.inert = true;
-    element.setAttribute?.("aria-busy", "true");
-    element.classList?.add?.("cb-modal-stack-blocked");
-  }
-
-  static #restoreElement(element, snapshot) {
-    if (!element || !snapshot) return;
-    element.inert = snapshot.inert;
-    if (snapshot.ariaBusy === null || snapshot.ariaBusy === undefined) element.removeAttribute?.("aria-busy");
-    else element.setAttribute?.("aria-busy", snapshot.ariaBusy);
-    if (!snapshot.hadClass) element.classList?.remove?.("cb-modal-stack-blocked");
+    if (focus) this.#focusElement(top.element);
   }
 
   static #releaseScope({ restoreFocus = true } = {}) {
     const scope = this.#scope;
     if (!scope || scope.released) return;
     scope.released = true;
-
-    for (const [element, snapshot] of scope.blocked.entries()) this.#restoreElement(element, snapshot);
-    scope.blocked.clear();
-    scope.overlay?.remove?.();
-    document.body?.classList?.remove?.("cb-modal-stack-active");
     this.#detachListeners();
     this.#scope = null;
 
@@ -594,22 +556,6 @@ export class ModalStackService {
     const selector = "button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
     const target = element.querySelector?.(selector) ?? element;
     target?.focus?.({ preventScroll: true });
-  }
-
-  static #createOverlay(message) {
-    const overlay = document.createElement("div");
-    overlay.className = "cb-modal-stack-backdrop";
-    overlay.dataset.moduleId = MODULE_ID;
-    overlay.setAttribute?.("role", "presentation");
-    overlay.setAttribute?.("aria-hidden", "true");
-    overlay.innerHTML = `<div class="cb-modal-stack-backdrop__message"><i class="fa-solid fa-lock" aria-hidden="true"></i><span></span></div>`;
-    this.#setOverlayMessage(overlay, message);
-    return overlay;
-  }
-
-  static #setOverlayMessage(overlay, message) {
-    const node = overlay?.querySelector?.("span");
-    if (node) node.textContent = String(message ?? "Complete or cancel the active window to continue.");
   }
 
   static #applicationElements() {
@@ -633,15 +579,6 @@ export class ModalStackService {
     if (!element?.isConnected || element.hidden) return false;
     const style = globalThis.getComputedStyle?.(element);
     return style?.display !== "none" && style?.visibility !== "hidden";
-  }
-
-  static #maximumApplicationZ(exclude = null, overlay = null) {
-    let maximum = 0;
-    for (const element of this.#applicationElements()) {
-      if (element === exclude || element === overlay) continue;
-      maximum = Math.max(maximum, this.#zIndex(element));
-    }
-    return maximum;
   }
 
   static #zIndex(element) {

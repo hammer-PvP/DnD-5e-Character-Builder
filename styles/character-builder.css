@@ -6571,3 +6571,113 @@
   line-height: 1;
 }
 
+
+/* v0.9.914 — Free Browse / Ordered Commit, scoped window priority, dual Group filters. */
+
+/* The old modal safety used full-screen blur + pointer interception. 0.9.914
+   keeps only z-order protection in JavaScript; these legacy classes are made
+   inert in case a stale application instance still carries them during reload. */
+.cb-modal-stack-backdrop,
+.cb-protected-transaction-backdrop {
+  display: none !important;
+  pointer-events: none !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.application.cb-modal-stack-blocked,
+.cb-protected-transaction-blocked {
+  pointer-events: auto !important;
+  user-select: auto !important;
+}
+
+/* Character Creation step state is progress state, not navigation permission. */
+.character-builder .cb-step > span > small {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  line-height: 1.1;
+  opacity: .62;
+}
+.character-builder .cb-step.current > i { color: var(--cb-gold); }
+.character-builder .cb-step.browse-only { opacity: .72; }
+.character-builder .cb-step.browse-only > i { color: #8e99a8; }
+.character-builder .cb-step.browse-only.active { opacity: 1; }
+
+.character-builder .cb-browse-only-notice {
+  flex: 0 0 auto;
+  margin: 12px 22px 0;
+  padding: 9px 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid rgba(209,176,107,.38);
+  border-radius: 6px;
+  background: rgba(209,176,107,.075);
+}
+.character-builder .cb-browse-only-notice > i {
+  margin-top: 2px;
+  color: var(--cb-gold);
+}
+.character-builder .cb-browse-only-notice strong,
+.character-builder .cb-browse-only-notice span,
+.character-builder .cb-browse-only-notice small { display: block; }
+.character-builder .cb-browse-only-notice span { margin-top: 2px; }
+.character-builder .cb-browse-only-notice small { margin-top: 4px; opacity: .7; }
+
+/* Browse-only pages remain fully searchable/readable. Mutation affordances are
+   visually muted; authoritative JavaScript gates still reject commits even if
+   a control is triggered by keyboard, another sheet, or custom code. */
+.character-builder .cb-browse-only-mode .cb-primary-toggle,
+.character-builder .cb-browse-only-mode .cb-spell-toggle,
+.character-builder .cb-browse-only-mode .cb-equipment-modes label,
+.character-builder .cb-browse-only-mode .cb-equipment-entry.choice select,
+.character-builder .cb-browse-only-mode [data-action="confirm-primary"],
+.character-builder .cb-browse-only-mode [data-action="save-spell-access"],
+.character-builder .cb-browse-only-mode [data-action="save-equipment"],
+.character-builder .cb-browse-only-mode [data-action="open-shop"] {
+  opacity: .48;
+}
+
+/* Default Group is persistent; Working Group is session-local. */
+.cb-tool-party-actions.cb-tool-party-actions-dual {
+  display: grid;
+  grid-template-columns: minmax(165px, 1fr) minmax(165px, 1fr) auto;
+  align-items: end;
+  gap: 9px;
+  min-width: min(520px, 64vw);
+}
+.cb-tool-group-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.cb-tool-group-field > span {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .035em;
+  opacity: .8;
+}
+.cb-tool-group-field > small {
+  max-width: 240px;
+  line-height: 1.15;
+  opacity: .58;
+}
+.cb-tool-party-actions.cb-tool-party-actions-dual select {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+}
+@media (max-width: 920px) {
+  .cb-tool-party-actions.cb-tool-party-actions-dual {
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+    min-width: 0;
+  }
+  .cb-tool-party-actions.cb-tool-party-actions-dual > button { grid-column: 1 / -1; }
+}
+@media (max-width: 620px) {
+  .cb-tool-party-actions.cb-tool-party-actions-dual { grid-template-columns: 1fr; }
+  .cb-tool-party-actions.cb-tool-party-actions-dual > button { grid-column: auto; }
+}

@@ -21,9 +21,10 @@ export class NativeAdvancementBusyError extends Error {
 /**
  * Runs a D&D5e AdvancementManager as a protected modal workflow.
  *
- * The native application remains authoritative. This coordinator only owns
- * foreground priority, background input blocking, cancellation settlement,
- * and deterministic cleanup of the temporary backdrop.
+ * The native application remains authoritative. This coordinator owns only
+ * foreground priority, readiness/navigation guards, cancellation settlement,
+ * and deterministic cleanup. Reference/inspection windows remain usable above
+ * the Advancement; the wider Foundry UI is never globally blocked or blurred.
  */
 export class NativeAdvancementModalGuard {
   static #active = null;

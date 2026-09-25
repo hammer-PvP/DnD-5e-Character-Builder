@@ -36,15 +36,29 @@
       </div>
     </div>
     {{#if hasPartyGroups}}
-    <div class="cb-tool-party-actions">
-      <select data-party-group aria-label="Party or Group">
-        <option value="" {{#unless selectedPartyGroupId}}selected{{/unless}}>All Characters</option>
-        {{#each partyGroups}}
-        <option value="{{id}}" {{#if selected}}selected{{/if}}>{{name}} ({{characterCount}})</option>
-        {{/each}}
-      </select>
+    <div class="cb-tool-party-actions cb-tool-party-actions-dual">
+      <label class="cb-tool-group-field">
+        <span>Default Group</span>
+        <select data-default-party-group aria-label="Default Group">
+          <option value="" {{#unless defaultPartyGroupId}}selected{{/unless}}>All Characters</option>
+          {{#each partyGroups}}
+          <option value="{{id}}" {{#if defaultSelected}}selected{{/if}}>{{name}} ({{characterCount}})</option>
+          {{/each}}
+        </select>
+        <small>Persistent World default. Changing Working Group does not change this.</small>
+      </label>
+      <label class="cb-tool-group-field">
+        <span>Working Group</span>
+        <select data-party-group aria-label="Working Group">
+          <option value="" {{#unless selectedPartyGroupId}}selected{{/unless}}>All Characters</option>
+          {{#each partyGroups}}
+          <option value="{{id}}" {{#if selected}}selected{{/if}}>{{name}} ({{characterCount}})</option>
+          {{/each}}
+        </select>
+        <small>Temporary group for this Tool session.</small>
+      </label>
       <button type="button" data-action="open-party-group" {{#unless selectedPartyIsGroup}}disabled{{/unless}} title="Open the selected native D&amp;D5e Group sheet">
-        <i class="fa-solid fa-users-gear"></i> Open Group
+        <i class="fa-solid fa-users-gear"></i> Open Working Group
       </button>
     </div>
     {{/if}}

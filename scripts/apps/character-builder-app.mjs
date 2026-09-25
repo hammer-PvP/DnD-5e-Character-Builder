@@ -23,6 +23,7 @@ import { ProtectedTransactionDialogService } from "../services/protected-transac
 import { NativeAdvancementBusyError, NativeAdvancementModalGuard } from "../services/native-advancement-modal-guard.mjs";
 import { ModalStackService } from "../services/modal-stack-service.mjs";
 import { AdvancementCompletionGateService } from "../services/advancement-completion-gate-service.mjs";
+import { CreationStepGateService } from "../services/creation-step-gate-service.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 const TextEditorImplementation = foundry.applications.ux.TextEditor.implementation;
@@ -279,26 +280,8 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     const shoppingCart = await ShopService.context(this.draft, this.registry, { view: "committed" });
     const spellAccess = await SpellAccessService.buildContext(this.draft, this.registry);
 
-    const steps = [
-      {
-        id: "abilitiesBackground",
-        label: "Ability Scores & Background",
-        complete: Boolean(background && state.abilitiesSaved && !editingStages.abilitiesBackground)
-      },
-      { id: "species", label: "Species", complete: Boolean(species && !editingStages.species) },
-      { id: "class", label: "Class", complete: Boolean(characterClass && !editingStages.class) },
-      { id: "spells", label: "Spell Selection", complete: Boolean(state.spellAccessSaved && !editingStages.spells) },
-      { id: "equipment", label: "Starting Equipment", complete: Boolean(state.equipmentSaved && !editingStages.equipment) },
-      {
-        id: "review",
-        label: "Review",
-        complete: Boolean(background && state.abilitiesSaved && !editingStages.abilitiesBackground
-          && species && !editingStages.species
-          && characterClass && !editingStages.class
-          && state.spellAccessSaved && !editingStages.spells
-          && state.equipmentSaved && !editingStages.equipment)
-      }
-    ].map(entry => ({ ...entry, active: entry.id === step }));
+    const steps = CreationStepGateService.decorateSteps(this.draft, state, step);
+    const activeStepGate = steps.find(entry => entry.id === step) ?? steps[0];
 
     const selectedSpeciesUuid = this.#primarySourceUuid(species);
     const selectedClassUuid = this.#primarySourceUuid(characterClass);
@@ -323,6 +306,10 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       characterName: this.pendingCharacterName ?? state.characterName ?? this.actor.name,
       step,
       steps,
+      stepStatus: activeStepGate?.status ?? "current",
+      stepBrowseOnly: activeStepGate?.browseOnly === true,
+      stepCurrent: activeStepGate?.current === true,
+      stepMissingPrerequisites: activeStepGate?.missingLabels ?? [],
       species,
       background,
       characterClass,
@@ -333,8 +320,10 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       ),
       speciesConfirmed: Boolean(selectedSpeciesUuid && !pendingSpeciesUuid && !editingStages.species),
       speciesConfirmDisabled: this.primarySelectionBusy || !effectiveSpeciesUuid
+        || !CreationStepGateService.canCommit(this.draft, state, "species")
         || (effectiveSpeciesUuid === selectedSpeciesUuid && !editingStages.species),
-      speciesCanContinue: Boolean(selectedSpeciesUuid && !pendingSpeciesUuid && !editingStages.species),
+      speciesCanContinue: Boolean(selectedSpeciesUuid && !pendingSpeciesUuid && !editingStages.species
+        && CreationStepGateService.canCommit(this.draft, state, "species")),
       backgroundGroups,
       selectedBackgroundUuid,
       selectedBackgroundOption,
@@ -344,8 +333,10 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       ),
       classConfirmed: Boolean(selectedClassUuid && !pendingClassUuid && !editingStages.class),
       classConfirmDisabled: this.primarySelectionBusy || !effectiveClassUuid
+        || !CreationStepGateService.canCommit(this.draft, state, "class")
         || (effectiveClassUuid === selectedClassUuid && !editingStages.class),
-      classCanContinue: Boolean(selectedClassUuid && !pendingClassUuid && !editingStages.class),
+      classCanContinue: Boolean(selectedClassUuid && !pendingClassUuid && !editingStages.class
+        && CreationStepGateService.canCommit(this.draft, state, "class")),
       abilities,
       abilityMethod: effectiveMethod,
       abilityAssignmentHint: ["standardArray", "customArray", "roll"].includes(effectiveMethod),
@@ -355,12 +346,16 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       abilityBackgroundCanContinue: Boolean(background && state.abilitiesSaved && !editingStages.abilitiesBackground),
       spellConfirmed: Boolean(state.spellAccessSaved && !editingStages.spells),
       spellConfirmDisabled: this.spellAccessBusy || !characterClass
+        || !CreationStepGateService.canCommit(this.draft, state, "spells")
         || Boolean(state.spellAccessSaved && !editingStages.spells),
-      spellCanContinue: Boolean(state.spellAccessSaved && !editingStages.spells),
+      spellCanContinue: Boolean(state.spellAccessSaved && !editingStages.spells
+        && CreationStepGateService.canCommit(this.draft, state, "spells")),
       equipmentConfirmed: Boolean(state.equipmentSaved && !editingStages.equipment),
       equipmentConfirmDisabled: this.equipmentBusy
+        || !CreationStepGateService.canCommit(this.draft, state, "equipment")
         || Boolean(shoppingCart.overspent || shoppingCart.checkoutRequired),
-      equipmentCanContinue: Boolean(state.equipmentSaved && !editingStages.equipment),
+      equipmentCanContinue: Boolean(state.equipmentSaved && !editingStages.equipment
+        && CreationStepGateService.canCommit(this.draft, state, "equipment")),
       editingStages,
       enabledMethods,
       rollSets: (state.rollSets ?? []).map((values, index) => ({
@@ -378,7 +373,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       equipmentPanels,
       shoppingCart,
       review: this.#reviewContext(),
-      canFinalize: steps.find(entry => entry.id === "review")?.complete,
+      canFinalize: CreationStepGateService.canCommit(this.draft, state, "review"),
       busy: this.busy,
       commitDialog: this.commitDialog,
       commitInProgress: this.commitInProgress,
@@ -683,6 +678,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     if (!Object.hasOwn(this.pendingPrimaryUuid, kind)) return;
     const uuid = String(input?.value ?? "");
     if (!uuid) return;
+    if (!this.#allowStageCommit(kind)) return this.render({ force: true });
 
     this.#rememberPrimaryListScroll(kind);
     const type = kind === "species" ? "race" : "class";
@@ -728,6 +724,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   }
 
   async #authorizeConfirmedStageChange(stage, { choiceLabel = "choice" } = {}) {
+    if (!this.#allowStageCommit(stage)) return false;
     if (this.abilityBackgroundBusy || this.primarySelectionBusy || this.spellAccessBusy || this.equipmentBusy) {
       NativeAdvancementModalGuard.focusActive();
       return false;
@@ -781,10 +778,35 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       });
       if (!confirmed) return false;
       await this.#setStageEditing(stage, true);
+      await this.#invalidateDependentStageConfirmations(stage);
       return true;
     } finally {
       this.editConfirmationBusy = false;
     }
+  }
+
+  #allowStageCommit(stage, { notify = true } = {}) {
+    const state = DraftManager.getBuildState(this.draft);
+    if (CreationStepGateService.canCommit(this.draft, state, stage)) return true;
+    if (notify) ui.notifications.warn(CreationStepGateService.blockMessage(this.draft, state, stage));
+    return false;
+  }
+
+  async #invalidateDependentStageConfirmations(stage) {
+    const state = DraftManager.getBuildState(this.draft);
+    const dependents = CreationStepGateService.dependentStages(stage);
+    if (!dependents.length) return;
+    const editingStages = CreationEditService.editingStages(state);
+    let changed = false;
+    for (const dependent of dependents) {
+      if (!this.#stageConfirmed(dependent, state)) continue;
+      if (!editingStages[dependent]) {
+        editingStages[dependent] = true;
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    await DraftManager.setBuildState(this.draft, { editingStages });
   }
 
   #stageConfirmed(stage, state = DraftManager.getBuildState(this.draft)) {
@@ -814,6 +836,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
   async #configurePreview(uuid = this.previewUuid, kind = this.previewKind) {
     if (!uuid || !kind || this.primarySelectionBusy) return;
+    if (!this.#allowStageCommit(kind)) return;
     if (!this.registry.isUuidAllowed(uuid)) {
       return ui.notifications.error("That document belongs to a disabled content source.");
     }
@@ -911,6 +934,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   async #continue() {
     const state = DraftManager.getBuildState(this.draft);
     const step = state.step ?? "abilitiesBackground";
+    if (!this.#allowStageCommit(step)) return;
 
     if (step === "equipment") {
       this.#clearTransientPrimaryState();
@@ -1300,6 +1324,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
   async #saveSpellAccess({ advance = false } = {}) {
     if (this.spellAccessBusy) return;
+    if (!this.#allowStageCommit("spells")) return;
     this.spellAccessBusy = true;
     try {
       const form = new FormData(this.element);
@@ -1336,6 +1361,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   }
 
   async #openShop() {
+    if (!this.#allowStageCommit("equipment")) return;
     const plan = await this.#captureEquipmentSelection();
     if (!plan) return ui.notifications.error("Starting Equipment selections could not be prepared for the Shop.");
     const shopApp = new EquipmentShopApp(this.draft, this.registry, this);
@@ -1364,6 +1390,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
   async #saveEquipment({ advance = false } = {}) {
     if (this.equipmentBusy) return;
+    if (!this.#allowStageCommit("equipment")) return;
     this.equipmentBusy = true;
     try {
       const formData = Object.fromEntries(new FormData(this.element).entries());

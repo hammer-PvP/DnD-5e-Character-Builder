@@ -62,10 +62,10 @@
 
     <nav class="cb-steps">
       {{#each steps}}
-      <button type="button" class="cb-step {{#if active}}active{{/if}} {{#if complete}}complete{{/if}}"
-              data-action="step" data-step="{{id}}">
-        <i class="fa-solid {{#if complete}}fa-circle-check{{else}}fa-circle{{/if}}"></i>
-        <span>{{label}}</span>
+      <button type="button" class="cb-step {{#if active}}active{{/if}} {{#if complete}}complete{{/if}} {{#if current}}current{{/if}} {{#if browseOnly}}browse-only{{/if}}"
+              data-action="step" data-step="{{id}}" title="{{statusLabel}}">
+        <i class="fa-solid {{#if complete}}fa-circle-check{{else if current}}fa-circle-dot{{else}}fa-eye{{/if}}"></i>
+        <span>{{label}}<small>{{statusLabel}}</small></span>
       </button>
       {{/each}}
     </nav>
@@ -82,7 +82,17 @@
     </button>
   </aside>
 
-  <main class="cb-main">
+  <main class="cb-main {{#if stepBrowseOnly}}cb-browse-only-mode{{/if}}">
+    {{#if stepBrowseOnly}}
+    <aside class="cb-browse-only-notice" role="status">
+      <i class="fa-solid fa-eye" aria-hidden="true"></i>
+      <div>
+        <strong>Browse Only</strong>
+        <span>You can inspect this stage, but selections stay locked until the required previous stages are complete.</span>
+        {{#if stepMissingPrerequisites.length}}<small>Required first: {{#each stepMissingPrerequisites}}{{#unless @first}} · {{/unless}}{{this}}{{/each}}</small>{{/if}}
+      </div>
+    </aside>
+    {{/if}}
     {{#if (dnd5eCharacterBuilderEq step "abilitiesBackground")}}
     <section class="cb-step-content abilities-background-step">
             <div class="cb-creation-fixed-header">
@@ -264,7 +274,7 @@
               {{#each items}}
               <article class="cb-primary-option {{#if committed}}committed{{/if}} {{#if pending}}pending{{/if}}" data-search="{{search}}">
                 <label class="cb-primary-toggle" title="Choose {{name}}">
-                  <input type="checkbox" name="pendingSpecies" value="{{uuid}}" data-kind="species" {{checked checked}}>
+                  <input type="checkbox" name="pendingSpecies" value="{{uuid}}" data-kind="species" {{checked checked}} {{#if @root.stepBrowseOnly}}disabled{{/if}}>
                 </label>
                 <button type="button" class="cb-primary-details" data-action="preview" data-kind="species" data-uuid="{{uuid}}" title="View {{name}} details">
                   <img src="{{img}}" alt="">
@@ -312,7 +322,7 @@
               {{#each items}}
               <article class="cb-primary-option {{#if committed}}committed{{/if}} {{#if pending}}pending{{/if}}" data-search="{{search}}">
                 <label class="cb-primary-toggle" title="Choose {{name}}">
-                  <input type="checkbox" name="pendingClass" value="{{uuid}}" data-kind="class" {{checked checked}}>
+                  <input type="checkbox" name="pendingClass" value="{{uuid}}" data-kind="class" {{checked checked}} {{#if @root.stepBrowseOnly}}disabled{{/if}}>
                 </label>
                 <button type="button" class="cb-primary-details" data-action="preview" data-kind="class" data-uuid="{{uuid}}" title="View {{name}} details">
                   <img src="{{img}}" alt="">
@@ -373,7 +383,7 @@
               {{#each items}}
               <article class="cb-spell-option {{#if disabled}}duplicate-disabled{{/if}}" data-search="{{search}}" data-spell-option title="{{disabledReason}}">
                 <label class="cb-spell-toggle" title="{{#if disabled}}{{disabledReason}}{{else}}Select {{name}}{{/if}}">
-                  <input type="checkbox" name="spellAccess.cantrips" value="{{identifier}}" data-spell-identifier="{{identifier}}" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{checked selected}} {{#if disabled}}disabled{{/if}}>
+                  <input type="checkbox" name="spellAccess.cantrips" value="{{identifier}}" data-spell-identifier="{{identifier}}" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{checked selected}} {{#if disabled}}disabled{{/if}} {{#if @root.stepBrowseOnly}}disabled{{/if}}>
                 </label>
                 <button type="button" class="cb-spell-details" data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}} details">
                   <img src="{{img}}" alt="">
@@ -405,7 +415,7 @@
               {{#each items}}
               <article class="cb-spell-option {{#if disabled}}duplicate-disabled{{/if}}" data-search="{{search}}" data-spell-option title="{{disabledReason}}">
                 <label class="cb-spell-toggle" title="{{#if disabled}}{{disabledReason}}{{else}}Select {{name}}{{/if}}">
-                  <input type="checkbox" name="{{../../fieldName}}" value="{{identifier}}" data-spell-identifier="{{identifier}}" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{checked selected}} {{#if disabled}}disabled{{/if}}>
+                  <input type="checkbox" name="{{../../fieldName}}" value="{{identifier}}" data-spell-identifier="{{identifier}}" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{checked selected}} {{#if disabled}}disabled{{/if}} {{#if @root.stepBrowseOnly}}disabled{{/if}}>
                 </label>
                 <button type="button" class="cb-spell-details" data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}} details">
                   <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{levelLabel}}</small></span>
@@ -435,7 +445,7 @@
               {{#each items}}
               <article class="cb-spell-option {{#if disabled}}duplicate-disabled{{/if}}" data-search="{{search}}" data-spell-option title="{{disabledReason}}">
                 <label class="cb-spell-toggle" title="{{#if disabled}}{{disabledReason}}{{else}}Select {{name}}{{/if}}">
-                  <input type="checkbox" name="spellAccess.spells" value="{{identifier}}" data-spell-identifier="{{identifier}}" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{checked selected}} {{#if disabled}}disabled{{/if}}>
+                  <input type="checkbox" name="spellAccess.spells" value="{{identifier}}" data-spell-identifier="{{identifier}}" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{checked selected}} {{#if disabled}}disabled{{/if}} {{#if @root.stepBrowseOnly}}disabled{{/if}}>
                 </label>
                 <button type="button" class="cb-spell-details" data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}} details">
                   <img src="{{img}}" alt="">
@@ -468,7 +478,7 @@
               {{#each items}}
               <article class="cb-spell-option {{#if disabled}}duplicate-disabled{{/if}}" data-search="{{search}}" data-spell-option title="{{disabledReason}}">
                 <label class="cb-spell-toggle" title="{{#if disabled}}{{disabledReason}}{{else}}Prepare {{name}}{{/if}}">
-                  <input type="checkbox" name="spellAccess.preparedSpells" value="{{identifier}}" data-spell-identifier="{{identifier}}" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{checked selected}} {{#if disabled}}disabled{{/if}}>
+                  <input type="checkbox" name="spellAccess.preparedSpells" value="{{identifier}}" data-spell-identifier="{{identifier}}" data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}" {{checked selected}} {{#if disabled}}disabled{{/if}} {{#if @root.stepBrowseOnly}}disabled{{/if}}>
                 </label>
                 <button type="button" class="cb-spell-details" data-action="open-document" data-uuid="{{uuid}}" title="Open {{name}} details">
                   <img src="{{img}}" alt="">
@@ -534,7 +544,7 @@
           <span class="cb-toolbar-hint">The Shop budget follows the current Class and Background currency choices.</span>
         </div>
         <div class="cb-primary-actions cb-equipment-actions">
-          <button type="button" class="cb-primary-confirm cb-open-shop" data-action="open-shop" {{#unless equipmentPanels.length}}disabled{{/unless}}>
+          <button type="button" class="cb-primary-confirm cb-open-shop" data-action="open-shop" {{#unless equipmentPanels.length}}disabled{{/unless}} {{#if stepBrowseOnly}}disabled{{/if}}>
             <i class="fa-solid fa-cart-shopping"></i>
             <span><strong>Open Shop</strong><small>Configure additional equipment</small></span>
           </button>
@@ -576,14 +586,14 @@
         <input type="hidden" name="equipment.{{itemId}}.mode" value="package">
         {{else}}
         <div class="cb-equipment-modes">
-          <label><input type="radio" name="equipment.{{itemId}}.mode" value="package" {{checked (dnd5eCharacterBuilderEq mode 'package')}} {{#unless hasPackages}}disabled{{/unless}}> Equipment Package</label>
-          <label><input type="radio" name="equipment.{{itemId}}.mode" value="wealth" {{checked (dnd5eCharacterBuilderEq mode 'wealth')}} {{#unless wealth}}disabled{{/unless}}> Starting Currency {{#if wealth}}({{wealth}} GP){{/if}}</label>
+          <label><input type="radio" name="equipment.{{itemId}}.mode" value="package" {{checked (dnd5eCharacterBuilderEq mode 'package')}} {{#unless hasPackages}}disabled{{/unless}} {{#if @root.stepBrowseOnly}}disabled{{/if}}> Equipment Package</label>
+          <label><input type="radio" name="equipment.{{itemId}}.mode" value="wealth" {{checked (dnd5eCharacterBuilderEq mode 'wealth')}} {{#unless wealth}}disabled{{/unless}} {{#if @root.stepBrowseOnly}}disabled{{/if}}> Starting Currency {{#if wealth}}({{wealth}} GP){{/if}}</label>
         </div>
         {{/if}}
         <div data-package-options>
           {{#if packages.length}}
           {{#unless fixedOnly}}
-          <select name="equipment.{{itemId}}.packageIndex">
+          <select name="equipment.{{itemId}}.packageIndex" {{#if @root.stepBrowseOnly}}disabled{{/if}}>
             {{#each packages}}<option value="{{index}}" {{#if (dnd5eCharacterBuilderEq index ../selectedPackage)}}selected{{/if}}>{{label}}</option>{{/each}}
           </select>
           {{/unless}}
@@ -596,7 +606,7 @@
               {{else}}
               <label class="cb-equipment-entry choice">
                 <span>{{label}}{{#if (dnd5eCharacterBuilderGt count 1)}} ({{count}}){{/if}}</span>
-                <select name="equipment.{{../../itemId}}.selection.{{id}}" required>
+                <select name="equipment.{{../../itemId}}.selection.{{id}}" required {{#if @root.stepBrowseOnly}}disabled{{/if}}>
                   <option value="">Choose...</option>
                   {{#each groups}}
                   <optgroup label="{{label}}">{{#each items}}<option value="{{uuid}}" {{#if selected}}selected{{/if}}>{{name}}</option>{{/each}}</optgroup>

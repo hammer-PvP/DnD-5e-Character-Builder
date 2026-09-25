@@ -803,6 +803,12 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
         if (!oldItemId || !newUuid) throw new Error("Choose the cantrip to replace and its replacement.");
         return { oldItemId, newUuid };
       }
+      case "replace-high-elf-cantrip": {
+        const oldItemId = root.querySelector('[name="keeper.highElfCantrip.oldItemId"]')?.value ?? "";
+        const newUuid = checkedValues("keeper.highElfCantrip.newUuid")[0] ?? "";
+        if (!oldItemId || !newUuid) throw new Error("Choose a replacement Wizard cantrip for the High Elf lineage.");
+        return { oldItemId, newUuid };
+      }
       case "spell-mastery": {
         const oldItemId = checkedValues("keeper.spellMastery.oldItemId")[0] ?? "";
         const newItemId = checkedValues("keeper.spellMastery.newItemId")[0] ?? "";
@@ -870,6 +876,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
       "wild-shape-form": "Replace Known Form",
       "pact-of-the-tome": "Confirm Pact of the Tome",
       "replace-cantrip": "Replace Cantrip",
+      "replace-high-elf-cantrip": "Replace High Elf Cantrip",
       "spell-mastery": "Confirm Spell Mastery",
       "roll-cosmic-omen": "Roll Cosmic Omen",
       "roll-portent": "Roll Portent",
@@ -893,6 +900,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
       isWildShape: kind === "wild-shape-form",
       isPactTome: kind === "pact-of-the-tome",
       isReplaceCantrip: kind === "replace-cantrip",
+      isReplaceHighElfCantrip: kind === "replace-high-elf-cantrip",
       isSpellMastery: kind === "spell-mastery",
       isCosmicOmen: kind === "roll-cosmic-omen",
       isPortent: kind === "roll-portent",

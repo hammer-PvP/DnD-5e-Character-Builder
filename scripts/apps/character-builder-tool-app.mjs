@@ -12,7 +12,8 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
   constructor(options = {}) {
     super(options);
     this.busy = false;
-    this.partyGroupId = String(options?.partyGroupId ?? "");
+    this.defaultPartyGroupId = String(game.settings.get(MODULE_ID, "defaultPartyGroupId") ?? "");
+    this.partyGroupId = String(options?.partyGroupId ?? this.defaultPartyGroupId ?? "");
   }
 
   static DEFAULT_OPTIONS = {
@@ -34,8 +35,13 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
     const epicBoonEnabled = Boolean(settings.enableEpicBoons && settings.enableGrantEpicBoons);
     const managedRestAccess = settings.gmManagedRestAccess === true;
     const partyGroups = PartyGroupService.groups();
-    if (this.partyGroupId && !PartyGroupService.group(this.partyGroupId)) this.partyGroupId = "";
+    if (this.defaultPartyGroupId && !PartyGroupService.group(this.defaultPartyGroupId)) {
+      this.defaultPartyGroupId = "";
+      await game.settings.set(MODULE_ID, "defaultPartyGroupId", "");
+    }
+    if (this.partyGroupId && !PartyGroupService.group(this.partyGroupId)) this.partyGroupId = this.defaultPartyGroupId;
     const selectedPartyGroup = PartyGroupService.group(this.partyGroupId);
+    const defaultPartyGroup = PartyGroupService.group(this.defaultPartyGroupId);
     const actors = PartyGroupService.characters(this.partyGroupId)
       .map(actor => {
         const level = LevelUpService.actorLevel(actor);
@@ -108,9 +114,12 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
         id: group.id,
         name: group.name,
         selected: group.id === this.partyGroupId,
+        defaultSelected: group.id === this.defaultPartyGroupId,
         characterCount: PartyGroupService.characters(group.id).length
       })),
       hasPartyGroups: partyGroups.length > 0,
+      defaultPartyGroupId: this.defaultPartyGroupId,
+      defaultPartyGroupName: defaultPartyGroup?.name ?? "All Characters",
       selectedPartyGroupId: this.partyGroupId,
       selectedPartyGroupName: selectedPartyGroup?.name ?? "All Characters",
       selectedPartyIsGroup: Boolean(selectedPartyGroup),
@@ -124,6 +133,7 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
     root.querySelector('[data-action="select-all"]')?.addEventListener("click", event => this.#selectAll(event));
     root.querySelector('[data-action="clear-selection"]')?.addEventListener("click", event => this.#clear(event));
     root.querySelector('[data-action="current-scene"]')?.addEventListener("click", event => this.#selectCurrentScene(event));
+    root.querySelector('[data-default-party-group]')?.addEventListener("change", event => this.#changeDefaultPartyGroup(event));
     root.querySelector('[data-party-group]')?.addEventListener("change", event => this.#changePartyGroup(event));
     root.querySelector('[data-action="open-party-group"]')?.addEventListener("click", event => this.#openPartyGroup(event));
     root.querySelector('[data-action="apply"]')?.addEventListener("click", event => this.#applyProgression(event));
@@ -134,6 +144,17 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
     root.querySelector('[name="totalXp"]')?.addEventListener("input", () => this.#refreshPreview());
     root.querySelectorAll('[name="actorIds"]').forEach(input => input.addEventListener("change", () => this.#refreshPreview()));
     this.#refreshPreview();
+  }
+
+  async #changeDefaultPartyGroup(event) {
+    if (this.busy) return;
+    const requested = String(event.currentTarget?.value ?? "");
+    this.defaultPartyGroupId = PartyGroupService.group(requested)?.id ?? "";
+    await game.settings.set(MODULE_ID, "defaultPartyGroupId", this.defaultPartyGroupId);
+    ui.notifications.info(this.defaultPartyGroupId
+      ? `Default Character Builder Group set to ${PartyGroupService.group(this.defaultPartyGroupId)?.name ?? "the selected Group"}.`
+      : "Default Character Builder Group cleared; the Tool will open with All Characters.");
+    await this.render({ force: true });
   }
 
   async #changePartyGroup(event) {

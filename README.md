@@ -1,8 +1,8 @@
 # Character Builder
 
-**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14. **v0.9.913 resumes the normal development line after the temporary D&D5e 6.x migration series and focuses on authoritative spell preparation, Ranger 2024 progression, protected transactions, and Keeper UX.**
+**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14. **v0.9.914 focuses on creation-flow integrity and safe freedom to inspect rules: Free Browse / Ordered Commit, scoped transaction window priority, persistent Default Group filtering, and High Elf Long-Rest cantrip replacement.**
 
-> **Post-migration status:** the `v0.9.x1–x4` series was the D&D5e 6.x migration branch. v0.9.913 preserves that stabilized runtime baseline and returns feature development to the normal `v0.9.9xx` line. New compatibility work remains evidence-driven rather than adding generic rewrites for upstream content.
+> **Post-migration status:** the `v0.9.x1–x4` series was the D&D5e 6.x migration branch. v0.9.914 preserves that stabilized runtime baseline and returns feature development to the normal `v0.9.9xx` line. New compatibility work remains evidence-driven rather than adding generic rewrites for upstream content.
 
 It uses the official D&D5e documents and native Advancement system as its rules spine. Character Builder guides the choices, prepares them in drafts, validates the result, and commits the completed transaction to the live Actor.
 
@@ -12,8 +12,8 @@ It uses the official D&D5e documents and native Advancement system as its rules 
 
 ## Compatibility
 
-- Foundry VTT 14.367 or newer within v14
-- D&D5e 6.0.0–6.0.999 (verified target: 6.0.2)
+- Foundry VTT 14.367 or newer within v14 (verified target: 14.368)
+- D&D5e 6.0.0–6.0.999 (verified target: 6.0.4)
 - Player's Handbook 2024 content package
 - SRD 5.2 Modern
 - SRD 5.1 Legacy and compatible 2014 compendiums through the Legacy progression mode
@@ -46,7 +46,7 @@ Complete user documentation: [Character Builder Manual](docs/Character-Builder-M
 
 1. Create or open a Player Character Actor.
 2. Use the gold **Character Builder** button on an empty character sheet to begin guided creation.
-3. Grant Level Ups individually from Actor controls or in groups through **Character Builder Tool**. When the world uses native D&D5e Group Actors, choose the desired Party / Group in the Tool to limit batch actions to that group.
+3. Grant Level Ups individually from Actor controls or in groups through **Character Builder Tool**. When the world uses native D&D5e Group Actors, set a persistent **Default Group** and use the independent **Working Group** selector for temporary batch work without changing that default.
 4. Optionally enable **GM-Managed Rest Availability** and grant or revoke Short or Long Rest access for selected characters from the same tool.
 5. Configure content sources and campaign rules in **Character Builder Settings**.
 6. Allow players to complete Level Ups and class maintenance from their own character sheets. Character Builder delegates protected Draft and safety-backup creation/cleanup to an active GM, so players do not need Foundry's global Create Actor or Delete Actor permissions for these workflows.
@@ -61,8 +61,9 @@ Complete user documentation: [Character Builder Manual](docs/Character-Builder-M
 2. Click the gold button to create an empty character.
 3. When the GM grants a Level Up, use the Level Up arrow on the character sheet.
 4. During Short or Long Rests, complete any optional class actions shown by Character Keeper, or continue the rest without changing anything. If the world uses GM-Managed Rest Availability, the corresponding native rest button glows only after the GM grants that rest.
-5. Rangers use the full materialized class spell list with Character Builder-controlled preparation: initial prepared spells are chosen at creation, new preparation capacity is filled on eligible Level Ups, and a Long Rest can optionally replace one ordinary prepared Ranger spell one-for-one.
-6. Wizards receive spellbook-management assistance for eligible scribing operations and, from Wizard level 5, a Short Rest **Memorize Spell** swap inside Character Keeper. Eldritch Knights can open **Manage War Bonds** through the native Bond with Weapon Activity, and Fiend Warlocks can choose **Fiendish Resilience** through Character Keeper.
+5. High Elves receive a dedicated Long Rest option to replace exactly the cantrip owned by their High Elf lineage with a different Wizard cantrip while preserving the racial grant provenance and chosen casting ability.
+6. Rangers use the full materialized class spell list with Character Builder-controlled preparation: initial prepared spells are chosen at creation, new preparation capacity is filled on eligible Level Ups, and a Long Rest can optionally replace one ordinary prepared Ranger spell one-for-one.
+7. Wizards receive spellbook-management assistance for eligible scribing operations and, from Wizard level 5, a Short Rest **Memorize Spell** swap inside Character Keeper. Eldritch Knights can open **Manage War Bonds** through the native Bond with Weapon Activity, and Fiend Warlocks can choose **Fiendish Resilience** through Character Keeper.
 
 <p align="center">
   <img src="assets/tutorial/level-up-ready.png" alt="Level Up arrow available on a character sheet" width="780">
@@ -102,6 +103,8 @@ The tutorial can be opened manually from:
 Game Masters also receive **Show Splash Tutorial to Everyone Once**. This one-time action clears the suppression preference for every User and triggers the appropriate GM or player guide. Online users receive it when safe; offline users receive it the next time they log in.
 
 ## Guided Character Creation
+
+Character creation uses **Free Browse / Ordered Commit**. Every stage may be opened for reading, searching, document inspection, and Compendium research, but state-changing selections follow the canonical order: **Ability Scores & Background → Species → Class → dependent choices → Spells → Equipment → Review**. The sidebar marks stages as **Complete**, **Current**, or **Browse Only**. Editing a confirmed earlier stage invalidates dependent confirmations so the Draft cannot finish in a hybrid state.
 
 Character creation includes:
 

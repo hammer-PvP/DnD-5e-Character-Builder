@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.9.914 — Creation Flow Integrity + Species Rest Choices
+
+### Character Creation — Free Browse / Ordered Commit
+- Added authoritative creation-step dependency gates in the canonical order **Ability Scores & Background → Species → Class → Spell Selection → Starting Equipment → Review**.
+- Every tab remains available for browsing, searching, source previews, document inspection, and Compendium study even when it is not yet eligible for a state-changing selection. Sidebar steps now report **Complete**, **Current**, or **Browse Only**.
+- Selection/commit handlers enforce prerequisites in code rather than relying only on disabled controls. Editing an already-confirmed earlier stage marks dependent later stages for reconfirmation, preventing hybrid Draft states. Finish Character remains the final all-stages validation barrier.
+
+### High Elf — Long Rest cantrip replacement
+- Added a dedicated **High Elf — Replace Cantrip** Character Keeper action on Long Rest. The current racial cantrip is resolved by ItemGrant/Advancement/Character Builder provenance rather than by spell name.
+- Replacement is strictly one-for-one and is limited to enabled-source Wizard cantrips. The new spell preserves the High Elf grant's casting ability, `sourceItem`, Advancement origin/root, native ItemGrant slot, and Character Builder ownership metadata.
+- The PHB ItemGrant `configuredUuid` remains the original racial grant identity while its current `sourceUuid` follows the replacement, so later integrity reconciliation continues to recognize the mutable High Elf slot instead of restoring a second Prestidigitation.
+
+### Character Builder Tool — Default Group
+- Added separate **Default Group** and **Working Group** selectors. Default Group is a hidden World setting and persists across Tool reopen/reload; Working Group is session-local and initializes from the default each time.
+- **All Characters** remains available for temporary work. If the saved native Group no longer exists, Character Builder safely clears the stale default and falls back to All Characters.
+
+### Window safety — scoped foreground priority
+- Replaced the old Foundry-wide modal blur/inert trap with z-order priority. Character Builder/native Advancement transactions stay above ordinary applications without disabling the rest of Foundry.
+- Compendium Browser, Item/Journal details, pickers, and other inspection/reference windows are legitimate children and may appear above the active transaction. Protected confirmations retain single-instance/double-submit safety without a global interaction blocker.
+
+### Compatibility
+- Verified development target updated to **Foundry VTT 14.368 + D&D5e 6.0.4** while retaining Foundry 14.367 minimum and D&D5e 6.0.0–6.0.999 compatibility declarations.
+- Ranger 2024 spell preparation from v0.9.913 is preserved unchanged after live validation.
+
 ## 0.9.913 — Post-Migration Spell Authority + Ranger 2024 Preparation
 
 - Returns to the normal `v0.9.9xx` development line after the temporary `v0.9.x1–x4` D&D5e 6.x migration series. Runtime migration fixes from x4 are preserved.

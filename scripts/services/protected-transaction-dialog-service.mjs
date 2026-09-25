@@ -1,12 +1,14 @@
 import { MODULE_ID } from "../constants.mjs";
 
 /**
- * Runs a module-owned confirmation as a true foreground modal.
+ * Single-instance transaction confirmation with deterministic foreground
+ * priority and double-submit protection.
  *
- * Foundry's DialogV2 modal flag is retained, but this coordinator also owns
- * global background blocking, deterministic z-order, single-instance reuse,
- * single-submit protection, and cleanup. This is intentionally generic so
- * every transaction confirmation can adopt the same policy.
+ * v0.9.914 deliberately does NOT freeze the Foundry UI. The confirmation is
+ * kept above ordinary applications, while Actor mutation safety is enforced by
+ * the transaction/Sheet Integrity layers. This prevents the old full-screen
+ * blur/inert trap without allowing an important confirmation to disappear
+ * behind another ordinary window.
  */
 export class ProtectedTransactionDialogService {
   static #active = null;
@@ -16,7 +18,7 @@ export class ProtectedTransactionDialogService {
     matchClass,
     dialogOptions,
     fallback = null,
-    visualBackdrop = true
+    visualBackdrop: _visualBackdrop = true
   } = {}) {
     if (!key || !matchClass || !dialogOptions) {
       throw new Error("A protected transaction dialog requires a key, match class, and dialog options.");
@@ -38,51 +40,46 @@ export class ProtectedTransactionDialogService {
       matchClass,
       app: null,
       element: null,
-      overlay: this.#createOverlay({ visualBackdrop }),
-      blocked: new Map(),
       renderHook: null,
+      closeHook: null,
       pointerHandler: null,
-      focusHandler: null,
       submitHandler: null,
       submitting: false,
       released: false
     };
 
+    // Native modal=true can install its own page-wide interaction trap. The CB
+    // supplies foreground priority itself, so confirmations use a normal V2
+    // window and remain transactionally protected without blocking Foundry.
+    const options = {
+      ...dialogOptions,
+      window: { ...(dialogOptions.window ?? {}), modal: false }
+    };
+
     this.#active = active;
     this.#activate(active);
     try {
-      return Boolean(await DialogV2.confirm(dialogOptions));
+      return Boolean(await DialogV2.confirm(options));
     } finally {
       this.#release(active);
     }
   }
 
   static #activate(active) {
-    document.body.classList.add("cb-protected-transaction-active");
-    document.body.append(active.overlay);
-    active.overlay.style.zIndex = String(this.#maximumBackgroundZ(null, active.overlay) + 1);
-
     active.pointerHandler = event => {
       if (active.released || this.#insideDialog(active, event.target)) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      this.#scheduleSync(active, { focus: true });
-    };
-    active.focusHandler = event => {
-      if (active.released || this.#insideDialog(active, event.target)) return;
-      event.stopImmediatePropagation();
-      this.#scheduleSync(active, { focus: true });
+      // Do not cancel the user's click. Foundry is allowed to respond, then the
+      // confirmation's z-order is restored without stealing keyboard focus.
+      this.#scheduleSync(active, { focus: false });
     };
     document.addEventListener("pointerdown", active.pointerHandler, true);
     document.addEventListener("click", active.pointerHandler, true);
-    document.addEventListener("focusin", active.focusHandler, true);
 
     active.renderHook = Hooks.on("renderApplicationV2", app => {
       const element = app?.element;
       if (element?.classList?.contains(active.matchClass)) {
         active.app = app;
         active.element = element;
-        this.#unblockElement(active, element);
         this.#installSubmitGuard(active);
         this.#scheduleSync(active, { focus: true });
         return;
@@ -90,32 +87,24 @@ export class ProtectedTransactionDialogService {
       this.#scheduleSync(active);
     });
 
-    this.#blockBackground(active);
-    this.#scheduleSync(active);
+    active.closeHook = Hooks.on("closeApplicationV2", app => {
+      if (app === active.app) {
+        active.element = null;
+        active.app = null;
+      }
+    });
   }
 
   static #release(active) {
     if (!active || active.released) return;
     active.released = true;
     if (active.renderHook !== null) Hooks.off("renderApplicationV2", active.renderHook);
+    if (active.closeHook !== null) Hooks.off("closeApplicationV2", active.closeHook);
     if (active.pointerHandler) {
       document.removeEventListener("pointerdown", active.pointerHandler, true);
       document.removeEventListener("click", active.pointerHandler, true);
     }
-    if (active.focusHandler) document.removeEventListener("focusin", active.focusHandler, true);
-    if (active.submitHandler && active.element) {
-      active.element.removeEventListener("click", active.submitHandler, true);
-    }
-    active.overlay?.remove();
-    for (const [element, prior] of active.blocked) {
-      if (!element?.isConnected) continue;
-      element.inert = prior.inert;
-      element.classList.remove("cb-protected-transaction-blocked");
-      if (prior.ariaBusy == null) element.removeAttribute("aria-busy");
-      else element.setAttribute("aria-busy", prior.ariaBusy);
-    }
-    active.blocked.clear();
-    document.body.classList.remove("cb-protected-transaction-active");
+    if (active.submitHandler && active.element) active.element.removeEventListener("click", active.submitHandler, true);
     if (this.#active === active) this.#active = null;
 
     queueMicrotask(() => {
@@ -127,40 +116,6 @@ export class ProtectedTransactionDialogService {
       );
       (focusTarget ?? owner)?.focus?.({ preventScroll: true });
     });
-  }
-
-  static #createOverlay({ visualBackdrop = true } = {}) {
-    const overlay = document.createElement("div");
-    overlay.className = `cb-protected-transaction-backdrop${visualBackdrop ? "" : " cb-protected-transaction-backdrop-clear"}`;
-    overlay.dataset.moduleId = MODULE_ID;
-    overlay.setAttribute("role", "presentation");
-    overlay.setAttribute("aria-hidden", "true");
-    return overlay;
-  }
-
-  static #blockBackground(active) {
-    for (const element of document.querySelectorAll(".application")) {
-      if (element === active.element || element.classList.contains(active.matchClass)) continue;
-      if (!active.blocked.has(element)) {
-        active.blocked.set(element, {
-          inert: Boolean(element.inert),
-          ariaBusy: element.getAttribute("aria-busy")
-        });
-      }
-      element.classList.add("cb-protected-transaction-blocked");
-      element.inert = true;
-      element.setAttribute("aria-busy", "true");
-    }
-  }
-
-  static #unblockElement(active, element) {
-    const prior = active.blocked.get(element);
-    if (!prior) return;
-    element.inert = prior.inert;
-    element.classList.remove("cb-protected-transaction-blocked");
-    if (prior.ariaBusy == null) element.removeAttribute("aria-busy");
-    else element.setAttribute("aria-busy", prior.ariaBusy);
-    active.blocked.delete(element);
   }
 
   static #installSubmitGuard(active) {
@@ -183,28 +138,28 @@ export class ProtectedTransactionDialogService {
   }
 
   static #insideDialog(active, target) {
-    return Boolean(active.element && target instanceof Node && active.element.contains(target));
+    const NodeClass = globalThis.Node;
+    return Boolean(active.element && NodeClass && target instanceof NodeClass && active.element.contains(target));
   }
 
   static #scheduleSync(active, { focus = false } = {}) {
     const sync = () => this.#sync(active, { focus });
     queueMicrotask(sync);
-    requestAnimationFrame(sync);
-    requestAnimationFrame(() => requestAnimationFrame(sync));
+    globalThis.requestAnimationFrame?.(sync);
+    globalThis.requestAnimationFrame?.(() => globalThis.requestAnimationFrame?.(sync));
   }
 
   static #sync(active, { focus = false } = {}) {
     if (!active || active.released || this.#active !== active) return;
-    this.#blockBackground(active);
     const element = active.element;
-    if (!(element instanceof HTMLElement) || !element.isConnected) return;
+    const HTMLElementClass = globalThis.HTMLElement;
+    if (!HTMLElementClass || !(element instanceof HTMLElementClass) || !element.isConnected) return;
 
-    active.app?.bringToFront?.();
-    active.app?.bringToTop?.();
-    const maximum = this.#maximumBackgroundZ(element, active.overlay);
+    try { active.app?.bringToFront?.(); } catch (_error) {}
+    try { active.app?.bringToTop?.(); } catch (_error) {}
+    const maximum = this.#maximumBackgroundZ(element);
     const dialogZ = Math.max(this.#zIndex(element), maximum + 2);
     element.style.zIndex = String(dialogZ);
-    active.overlay.style.zIndex = String(Math.max(1, dialogZ - 1));
 
     if (focus) {
       const focusTarget = element.querySelector(
@@ -219,10 +174,10 @@ export class ProtectedTransactionDialogService {
     }
   }
 
-  static #maximumBackgroundZ(dialog, overlay) {
+  static #maximumBackgroundZ(dialog) {
     let maximum = 0;
     for (const element of document.querySelectorAll(".application")) {
-      if (element === dialog || element === overlay) continue;
+      if (element === dialog) continue;
       maximum = Math.max(maximum, this.#zIndex(element));
     }
     return maximum;
@@ -230,7 +185,7 @@ export class ProtectedTransactionDialogService {
 
   static #zIndex(element) {
     if (!element) return 0;
-    const value = Number.parseInt(element.style?.zIndex || getComputedStyle(element).zIndex, 10);
+    const value = Number.parseInt(element.style?.zIndex || globalThis.getComputedStyle?.(element)?.zIndex, 10);
     return Number.isFinite(value) ? value : 0;
   }
 }

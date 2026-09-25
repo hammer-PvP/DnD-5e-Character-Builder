@@ -6,6 +6,7 @@ import { SpellPreparationPolicyService } from "./spell-preparation-policy-servic
 import { RestDecisionAssistanceService } from "./rest-decision-assistance-service.mjs";
 import { LongRestSpellPreparationService } from "./long-rest-spell-preparation-service.mjs";
 import { MemorizeSpellService } from "./memorize-spell-service.mjs";
+import { HighElfCantripService } from "./high-elf-cantrip-service.mjs";
 import { WarBondManagementService } from "./war-bond-management-service.mjs";
 import { advancementName } from "../utils/advancement-utils.mjs";
 
@@ -49,6 +50,9 @@ export class RuntimeFeatureService {
         order: Number(options.order ?? 100)
       });
     };
+
+    const highElfCantrip = HighElfCantripService.action(actor, type, session);
+    if (highElfCantrip) rows.push(highElfCantrip);
 
     const weaponMastery = this.#feature(actor, "weapon-mastery");
     if (type === "long" && weaponMastery && this.#masteryClasses(actor).length) {
@@ -163,6 +167,7 @@ export class RuntimeFeatureService {
         return { ...action, pactOfTheTome: tome };
       }
       case "replace-cantrip": return { ...action, replaceCantrip: await this.#replaceCantripContext(actor, registry, operation) };
+      case "replace-high-elf-cantrip": return { ...action, highElfCantrip: await HighElfCantripService.context(actor, registry, operation) };
       case "spell-mastery": return { ...action, spellMastery: this.#spellMasteryContext(actor, operation) };
       case "roll-cosmic-omen": return { ...action, rollContext: this.#cosmicOmenContext(actor, session) };
       case "roll-portent": return { ...action, rollContext: this.#portentContext(actor, session) };
@@ -290,6 +295,9 @@ export class RuntimeFeatureService {
     if (LongRestSpellPreparationService.isActionId(actionId)) {
       return LongRestSpellPreparationService.validateOperation(actor, actionId, payload);
     }
+    if (actionId === HighElfCantripService.actionId) {
+      return HighElfCantripService.validate(actor, registry, payload);
+    }
     switch (actionId) {
       case "fiendish-resilience": {
         const feature = this.#feature(actor, "fiendish-resilience");
@@ -368,6 +376,7 @@ export class RuntimeFeatureService {
         return result;
       }
       case "replace-wizard-cantrip": return this.#applyCantripReplacement(actor, registry, payload, transactionId);
+      case "replace-high-elf-cantrip": return HighElfCantripService.apply(actor, registry, payload, transactionId);
       case "spell-mastery": return this.#applySpellMastery(actor, payload, transactionId);
       case "cosmic-omen": return this.#applyRollState(actor, "cosmic-omen", payload, transactionId);
       case "portent": return this.#applyRollState(actor, "portent", payload, transactionId);

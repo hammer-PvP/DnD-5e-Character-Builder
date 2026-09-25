@@ -67,6 +67,13 @@ Hooks.once("init", async () => {
     default: { entries: [] }
   });
 
+  game.settings.register(MODULE_ID, "defaultPartyGroupId", {
+    scope: "world",
+    config: false,
+    type: String,
+    default: ""
+  });
+
 
   RulesAssistanceService.initialize();
   BlindSkillToolCheckService.initialize();
