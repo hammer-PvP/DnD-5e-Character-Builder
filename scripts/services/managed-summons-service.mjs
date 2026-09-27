@@ -9,6 +9,8 @@ const SOCKET_REQUEST = "managedSummonsRequestV1";
 const SOCKET_CLEANUP = "managedSummonsConcentrationCleanupV1";
 const MANAGED_KIND = "managed-summon";
 const FLAG_KEY = "managedSummon";
+const DECISION_FLAG_KEY = "managedSummonDecision";
+const ACTION_RESOLVE_DECISION = "resolve-managed-summon-decision";
 const DEFAULT_POLICY = Object.freeze({ policyId: "native-summon", exclusive: false });
 
 function normalizedSourceIdentity(value) {
@@ -77,6 +79,15 @@ export class ManagedSummonsService {
       });
     });
 
+    Hooks.on("renderChatMessageHTML", (message, element) => this.#decorateDecisionMessage(message, element));
+    Hooks.on("renderChatMessage", (message, html) => this.#decorateDecisionMessage(message, html));
+
+    Hooks.on("updateActor", (actor, changes, options, userId) => {
+      void this.#onManagedActorUpdated(actor, changes, options, userId).catch(error => {
+        console.warn(`${MODULE_ID} | Managed Summons zero-HP lifecycle failed.`, error);
+      });
+    });
+
     // Managed Summons never decides that Concentration has ended. It reacts
     // only to D&D5e's canonical post-end hook after the effect is truly gone.
     Hooks.on("dnd5e.endConcentration", (_actor, effect) => {
@@ -97,8 +108,9 @@ export class ManagedSummonsService {
 
     // Token presence is not summon existence. Manual Scene deletion, Scene cleanup,
     // or moving between Scenes must not destroy the persistent managed Actor.
-    // Managed Actors are deleted only by explicit source lifecycle paths below
-    // (exclusive recast/replacement or confirmed concentration ending).
+    // Managed Actors are deleted only by explicit source lifecycle paths below:
+    // confirmed concentration ending, known exclusive replacement, or a GM
+    // decision for an ambiguous duplicate/zero-HP lifecycle.
   }
 
   static ready() {
@@ -116,6 +128,14 @@ export class ManagedSummonsService {
         });
       }
     });
+
+    if (this.#isActiveGM()) {
+      setTimeout(() => {
+        void this.#recoverZeroHpDecisions().catch(error => {
+          console.warn(`${MODULE_ID} | Managed Summons zero-HP recovery scan failed.`, error);
+        });
+      }, 750);
+    }
   }
 
   static enabled() {
@@ -211,6 +231,22 @@ export class ManagedSummonsService {
           sourceFeatureUuid: effectiveRequest?.sourceFeatureUuid,
           policyId: effectiveRequest.policyId
         });
+      } else if (!effectiveRequest?.concentrationUuid && policy.policyId === DEFAULT_POLICY.policyId) {
+        const previous = this.#previousSameSourceActors({
+          summoner,
+          sourceItemUuid: effectiveRequest?.sourceItemUuid,
+          activityId: effectiveRequest?.activityId,
+          instanceId: effectiveRequest?.instanceId,
+          keepActorIds
+        });
+        if (previous.length) {
+          await this.#requestDuplicateDecision({
+            summoner,
+            request: effectiveRequest,
+            currentActorIds: [...keepActorIds],
+            previousActors: previous
+          });
+        }
       }
 
       for (const baseActor of nativeBases) await this.#removeOrphanedNativeBase(baseActor);
@@ -235,9 +271,14 @@ export class ManagedSummonsService {
     policy?.prepareManagedActorData?.(data, synthetic);
 
     const metadata = {
-      version: 1,
+      version: 2,
       policyId: String(request?.policyId ?? "native-summon"),
       instanceId: String(request?.instanceId ?? ""),
+      sourceKey: this.#sourceKey({
+        summonerActorUuid: summoner.uuid ?? summoner.id,
+        sourceItemUuid: request?.sourceItemUuid,
+        activityId: request?.activityId
+      }),
       summonerActorId: summoner.id,
       summonerActorUuid: summoner.uuid ?? null,
       sourceItemUuid: request?.sourceItemUuid ?? null,
@@ -283,7 +324,500 @@ export class ManagedSummonsService {
       summonerActorId: summoner.id
     });
     if (!managed) throw new Error("Character Builder could not create a managed summon Actor.");
+    await this.#reconcileFreshHitPoints(managed);
     return managed;
+  }
+
+  static #sourceKey({ summonerActorUuid, sourceItemUuid, activityId } = {}) {
+    const summoner = String(summonerActorUuid ?? "").trim();
+    const source = String(sourceItemUuid ?? "").trim();
+    const activity = String(activityId ?? "").trim();
+    if (!summoner || !source || !activity) return "";
+    return `${summoner}::${source}::${activity}`;
+  }
+
+  static async #reconcileFreshHitPoints(actor) {
+    if (!actor?.id) return;
+    const hpMax = Number(actor.system?.attributes?.hp?.max ?? 0);
+    const hpValue = Number(actor.system?.attributes?.hp?.value ?? 0);
+    if (!Number.isFinite(hpMax) || hpMax <= 0 || !Number.isFinite(hpValue) || hpValue === hpMax) return;
+
+    // The native Summon Activity has already resolved profile, ActorDelta,
+    // spell-slot scaling, Effects, and every derived bonus. Managed Summons
+    // only reconciles a fresh instance to that final maximum. SET, never ADD.
+    await actor.update({ "system.attributes.hp.value": hpMax }, {
+      characterBuilderManagedSummon: true,
+      managedSummonFreshHpReconcile: true
+    });
+  }
+
+  static #previousSameSourceActors({ summoner, sourceItemUuid, activityId, instanceId, keepActorIds = new Set() } = {}) {
+    const source = String(sourceItemUuid ?? "").trim();
+    const activity = String(activityId ?? "").trim();
+    if (!summoner?.id || !source || !activity) return [];
+
+    return [...(game.actors ?? [])].filter(actor => {
+      if (!actor?.id || keepActorIds.has(actor.id)) return false;
+      const metadata = actor.getFlag?.(MODULE_ID, FLAG_KEY);
+      if (!metadata) return false;
+      if (String(metadata.summonerActorId ?? "") !== String(summoner.id)) return false;
+      if (String(metadata.sourceItemUuid ?? "") !== source) return false;
+      if (String(metadata.activityId ?? "") !== activity) return false;
+      if (instanceId && String(metadata.instanceId ?? "") === String(instanceId)) return false;
+      return true;
+    });
+  }
+
+  static async #requestDuplicateDecision({ summoner, request, currentActorIds, previousActors } = {}) {
+    if (!this.#isActiveGM() || !previousActors?.length || !currentActorIds?.length) return null;
+    const currentInstanceId = String(request?.instanceId ?? "");
+    const existing = [...(game.messages ?? [])].find(message => {
+      const row = message.getFlag?.(MODULE_ID, DECISION_FLAG_KEY);
+      return row?.type === "duplicate-source"
+        && row?.status === "pending"
+        && String(row?.currentInstanceId ?? "") === currentInstanceId;
+    });
+    if (existing) return existing;
+
+    const decision = {
+      version: 1,
+      id: foundry.utils.randomID?.(24) ?? crypto.randomUUID(),
+      type: "duplicate-source",
+      status: "pending",
+      summonerActorId: summoner.id,
+      summonerActorUuid: summoner.uuid ?? null,
+      summonerName: summoner.name ?? "Summoner",
+      sourceItemUuid: request?.sourceItemUuid ?? null,
+      sourceItemName: request?.sourceItemName ?? "Summon source",
+      activityId: request?.activityId ?? null,
+      activityName: request?.activityName ?? "Summon",
+      currentInstanceId,
+      currentActorIds: [...new Set(currentActorIds.map(String).filter(Boolean))],
+      previousActorIds: previousActors.map(actor => String(actor.id)),
+      previousActorNames: previousActors.map(actor => String(actor.name ?? "Summon")),
+      requestedAt: Date.now(),
+      resolvedAt: null,
+      resolvedBy: null,
+      resolution: null
+    };
+
+    return ChatMessage.implementation.create({
+      speaker: ChatMessage.getSpeaker?.({ actor: summoner }) ?? { actor: summoner.id, alias: summoner.name },
+      whisper: this.#gmRecipientIds(),
+      content: this.#decisionContent(decision),
+      flags: { [MODULE_ID]: { [DECISION_FLAG_KEY]: decision } }
+    });
+  }
+
+  static async #onManagedActorUpdated(actor, changes, options = {}, _userId = null) {
+    if (!this.enabled() || !this.#isActiveGM() || !actor?.id) return;
+    if (options?.managedSummonZeroHpState === true || options?.managedSummonDecisionResolution === true) return;
+    const metadata = actor.getFlag?.(MODULE_ID, FLAG_KEY);
+    if (!metadata) return;
+
+    const hpChanged = Object.prototype.hasOwnProperty.call(changes ?? {}, "system.attributes.hp.value")
+      || foundry.utils.hasProperty?.(changes ?? {}, "system.attributes.hp.value") === true;
+    if (!hpChanged) return;
+
+    const hpValue = Number(actor.system?.attributes?.hp?.value ?? 0);
+    const hpMax = Number(actor.system?.attributes?.hp?.max ?? 0);
+    if (!Number.isFinite(hpValue) || !Number.isFinite(hpMax) || hpMax <= 0) return;
+
+    if (hpValue > 0) {
+      if (metadata.zeroHpEvent) {
+        await actor.update({ [`flags.${MODULE_ID}.${FLAG_KEY}.zeroHpEvent`]: null }, {
+          characterBuilderManagedSummon: true,
+          managedSummonZeroHpState: true
+        });
+      }
+      return;
+    }
+
+    if (metadata.zeroHpEvent?.id) return;
+    const eventId = foundry.utils.randomID?.(24) ?? crypto.randomUUID();
+    const zeroHpEvent = {
+      id: eventId,
+      status: "pending",
+      reachedAt: Date.now(),
+      resolvedAt: null,
+      resolvedBy: null,
+      resolution: null
+    };
+    await actor.update({ [`flags.${MODULE_ID}.${FLAG_KEY}.zeroHpEvent`]: zeroHpEvent }, {
+      characterBuilderManagedSummon: true,
+      managedSummonZeroHpState: true
+    });
+    await this.#requestZeroHpDecision(actor, { ...metadata, zeroHpEvent });
+  }
+
+  static async #recoverZeroHpDecisions() {
+    if (!this.enabled() || !this.#isActiveGM()) return;
+    for (const actor of game.actors ?? []) {
+      const metadata = actor?.getFlag?.(MODULE_ID, FLAG_KEY);
+      if (!metadata) continue;
+      const hpValue = Number(actor.system?.attributes?.hp?.value ?? 0);
+      const hpMax = Number(actor.system?.attributes?.hp?.max ?? 0);
+      if (!Number.isFinite(hpValue) || !Number.isFinite(hpMax) || hpMax <= 0) continue;
+
+      if (hpValue > 0) {
+        if (metadata.zeroHpEvent) {
+          await actor.update({ [`flags.${MODULE_ID}.${FLAG_KEY}.zeroHpEvent`]: null }, {
+            characterBuilderManagedSummon: true,
+            managedSummonZeroHpState: true
+          });
+        }
+        continue;
+      }
+
+      if (metadata.zeroHpEvent?.status === "resolved") continue;
+      let nextMetadata = metadata;
+      if (!metadata.zeroHpEvent?.id) {
+        const zeroHpEvent = {
+          id: foundry.utils.randomID?.(24) ?? crypto.randomUUID(),
+          status: "pending",
+          reachedAt: Date.now(),
+          recoveredByScan: true,
+          resolvedAt: null,
+          resolvedBy: null,
+          resolution: null
+        };
+        await actor.update({ [`flags.${MODULE_ID}.${FLAG_KEY}.zeroHpEvent`]: zeroHpEvent }, {
+          characterBuilderManagedSummon: true,
+          managedSummonZeroHpState: true
+        });
+        nextMetadata = { ...metadata, zeroHpEvent };
+      }
+      await this.#requestZeroHpDecision(actor, nextMetadata);
+    }
+  }
+
+  static async #requestZeroHpDecision(actor, metadata) {
+    if (!this.#isActiveGM() || !actor?.id || !metadata?.zeroHpEvent?.id) return null;
+    const eventId = String(metadata.zeroHpEvent.id);
+    const existing = [...(game.messages ?? [])].find(message => {
+      const row = message.getFlag?.(MODULE_ID, DECISION_FLAG_KEY);
+      return row?.type === "zero-hp" && String(row?.zeroHpEventId ?? "") === eventId;
+    });
+    if (existing) return existing;
+
+    const summoner = await this.#resolveSummonerFromMetadata(metadata);
+    const primal = String(metadata.policyId ?? "") === String(PrimalCompanionAssistanceService.policyId);
+    const decision = {
+      version: 1,
+      id: foundry.utils.randomID?.(24) ?? crypto.randomUUID(),
+      type: "zero-hp",
+      status: "pending",
+      zeroHpEventId: eventId,
+      actorId: actor.id,
+      actorUuid: actor.uuid ?? null,
+      actorName: actor.name ?? "Summon",
+      summonerActorId: metadata.summonerActorId ?? null,
+      summonerActorUuid: metadata.summonerActorUuid ?? null,
+      summonerName: summoner?.name ?? "Summoner",
+      sourceItemName: metadata.sourceItemName ?? "Summon source",
+      activityName: metadata.activityName ?? "Summon",
+      policyId: metadata.policyId ?? DEFAULT_POLICY.policyId,
+      canRevivePrimalCompanion: primal,
+      spellSlots: primal ? this.#availableSpellSlots(summoner) : [],
+      requestedAt: Date.now(),
+      resolvedAt: null,
+      resolvedBy: null,
+      resolution: null,
+      slotKey: null
+    };
+
+    return ChatMessage.implementation.create({
+      speaker: ChatMessage.getSpeaker?.({ actor }) ?? { actor: actor.id, alias: actor.name },
+      whisper: this.#gmRecipientIds(),
+      content: this.#decisionContent(decision),
+      flags: { [MODULE_ID]: { [DECISION_FLAG_KEY]: decision } }
+    });
+  }
+
+  static #decorateDecisionMessage(message, html) {
+    const root = this.#element(html);
+    const decision = message?.getFlag?.(MODULE_ID, DECISION_FLAG_KEY);
+    if (!root || !decision) return;
+
+    const canResolve = decision.status === "pending" && this.#isActiveGM();
+    const slotSelect = root.querySelector?.("[data-cb-managed-summon-slot]");
+    if (slotSelect) slotSelect.disabled = !canResolve;
+
+    for (const button of root.querySelectorAll?.(`[data-action="${ACTION_RESOLVE_DECISION}"]`) ?? []) {
+      const choice = String(button.dataset.decision ?? "");
+      button.disabled = !canResolve || (choice === "revive" && !(decision.spellSlots ?? []).length);
+      if (!this.#isActiveGM()) button.title = "Waiting for the active GM decision";
+      if (button.dataset.cbManagedSummonDecisionBound === "true") continue;
+      button.dataset.cbManagedSummonDecisionBound = "true";
+      button.addEventListener("click", event => {
+        event.preventDefault();
+        event.stopPropagation();
+        const slotKey = choice === "revive" ? String(slotSelect?.value ?? "") : null;
+        void this.#resolveDecision(message, choice, { slotKey });
+      });
+    }
+  }
+
+  static async #resolveDecision(message, choice, { slotKey = null } = {}) {
+    if (!this.#isActiveGM()) {
+      ui.notifications?.warn?.("Only the active GM can resolve Managed Summon decisions.");
+      return;
+    }
+    if (!message?.id || this.#executing.has(`decision:${message.id}`)) return;
+
+    const decision = foundry.utils.deepClone(message.getFlag?.(MODULE_ID, DECISION_FLAG_KEY) ?? {});
+    if (decision.status !== "pending") return;
+    const allowed = decision.type === "duplicate-source"
+      ? new Set(["replace", "keep-both"])
+      : new Set(decision.canRevivePrimalCompanion ? ["revive", "remove", "keep"] : ["remove", "keep"]);
+    if (!allowed.has(choice)) return;
+
+    const executionKey = `decision:${message.id}`;
+    this.#executing.add(executionKey);
+    try {
+      if (decision.type === "duplicate-source") {
+        if (choice === "replace") {
+          const protectedIds = new Set((decision.currentActorIds ?? []).map(String));
+          const removable = (decision.previousActorIds ?? []).map(String).filter(id => !protectedIds.has(id))
+            .filter(id => {
+              const actor = game.actors?.get?.(id);
+              const metadata = actor?.getFlag?.(MODULE_ID, FLAG_KEY);
+              return Boolean(actor && metadata
+                && String(metadata.summonerActorId ?? "") === String(decision.summonerActorId ?? "")
+                && String(metadata.sourceItemUuid ?? "") === String(decision.sourceItemUuid ?? "")
+                && String(metadata.activityId ?? "") === String(decision.activityId ?? ""));
+            });
+          await this.#removeManagedActorIds(removable, "gm-replace-previous-source-instance", {
+            decisionId: decision.id,
+            summonerActorId: decision.summonerActorId
+          });
+        }
+      } else if (decision.type === "zero-hp") {
+        const actor = await this.#resolveDecisionActor(decision);
+        if (choice === "remove") {
+          if (actor?.id) {
+            await this.#removeManagedActorIds([actor.id], "gm-zero-hp-remove", { decisionId: decision.id });
+          }
+        } else if (choice === "keep") {
+          if (!actor) throw new Error("The managed summon no longer exists.");
+          await this.#markZeroHpEventResolved(actor, decision, "keep");
+        } else if (choice === "revive") {
+          if (!actor) throw new Error("The Primal Companion no longer exists.");
+          await this.#revivePrimalCompanion(actor, decision, slotKey);
+        }
+      }
+
+      const next = {
+        ...decision,
+        status: "resolved",
+        resolution: choice,
+        slotKey: choice === "revive" ? slotKey : null,
+        resolvedAt: Date.now(),
+        resolvedBy: game.user.id
+      };
+      await message.update({
+        content: this.#decisionContent(next),
+        [`flags.${MODULE_ID}.${DECISION_FLAG_KEY}`]: next
+      });
+    } catch (error) {
+      console.warn(`${MODULE_ID} | Managed Summon decision failed.`, error);
+      ui.notifications?.error?.(`Managed Summon decision failed: ${error.message}`);
+    } finally {
+      this.#executing.delete(executionKey);
+    }
+  }
+
+  static async #resolveDecisionActor(decision) {
+    if (decision?.actorUuid) {
+      try {
+        const actor = await fromUuid(decision.actorUuid);
+        if (actor?.documentName === "Actor") return actor;
+      } catch (_error) {}
+    }
+    return decision?.actorId ? game.actors?.get?.(String(decision.actorId)) ?? null : null;
+  }
+
+  static async #resolveSummonerFromMetadata(metadata) {
+    if (metadata?.summonerActorUuid) {
+      try {
+        const actor = await fromUuid(metadata.summonerActorUuid);
+        if (actor?.documentName === "Actor") return actor;
+      } catch (_error) {}
+    }
+    return metadata?.summonerActorId ? game.actors?.get?.(String(metadata.summonerActorId)) ?? null : null;
+  }
+
+  static #availableSpellSlots(actor) {
+    if (!actor) return [];
+    const spells = actor.system?.spells ?? {};
+    const rows = [];
+    for (let level = 1; level <= 9; level += 1) {
+      const key = `spell${level}`;
+      const value = Number(spells?.[key]?.value ?? 0);
+      if (!Number.isFinite(value) || value <= 0) continue;
+      rows.push({ key, label: `Level ${level} Spell Slot`, available: Math.trunc(value) });
+    }
+    const pactValue = Number(spells?.pact?.value ?? 0);
+    if (Number.isFinite(pactValue) && pactValue > 0) {
+      const pactLevel = Number(spells?.pact?.level ?? 0);
+      rows.push({
+        key: "pact",
+        label: pactLevel > 0 ? `Pact Magic Slot (Level ${pactLevel})` : "Pact Magic Slot",
+        available: Math.trunc(pactValue)
+      });
+    }
+    return rows;
+  }
+
+  static async #revivePrimalCompanion(actor, decision, slotKey) {
+    if (String(decision?.policyId ?? "") !== String(PrimalCompanionAssistanceService.policyId)) {
+      throw new Error("This summon is not a Primal Companion.");
+    }
+    if (!/^(?:spell[1-9]|pact)$/.test(String(slotKey ?? ""))) {
+      throw new Error("Choose an available spell slot.");
+    }
+    const metadata = actor.getFlag?.(MODULE_ID, FLAG_KEY) ?? {};
+    if (String(metadata.zeroHpEvent?.id ?? "") !== String(decision.zeroHpEventId ?? "")) {
+      throw new Error("This zero-HP event is no longer current.");
+    }
+    const hpValue = Number(actor.system?.attributes?.hp?.value ?? 0);
+    const hpMax = Number(actor.system?.attributes?.hp?.max ?? 0);
+    if (!Number.isFinite(hpMax) || hpMax <= 0 || hpValue > 0) {
+      throw new Error("The companion is no longer at 0 HP or has no valid maximum HP.");
+    }
+
+    const summoner = await this.#resolveSummonerFromMetadata(metadata);
+    if (!summoner) throw new Error("The Ranger that owns this companion could not be resolved.");
+    const slotPath = `system.spells.${slotKey}.value`;
+    const before = Number(foundry.utils.getProperty(summoner, slotPath) ?? 0);
+    if (!Number.isFinite(before) || before <= 0) throw new Error("That spell slot is no longer available.");
+
+    await summoner.update({ [slotPath]: before - 1 }, {
+      characterBuilderManagedSummon: true,
+      managedSummonPrimalRevive: true
+    });
+    try {
+      await actor.update({
+        "system.attributes.hp.value": hpMax,
+        [`flags.${MODULE_ID}.${FLAG_KEY}.zeroHpEvent`]: null
+      }, {
+        characterBuilderManagedSummon: true,
+        managedSummonDecisionResolution: true,
+        managedSummonPrimalRevive: true
+      });
+    } catch (error) {
+      try {
+        const current = Number(foundry.utils.getProperty(summoner, slotPath) ?? 0);
+        if (current === before - 1) {
+          await summoner.update({ [slotPath]: before }, {
+            characterBuilderManagedSummon: true,
+            managedSummonPrimalReviveRollback: true
+          });
+        }
+      } catch (rollbackError) {
+        console.warn(`${MODULE_ID} | Could not refund Primal Companion revive spell slot after failure.`, rollbackError);
+      }
+      throw error;
+    }
+  }
+
+  static async #markZeroHpEventResolved(actor, decision, resolution) {
+    const metadata = actor.getFlag?.(MODULE_ID, FLAG_KEY) ?? {};
+    const event = metadata.zeroHpEvent ?? {};
+    if (String(event.id ?? "") !== String(decision.zeroHpEventId ?? "")) return;
+    await actor.update({
+      [`flags.${MODULE_ID}.${FLAG_KEY}.zeroHpEvent`]: {
+        ...event,
+        status: "resolved",
+        resolution,
+        resolvedAt: Date.now(),
+        resolvedBy: game.user.id
+      }
+    }, {
+      characterBuilderManagedSummon: true,
+      managedSummonZeroHpState: true,
+      managedSummonDecisionResolution: true
+    });
+  }
+
+  static async #removeManagedActorIds(actorIds, reason, context = {}) {
+    const ids = [...new Set((actorIds ?? []).map(String).filter(Boolean))].filter(id => {
+      const actor = game.actors?.get?.(id);
+      return Boolean(actor?.getFlag?.(MODULE_ID, FLAG_KEY));
+    });
+    if (!ids.length) return;
+    const idSet = new Set(ids);
+
+    for (const scene of game.scenes ?? []) {
+      const tokenIds = [...(scene.tokens ?? [])]
+        .filter(token => idSet.has(String(token.actorId ?? "")))
+        .map(token => token.id);
+      if (tokenIds.length) {
+        await scene.deleteEmbeddedDocuments("Token", tokenIds, {
+          characterBuilderManagedSummon: true,
+          reason,
+          ...context
+        });
+      }
+    }
+
+    await Actor.implementation.deleteDocuments(ids, {
+      characterBuilderManagedSummon: true,
+      reason,
+      ...context
+    });
+  }
+
+  static #decisionContent(decision) {
+    const esc = value => this.#escape(value);
+    const resolved = decision.status === "resolved";
+    let body = "";
+
+    if (decision.type === "duplicate-source") {
+      const previous = (decision.previousActorNames ?? []).map(name => `<li>${esc(name)}</li>`).join("");
+      body = `
+        <p><strong>${esc(decision.summonerName)}</strong> created another summon from <strong>${esc(decision.sourceItemName)}</strong>${decision.activityName ? ` — ${esc(decision.activityName)}` : ""}.</p>
+        <p>An earlier managed instance from this same Summon Activity is still active.</p>
+        ${previous ? `<ul>${previous}</ul>` : ""}
+        ${resolved ? this.#decisionResolvedStatus(decision) : `
+          <div class="cb-managed-summon-actions">
+            <button type="button" class="danger" data-action="${ACTION_RESOLVE_DECISION}" data-decision="replace"><i class="fa-solid fa-arrows-rotate"></i> Replace Previous</button>
+            <button type="button" data-action="${ACTION_RESOLVE_DECISION}" data-decision="keep-both"><i class="fa-solid fa-clone"></i> Keep Both</button>
+          </div>`}`;
+    } else if (decision.type === "zero-hp") {
+      const slots = (decision.spellSlots ?? []).map(slot => `<option value="${esc(slot.key)}">${esc(slot.label)} — ${Number(slot.available) || 0} available</option>`).join("");
+      body = `
+        <p><strong>${esc(decision.actorName)}</strong> reached <strong>0 HP</strong>.</p>
+        <p><strong>Summoner:</strong> ${esc(decision.summonerName)}<br><strong>Source:</strong> ${esc(decision.sourceItemName)}</p>
+        ${resolved ? this.#decisionResolvedStatus(decision) : `
+          ${decision.canRevivePrimalCompanion ? `
+            <label class="cb-managed-summon-slot-picker"><span>Primal Companion revival slot</span>
+              <select data-cb-managed-summon-slot>${slots || `<option value="">No spell slots available</option>`}</select>
+            </label>` : ""}
+          <div class="cb-managed-summon-actions">
+            ${decision.canRevivePrimalCompanion ? `<button type="button" data-action="${ACTION_RESOLVE_DECISION}" data-decision="revive"><i class="fa-solid fa-heart-pulse"></i> Spend Slot & Revive</button>` : ""}
+            <button type="button" class="danger" data-action="${ACTION_RESOLVE_DECISION}" data-decision="remove"><i class="fa-solid fa-trash"></i> Remove Summon</button>
+            <button type="button" data-action="${ACTION_RESOLVE_DECISION}" data-decision="keep"><i class="fa-solid fa-hand"></i> Keep Summon</button>
+          </div>
+          ${decision.canRevivePrimalCompanion ? `<p class="notes">The Primal Companion rule still requires the in-world revival time; this button handles the spell-slot cost and restores the existing managed companion.</p>` : ""}`}`;
+    }
+
+    return `
+      <section class="cb-managed-summon-decision-card" data-cb-managed-summon-decision>
+        <header><i class="fa-solid fa-paw"></i><div><strong>Managed Summon</strong><small>GM decision</small></div></header>
+        <div class="cb-managed-summon-decision-body">${body}</div>
+      </section>`;
+  }
+
+  static #decisionResolvedStatus(decision) {
+    const labels = {
+      replace: "Previous summon removed; the new instance was kept.",
+      "keep-both": "Both summon instances were kept.",
+      remove: "Summon removed by the GM.",
+      keep: "Summon kept at 0 HP by the GM.",
+      revive: "Primal Companion revived using a spell slot."
+    };
+    return `<p class="cb-managed-summon-resolution"><i class="fa-solid fa-circle-check"></i> ${this.#escape(labels[decision.resolution] ?? "Decision resolved.")}</p>`;
   }
 
   static async #removePreviousExclusiveInstances({ summoner, keepActorIds, keepTokenUuids, sourceFeatureUuid, policyId }) {
@@ -517,6 +1051,27 @@ export class ManagedSummonsService {
       } catch (_error) {}
     }
     return game.actors?.get?.(String(request?.summonerActorId ?? "")) ?? null;
+  }
+
+  static #gmRecipientIds() {
+    const recipients = ChatMessage.getWhisperRecipients?.("GM") ?? game.users?.contents?.filter(user => user.isGM) ?? [];
+    return recipients.map(user => user?.id ?? user).filter(Boolean);
+  }
+
+  static #escape(value) {
+    const text = String(value ?? "");
+    if (foundry.utils?.escapeHTML) return foundry.utils.escapeHTML(text);
+    return text.replace(/[&<>'"]/g, character => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
+    })[character]);
+  }
+
+  static #element(value) {
+    if (!value) return null;
+    const HTMLElementCtor = globalThis.HTMLElement;
+    if (HTMLElementCtor && value instanceof HTMLElementCtor) return value;
+    if (HTMLElementCtor && value?.[0] instanceof HTMLElementCtor) return value[0];
+    return value?.nodeType === 1 ? value : null;
   }
 
   static #activeGM() {

@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.914";
-export const MODULE_BUILD = "creation-flow-species-rest-r1";
+export const MODULE_VERSION = "0.9.915";
+export const MODULE_BUILD = "managed-summons-lifecycle-v2";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -191,21 +191,21 @@ export const RULES_ASSISTANCE_DEFINITIONS = Object.freeze([
     key: "managedSummons",
     ruleId: "managed-summons",
     label: "Managed Summons",
-    description: "Materializes native D&D5e summons as managed linked Actors, inherits ownership from the summoner, tracks summon instances, and cleans concentration-bound summons only after concentration has truly ended.",
+    description: "Materializes native D&D5e summons as managed linked Actors, reconciles fresh summons to their final derived maximum HP, tracks summon instances, cleans confirmed concentration lifecycles, and asks the GM when an ambiguous non-concentration source is summoned again or reaches 0 HP.",
     tag: "Summon Lifecycle"
   }),
   Object.freeze({
     key: "rangerPrimalCompanion",
     ruleId: "ranger-primal-companion",
     label: "Ranger — Primal Companion",
-    description: "Managed Summons policy for Primal Companion: fixes fresh current HP to the native derived maximum and replaces only that Ranger's previous Primal Companion instance.",
+    description: "Managed Summons policy for Primal Companion: replaces only that Ranger's previous companion and adds a GM-only 0 HP decision with spell-slot revival, removal, or keep options.",
     tag: "Source Policy"
   }),
   Object.freeze({
     key: "paladinFindSteed",
     ruleId: "paladin-find-steed",
     label: "Paladin — Find Steed",
-    description: "Managed Summons policy for Find Steed: initializes a newly materialized Steed at the native derived maximum HP and replaces only that caster's previous Find Steed instance.",
+    description: "Managed Summons policy for Find Steed: preserves its source-specific exclusive lifecycle while generic fresh-HP reconciliation is handled by Managed Summons.",
     tag: "Source Policy"
   }),
   Object.freeze({

@@ -17,9 +17,8 @@ function normalized(value) {
  * Source-specific Managed Summons policy for the 2024 Find Steed spell.
  *
  * D&D5e remains authoritative for every derived Steed statistic. Character
- * Builder closes two administrative gaps only: fresh current HP is reconciled
- * to the already-derived native maximum, and a successful new casting replaces
- * that caster's previous Find Steed managed instance.
+ * Builder keeps the source-specific exclusivity policy here; generic fresh-HP
+ * reconciliation and lifecycle decisions belong to ManagedSummonsService.
  */
 export class FindSteedAssistanceService {
   static get policyId() {
@@ -51,15 +50,7 @@ export class FindSteedAssistanceService {
     return source.includes("findsteed") || source.includes("find-steed");
   }
 
-  static prepareManagedActorData(data, synthetic) {
-    const hpMax = Number(synthetic?.system?.attributes?.hp?.max ?? 0);
-    const hpValue = Number(synthetic?.system?.attributes?.hp?.value ?? 0);
-    if (Number.isFinite(hpMax) && hpMax > 0 && Number.isFinite(hpValue) && hpValue !== hpMax) {
-      // SET, never add. D&D5e has already calculated the correct derived Max HP.
-      foundry.utils.setProperty(data, "system.attributes.hp.value", hpMax);
-    }
-    return data;
-  }
+
 }
 
 export const FIND_STEED_RULE_ID = RULE_ID;

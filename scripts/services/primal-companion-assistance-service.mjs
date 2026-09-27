@@ -6,9 +6,9 @@ const POLICY_ID = "ranger-primal-companion";
 /**
  * Source-specific policy consumed by ManagedSummonsService.
  *
- * D&D5e remains authoritative for every Primal Companion statistic except the
- * X3-observed fresh-summon current-HP gap. The generic Managed Summons core
- * owns materialization, ownership, folders, instance identity, and cleanup.
+ * D&D5e remains authoritative for Primal Companion statistics. The generic
+ * Managed Summons core owns materialization, fresh-HP reconciliation, ownership,
+ * folders, instance identity, zero-HP decisions, and cleanup.
  */
 export class PrimalCompanionAssistanceService {
   static get policyId() {
@@ -29,17 +29,6 @@ export class PrimalCompanionAssistanceService {
     if (identifier === "primal-companion") return true;
     const source = String(item?.getFlag?.("dnd5e", "sourceId") ?? item?._stats?.compendiumSource ?? "").toLowerCase();
     return source.includes("primal") && String(activity?.name ?? "").trim().toLowerCase() === "summon companion";
-  }
-
-  static prepareManagedActorData(data, synthetic) {
-    const hpMax = Number(synthetic?.system?.attributes?.hp?.max ?? 0);
-    const hpValue = Number(synthetic?.system?.attributes?.hp?.value ?? 0);
-    if (Number.isFinite(hpMax) && hpMax > 0 && hpValue !== hpMax) {
-      // SET, never add. If D&D5e fixes fresh-summon current HP later, this is a
-      // no-op and can never create double maximum HP.
-      foundry.utils.setProperty(data, "system.attributes.hp.value", hpMax);
-    }
-    return data;
   }
 
   static companionType(profileName, tokenName = "") {

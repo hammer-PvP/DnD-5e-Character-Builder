@@ -6681,3 +6681,38 @@
   .cb-tool-party-actions.cb-tool-party-actions-dual { grid-template-columns: 1fr; }
   .cb-tool-party-actions.cb-tool-party-actions-dual > button { grid-column: auto; }
 }
+
+/* v0.9.915 — Managed Summons lifecycle decisions */
+.cb-managed-summon-decision-card {
+  display: grid;
+  gap: 8px;
+}
+.cb-managed-summon-decision-card > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+}
+.cb-managed-summon-decision-card > header > i { font-size: 18px; }
+.cb-managed-summon-decision-card > header strong,
+.cb-managed-summon-decision-card > header small { display: block; }
+.cb-managed-summon-decision-card > header small { opacity: .65; }
+.cb-managed-summon-decision-body { display: grid; gap: 7px; }
+.cb-managed-summon-decision-body p { margin: 0; }
+.cb-managed-summon-decision-body ul { margin: 0 0 0 18px; padding: 0; }
+.cb-managed-summon-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 3px;
+}
+.cb-managed-summon-actions button { width: auto; flex: 1 1 130px; }
+.cb-managed-summon-slot-picker { display: grid; gap: 4px; }
+.cb-managed-summon-slot-picker > span { font-size: 11px; font-weight: 700; }
+.cb-managed-summon-slot-picker select { width: 100%; }
+.cb-managed-summon-resolution {
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 5px;
+}

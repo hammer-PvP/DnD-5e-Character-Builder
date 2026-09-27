@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.9.915 — Managed Summons Lifecycle v2
+
+### Generic fresh-summon HP reconciliation
+- Moved fresh-summon Current HP reconciliation out of Primal Companion and Find Steed source policies into the generic Managed Summons materialization pipeline.
+- After D&D5e finishes profile, ActorDelta, spell-slot scaling, Active Effects, and derived statistics, every fresh managed summon is reconciled with `Current HP = final Max HP`. Character Builder never re-calculates or adds the bonus itself, so the operation remains idempotent if D&D5e later fixes the linked-summon Current HP gap natively.
+
+### Concentration / known policy / ambiguity lifecycle
+- Concentration remains authoritative when present: concentration-bound managed summons are cleaned only after the D&D5e/Foundry concentration effect is confirmed ended.
+- Existing source-specific policies remain automatic for Primal Companion, Find Steed, Find Familiar, and Mage Hand.
+- Generic non-concentration summons are no longer guessed to be unique or stackable. If a new summon from the same summoner + source Item + Summon Activity finds an earlier managed instance, the active GM receives a private **Replace Previous / Keep Both** chat decision.
+- Replacement is instance-safe: a multi-creature current invocation is preserved as one instance while all selected earlier managed Actors/Tokens from the same source Activity can be removed.
+
+### Zero-HP GM decisions
+- Managed summons now detect a real transition to 0 HP and create one private GM decision for that zero-HP cycle. Generic summons offer **Remove Summon / Keep Summon**. Keeping at 0 HP does not spam repeated cards; restoring HP rearms the next zero-HP cycle.
+- Primal Companion additionally offers **Spend Slot & Revive**, consuming one currently available spell slot from the owning Ranger and restoring the same managed companion to its final Max HP. The transaction validates the current zero-HP event and slot availability and attempts to refund the slot if the HP update fails.
+- The Primal Companion card notes that the tabletop rule still requires its in-world revival time; Character Builder handles only the resource transaction and existing-Actor restoration.
+- Decision buttons are GM-only and only the active GM can execute them, preventing duplicate lifecycle commits across multiple connected GMs.
+
 ## 0.9.914 — Creation Flow Integrity + Species Rest Choices
 
 ### Character Creation — Free Browse / Ordered Commit
