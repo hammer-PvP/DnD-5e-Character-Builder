@@ -67,8 +67,10 @@ export class AdvancementService {
     if (registry) data = SourceResolver.filterAdvancementPools(data, registry);
 
     let recoveryActor = null;
+    let completedBackground = null;
     const finish = async () => {
-      await this.#postProcessPrimary(draft, document, type);
+      const primaryItem = await this.#postProcessPrimary(draft, document, type, { beforeItemIds });
+      if (type === "background") completedBackground = primaryItem;
       if (registry) {
         await SourceResolver.enforceAllowedSources(draft, registry);
         await ItemGrantIntegrityService.reconcile(draft, registry, {
@@ -98,6 +100,7 @@ export class AdvancementService {
     if (!manager.steps.length) {
       await draft.createEmbeddedDocuments("Item", [data]);
       await finish();
+      if (type === "background") return completedBackground ? (draft.items.get(completedBackground.id) ?? null) : null;
       return draft.items.find(item => item.type === type && item.system?.identifier === data.system?.identifier);
     }
 
@@ -107,6 +110,14 @@ export class AdvancementService {
       reservationToken
     });
     if (!result.completed) return null;
+
+    // Backgrounds are resolved from the Item actually created by this native
+    // Advancement transaction. Third-party source documents may omit an
+    // identifier and D&D5e may normalize one while materializing the embedded
+    // Item, so source/materialized identifier equality is not authoritative.
+    if (type === "background") {
+      return completedBackground ? (draft.items.get(completedBackground.id) ?? null) : null;
+    }
 
     return draft.items.find(item => item.type === type && item.system?.identifier === data.system?.identifier);
   }
@@ -176,10 +187,12 @@ export class AdvancementService {
     }
   }
 
-  static async #postProcessPrimary(draft, document, type) {
+  static async #postProcessPrimary(draft, document, type, { beforeItemIds = null } = {}) {
     const identifier = document.system?.identifier;
-    const item = draft.items.find(candidate => candidate.type === type &&
-      (!identifier || candidate.system?.identifier === identifier));
+    const item = type === "background"
+      ? this.#resolveCreatedBackground(draft, document, beforeItemIds)
+      : draft.items.find(candidate => candidate.type === type &&
+        (!identifier || candidate.system?.identifier === identifier));
     if (!item) throw new Error(`The selected ${type} was not created on the Draft Actor.`);
 
     const source = document.toObject();
@@ -197,6 +210,33 @@ export class AdvancementService {
       await item.setFlag(MODULE_ID, "customBackground", true);
     }
     if (type === "class") await HitPointService.enforceFirstLevelMaximum(draft);
+    return item;
+  }
+
+  static #resolveCreatedBackground(draft, document, beforeItemIds) {
+    const baseline = beforeItemIds instanceof Set ? beforeItemIds : new Set(beforeItemIds ?? []);
+    const created = draft.items.filter(item => item.type === "background" && !baseline.has(item.id));
+    if (created.length === 1) return created[0];
+    if (!created.length) return null;
+
+    // Multiple new Backgrounds would be abnormal, but avoid guessing. Prefer
+    // native provenance first, then a source identifier only when it is
+    // actually present and uniquely identifies one transaction result.
+    const sourceUuid = document?.uuid ?? null;
+    if (sourceUuid) {
+      const provenanceMatches = created.filter(item =>
+        item.getFlag?.("dnd5e", "sourceId") === sourceUuid
+        || item._stats?.compendiumSource === sourceUuid);
+      if (provenanceMatches.length === 1) return provenanceMatches[0];
+    }
+
+    const identifier = document?.system?.identifier;
+    if (identifier) {
+      const identifierMatches = created.filter(item => item.system?.identifier === identifier);
+      if (identifierMatches.length === 1) return identifierMatches[0];
+    }
+
+    return null;
   }
 
   static async ensureDeferredBackgroundASI() {

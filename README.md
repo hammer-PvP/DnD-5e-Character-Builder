@@ -1,8 +1,8 @@
 # Character Builder
 
-**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14. **v0.9.916 closes the current Foundry 14 / D&D5e 6.x chat-and-roll migration pass: Blind Skill/Tool visibility uses the modern Chat Message mode, Weapon Mastery enrichment runs after the structured D&D5e message has finished rendering, legacy ChatMessage render hooks are removed, and the former ammunition automation is replaced by an optional native-data Require Ammunition gate.**
+**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14. **v0.9.917 fixes Background completion when native D&D5e Advancement materializes a Background with a normalized identifier that differs from the source document, while preserving the v0.9.916 Foundry 14 / D&D5e 6.x chat, roll, Weapon Mastery, and Require Ammunition baseline unchanged.**
 
-> **Post-migration status:** the `v0.9.x1–x4` series was the D&D5e 6.x migration branch. v0.9.916 preserves that stabilized runtime baseline on the normal `v0.9.9xx` line and applies only evidence-driven compatibility fixes and small policy guards.
+> **Post-migration status:** the `v0.9.x1–x4` series was the D&D5e 6.x migration branch. v0.9.917 preserves that stabilized runtime baseline on the normal `v0.9.9xx` line and applies only evidence-driven compatibility fixes and small policy guards.
 
 It uses the official D&D5e documents and native Advancement system as its rules spine. Character Builder guides the choices, prepares them in drafts, validates the result, and commits the completed transaction to the live Actor.
 

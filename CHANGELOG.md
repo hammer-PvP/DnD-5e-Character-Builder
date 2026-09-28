@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.917 — Background Advancement Transaction Identity
+
+### Background completion — native transaction result
+- Fixed a false `Background Advancement was cancelled.` result that could occur after D&D5e had already completed the native Advancement successfully.
+- Character Builder now identifies the Background created by the active transaction from the transaction delta (`beforeItemIds` → newly created Background) instead of requiring the materialized Background to preserve the source `system.identifier`.
+- This covers third-party Backgrounds whose source identifier is blank or is normalized by D&D5e during embedded Item creation without adding content-specific exceptions or names.
+- Ambiguous transactions are not guessed: if more than one new Background exists, native provenance is preferred, then a unique source identifier match; otherwise the transaction fails safely.
+- Class, Species, Subclass, Multiclass, ItemGrant, Metamagic, Eldritch Invocation, and other Advancement resolution paths are intentionally unchanged because no equivalent failure has been reproduced there.
+
+### Regression scope
+- Added regression coverage for both no-step and interactive Background transactions where the source identifier is blank and the materialized Background receives a normalized identifier.
+- Preserves the complete v0.9.916 chat/roll modernization, Require Ammunition scope, Weapon Mastery behavior, and compatibility declarations.
+
 ## 0.9.916 — Foundry 14 Chat / Roll Modernization + Require Ammunition
 
 ### Blind Skill & Tool Checks — Foundry 14 visibility fix
