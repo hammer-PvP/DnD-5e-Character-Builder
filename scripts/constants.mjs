@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.915";
-export const MODULE_BUILD = "managed-summons-lifecycle-v2";
+export const MODULE_VERSION = "0.9.916";
+export const MODULE_BUILD = "foundry14-chat-roll-modernization";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -180,11 +180,11 @@ export const RULES_ASSISTANCE_DEFINITIONS = Object.freeze([
     tag: "Chat Assistance"
   }),
   Object.freeze({
-    key: "ammunitionAutomation",
-    ruleId: "ammunition-automation",
-    label: "Homebrew — Ammunition Automation",
-    description: "Uses D&D5e's native ammunition mechanics with container-aware stack selection, optional per-weapon preference, automatic attack-time consumption, magical ammunition bonuses, and remaining quantity shown on the Attack Roll card.",
-    tag: "Homebrew",
+    key: "requireAmmunition",
+    ruleId: "require-ammunition",
+    label: "Require Ammunition",
+    description: "Blocks attacks with weapons that require Ammunition when D&D5e reports no eligible ammunition with quantity in the character's inventory. Selection, consumption, magical bonuses, and damage remain entirely native D&D5e behavior.",
+    tag: "Usage Guard",
     defaultEnabled: false
   }),
   Object.freeze({

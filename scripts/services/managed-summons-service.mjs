@@ -80,7 +80,6 @@ export class ManagedSummonsService {
     });
 
     Hooks.on("renderChatMessageHTML", (message, element) => this.#decorateDecisionMessage(message, element));
-    Hooks.on("renderChatMessage", (message, html) => this.#decorateDecisionMessage(message, html));
 
     Hooks.on("updateActor", (actor, changes, options, userId) => {
       void this.#onManagedActorUpdated(actor, changes, options, userId).catch(error => {
@@ -1067,11 +1066,8 @@ export class ManagedSummonsService {
   }
 
   static #element(value) {
-    if (!value) return null;
     const HTMLElementCtor = globalThis.HTMLElement;
-    if (HTMLElementCtor && value instanceof HTMLElementCtor) return value;
-    if (HTMLElementCtor && value?.[0] instanceof HTMLElementCtor) return value[0];
-    return value?.nodeType === 1 ? value : null;
+    return HTMLElementCtor && value instanceof HTMLElementCtor ? value : null;
   }
 
   static #activeGM() {

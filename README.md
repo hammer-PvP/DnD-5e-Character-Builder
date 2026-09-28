@@ -1,8 +1,8 @@
 # Character Builder
 
-**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14. **v0.9.915 promotes Managed Summons into a broader lifecycle layer: every fresh managed summon is reconciled to its final derived maximum HP, concentration remains authoritative when present, known source policies stay automatic, and ambiguous non-concentration recasts or 0 HP outcomes become GM-only chat decisions.**
+**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14. **v0.9.916 closes the current Foundry 14 / D&D5e 6.x chat-and-roll migration pass: Blind Skill/Tool visibility uses the modern Chat Message mode, Weapon Mastery enrichment runs after the structured D&D5e message has finished rendering, legacy ChatMessage render hooks are removed, and the former ammunition automation is replaced by an optional native-data Require Ammunition gate.**
 
-> **Post-migration status:** the `v0.9.x1–x4` series was the D&D5e 6.x migration branch. v0.9.915 preserves that stabilized runtime baseline and returns feature development to the normal `v0.9.9xx` line. New compatibility work remains evidence-driven rather than adding generic rewrites for upstream content.
+> **Post-migration status:** the `v0.9.x1–x4` series was the D&D5e 6.x migration branch. v0.9.916 preserves that stabilized runtime baseline on the normal `v0.9.9xx` line and applies only evidence-driven compatibility fixes and small policy guards.
 
 It uses the official D&D5e documents and native Advancement system as its rules spine. Character Builder guides the choices, prepares them in drafts, validates the result, and commits the completed transaction to the live Actor.
 
@@ -13,7 +13,7 @@ It uses the official D&D5e documents and native Advancement system as its rules 
 ## Compatibility
 
 - Foundry VTT 14.367 or newer within v14 (verified target: 14.368)
-- D&D5e 6.0.0–6.0.999 (verified target: 6.0.4)
+- D&D5e 6.0.0–6.0.999 (verified target: 6.0.5)
 - Player's Handbook 2024 content package
 - SRD 5.2 Modern
 - SRD 5.1 Legacy and compatible 2014 compendiums through the Legacy progression mode
@@ -284,7 +284,7 @@ After one native Short Rest completes, the optional layer restores `floor(maximu
 
 The separate **Short Rest Homebrew Cooldown** setting uses Foundry server time and defaults to 5 minutes. It restricts only the additional homebrew recovery; the native Short Rest always continues normally. A value of 0 permits the homebrew layer on every completed Short Rest while transaction locks and rest-session idempotency still prevent duplicate clicks. Every applied recovery, cooldown result, or no-resource result is written to chat for auditing.
 
-**Blind Skill & Tool Checks** is an optional immersion homebrew. For non-GM users, native Skill and Tool roll configuration remains unchanged, but the final Chat message is forced to Foundry's Blind GM visibility on that one roll. Saving Throws, attacks, damage, Initiative, spell rolls, and the player's global Chat roll mode are untouched.
+**Blind Skill & Tool Checks** is an optional immersion homebrew. Native Skill and Tool roll configuration remains unchanged, but the final Chat message is forced to Foundry VTT 14's modern **Blind** visibility on that one roll. The policy applies regardless of whether a Player or GM clicks the roll; GMs still receive the complete result while Players do not. Saving Throws, attacks, damage, Initiative, spell rolls, and the user's global Chat visibility selection are untouched.
 
 <p align="center">
   <img src="assets/tutorial/rest-management.png" alt="Character Keeper optional Long Rest action" width="780">
@@ -315,7 +315,7 @@ The current rule list includes:
 - Druid — Wild Shape Restore Lifecycle;
 - Summon Profile Level Guard;
 - Weapon Mastery Chat Assistance;
-- Homebrew — Ammunition Automation (Off by default).
+- Require Ammunition (Off by default).
 
 Roll-modifier assistance uses native D&D5e roll hooks and changes only the current roll configuration. Weapon Mastery damage assistance posts specialized native D&D5e `DamageRoll` messages from the source weapon without permanently editing its formula. Effect assistance reuses the native Active Effect already supplied by the source spell or feature. Rules Assistance never creates duplicate weapons, duplicate spells, duplicate Activities, replacement chat commands, or permanent formula edits.
 
@@ -331,9 +331,9 @@ Agonizing Blast uses Character Builder's managed Invocation target to apply and 
 
 **Weapon Mastery Chat Assistance** enriches the native D&D5e attack Activity card rather than creating a replacement card. Eligibility comes from the originating Actor's native `WeaponData.masteryOptions`; when D&D5e offers multiple mastery options, the assistance follows the mastery recorded on the actual attack roll instead of assuming the weapon's printed default. Every supported mastery is represented by a compact native content link to the D&D5e mastery reference. Graze adds a contextual damage button only after a provable miss, Cleave adds a specialized weapon-damage button alongside the native Attack/Damage controls, and Topple may display only its final calculated DC. Vex, Sap, Nick, Push, and Slow remain link-only. The service creates no persistent target, turn, distance, or Action Economy state.
 
-**Homebrew — Ammunition Automation** is **Off by default**. When enabled, Character Builder adds a selection/persistence layer over D&D5e 5.3.3's native ammunition pipeline for weapons with the Ammunition property. Compatible consumable stacks are resolved across the Actor, including ammunition stored inside native Containers. A single available stack is used without an extra prompt; multiple stacks are shown with quantity and immediate container context, for example `Arrow — 20`, `Arrow — 15 (Quiver)`, and `Arrow +1 — 5 (Quiver)`. The player can remember one stack for that Weapon Attack Activity and later return to **Ask every attack** from the ammunition footer on an attack message.
+**Require Ammunition** is **Off by default**. When enabled, Character Builder checks the exact native D&D5e ammunition options for a Weapon Attack that has the Ammunition property. If none of those options has a usable quantity, the attack is cancelled before the roll with `No eligible ammunition is available in this character's inventory.` If eligible ammunition exists, Character Builder immediately gets out of the way and the normal D&D5e attack dialog handles the already-selected ammunition and the list of available alternatives.
 
-The selected real ammunition Item is passed into the native Attack Activity. D&D5e remains responsible for consuming one unit when the Attack Roll is actually made, for applying the ammunition's native magical bonus to attack and damage, for auto-destroy, and for linking the selected ammunition to later damage. Hit or miss both consume the fired ammunition; cancelling before the Attack Roll does not. Character Builder adds only the remaining-stack footer to that same attack ChatMessage, such as `Arrow +1 (Quiver): 4 remaining`. It does not add custom poison, elemental, save, condition, or other special-ammunition mechanics; any behavior already natively encoded by D&D5e remains system-owned. With this assistance disabled, Character Builder does nothing to ammunition and D&D5e's native behavior is left untouched.
+Character Builder does **not** select ammunition, persist ammunition preferences, consume quantity, calculate magical ammunition bonuses, modify damage, add a remaining-ammunition footer, or implement special-ammunition effects. Those responsibilities belong entirely to D&D5e 6.x. The former custom Ammunition Automation has been removed rather than migrated.
 
 Lay on Hands `Remove Poison` waits for the native Activity to complete and spend its normal 5-point cost, then removes only the native `Poisoned` status from the single recorded target. It never searches for or deletes unrelated Active Effects.
 

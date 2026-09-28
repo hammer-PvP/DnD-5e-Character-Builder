@@ -1,8 +1,8 @@
 {
   "id": "dnd5e-character-builder",
   "title": "Character Builder (DnD 5e)",
-  "description": "Character Builder for D&D5e 6.x. Adds guided character creation and Level Up plus Managed Summons lifecycle v2 with generic fresh-HP reconciliation, concentration-aware cleanup, source-policy replacement, and GM-only ambiguity decisions.",
-  "version": "0.9.915",
+  "description": "Character Builder for D&D5e 6.x. Guided character creation and Level Up with Foundry 14 chat/roll compatibility, Weapon Mastery assistance, optional Require Ammunition gating, Character Keeper, and Managed Summons lifecycle support.",
+  "version": "0.9.916",
   "authors": [
     {
       "name": "Raphael Andrade"
@@ -25,7 +25,7 @@
         "type": "system",
         "compatibility": {
           "minimum": "6.0.0",
-          "verified": "6.0.4",
+          "verified": "6.0.5",
           "maximum": "6.0.999"
         }
       }
@@ -59,8 +59,8 @@
   "readme": "README.md",
   "url": "https://github.com/hammer-PvP/DnD-5e-Character-Builder",
   "manifest": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/latest/download/module.json",
-  "download": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/download/v0.9.915/dnd5e-character-builder.zip",
+  "download": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/download/v0.9.916/dnd5e-character-builder.zip",
   "bugs": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/issues",
-  "changelog": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/tag/v0.9.915",
+  "changelog": "https://github.com/hammer-PvP/DnD-5e-Character-Builder/releases/tag/v0.9.916",
   "socket": true
 }

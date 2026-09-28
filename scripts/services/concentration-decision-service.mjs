@@ -19,7 +19,6 @@ export class ConcentrationDecisionService {
     if (this.#initialized) return;
     this.#initialized = true;
     Hooks.on("renderChatMessageHTML", (message, element) => this.#decorateMessage(message, element));
-    Hooks.on("renderChatMessage", (message, html) => this.#decorateMessage(message, html));
   }
 
   static async request({ actor, rollKey, originalTotal = null, finalTotal = null, target = null, rollId = null } = {}) {
@@ -207,10 +206,7 @@ export class ConcentrationDecisionService {
   }
 
   static #element(value) {
-    if (!value) return null;
     const HTMLElementCtor = globalThis.HTMLElement;
-    if (HTMLElementCtor && value instanceof HTMLElementCtor) return value;
-    if (HTMLElementCtor && value?.[0] instanceof HTMLElementCtor) return value[0];
-    return value?.nodeType === 1 ? value : null;
+    return HTMLElementCtor && value instanceof HTMLElementCtor ? value : null;
   }
 }

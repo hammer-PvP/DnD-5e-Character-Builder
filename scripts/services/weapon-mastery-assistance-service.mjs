@@ -32,9 +32,12 @@ export class WeaponMasteryAssistanceService {
     this.#initialized = true;
 
     Hooks.on("dnd5e.preCreateUsageMessage", (activity, message) => this.#prepareUsageButtons(activity, message));
-    Hooks.on("renderChatMessageHTML", (message, element) => this.#enrich(message, element));
-    Hooks.on("renderChatMessage", (message, element) => this.#enrich(message, element));
-    Hooks.on("renderChatLog", () => setTimeout(() => this.refreshRenderedMessages(), 0));
+
+    // D&D5e calls this hook after its ChatMessage Data Model has rendered and
+    // enriched the final HTMLElement, including child attack summaries. The
+    // core renderChatMessageHTML hook occurs earlier in that lifecycle and can
+    // therefore be too early for mastery markup such as the native Topple row.
+    Hooks.on("dnd5e.renderChatMessage", (message, element) => this.#enrich(message, element));
     Hooks.on("renderChatLogHTML", () => setTimeout(() => this.refreshRenderedMessages(), 0));
     Hooks.on("createChatMessage", message => this.#scheduleMessageOriginRefresh(message));
     Hooks.on("updateChatMessage", message => this.#scheduleMessageOriginRefresh(message));
@@ -243,31 +246,41 @@ export class WeaponMasteryAssistanceService {
     }
     scopes.push(root);
 
-    for (const scope of scopes) {
-      const reference = String(context.masteryConfig?.reference ?? "");
-      const label = this.#masteryLabel("topple").trim().toLowerCase();
+    const reference = String(context.masteryConfig?.reference ?? "");
+    const label = this.#masteryLabel("topple").trim().toLowerCase();
 
-      // Prefer the native mastery link itself, then fall back to the mastery
-      // supplement text. This survives both the live AttackMessage render and
-      // chat-history/F5 re-renders without depending on a Usage-card wrapper.
-      let supplement = null;
+    for (const scope of scopes) {
+      if (scope.querySelector?.(".cb-weapon-mastery-dc")) return;
+
+      // Anchor to the native mastery element itself rather than to a historical
+      // Usage-card wrapper. This works for the live AttackMessage as well as a
+      // summary embedded in its originating UsageMessage.
+      let anchor = null;
       if (reference) {
-        const link = [...scope.querySelectorAll?.("a[data-uuid]") ?? []]
-          .find(candidate => candidate.dataset.uuid === reference);
-        supplement = link?.closest?.("p.supplement") ?? null;
+        anchor = [...scope.querySelectorAll?.("a[data-uuid]") ?? []]
+          .find(candidate => String(candidate.dataset.uuid ?? "") === reference) ?? null;
       }
-      if (!supplement) {
-        const supplements = [...scope.querySelectorAll?.("p.supplement") ?? []];
-        supplement = supplements.find(row => row.textContent?.toLowerCase?.().includes(label)) ?? null;
+      if (!anchor) {
+        anchor = [...scope.querySelectorAll?.("a.content-link, a[data-link]") ?? []]
+          .find(candidate => candidate.textContent?.trim?.().toLowerCase() === label) ?? null;
       }
-      if (!supplement || supplement.querySelector(".cb-weapon-mastery-dc")) continue;
+
+      // Text-only mastery rows are valid when the system configuration has no
+      // reference link. In that case attach to the native supplement row.
+      if (!anchor) {
+        anchor = [...scope.querySelectorAll?.("p.supplement") ?? []]
+          .find(row => row.textContent?.toLowerCase?.().includes(label)) ?? null;
+      }
+      if (!anchor) continue;
 
       const value = document.createElement("span");
       value.className = "cb-weapon-mastery-dc";
       const conKey = CONFIG.DND5E?.abilities?.con?.abbreviation ?? "DND5E.AbilityConAbbr";
       const con = game.i18n?.localize?.(conKey) ?? "CON";
       value.textContent = ` · DC ${dc} ${con}`;
-      supplement.appendChild(value);
+
+      if (anchor.matches?.("a")) anchor.insertAdjacentElement("afterend", value);
+      else anchor.appendChild(value);
       return;
     }
   }
@@ -463,8 +476,6 @@ export class WeaponMasteryAssistanceService {
   }
 
   static #root(element) {
-    if (element instanceof HTMLElement) return element;
-    if (element?.[0] instanceof HTMLElement) return element[0];
-    return null;
+    return element instanceof HTMLElement ? element : null;
   }
 }

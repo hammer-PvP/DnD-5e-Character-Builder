@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.9.916 — Foundry 14 Chat / Roll Modernization + Require Ammunition
+
+### Blind Skill & Tool Checks — Foundry 14 visibility fix
+- Migrated the per-roll visibility override from deprecated `CONST.DICE_ROLL_MODES.BLIND` / `"blindroll"` to Foundry VTT 14's modern Chat Message visibility key `"blind"`. D&D5e 6.x continues to own the roll configuration and final message creation.
+- Removed the GM bypass. When the world option is enabled, eligible Skill and Tool checks are Blind regardless of whether a Player or GM clicked the roll; GMs still receive the complete result while Players do not.
+- Removed the legacy `flags.dnd5e.roll.type` check from this path and trusts the D&D5e 6.x Skill/Tool post-configuration hook contracts instead.
+
+### Weapon Mastery Chat Assistance — final-render authority
+- Moved Weapon Mastery DOM enrichment to D&D5e's final `dnd5e.renderChatMessage` lifecycle, after the structured ChatMessage Data Model has rendered native attack summaries. This avoids trying to modify Topple markup before D&D5e inserts it.
+- Topple now anchors the calculated `DC <value> CON` directly beside the native mastery link/text and continues to derive the DC from the attack ability recorded on the actual AttackMessage plus the Actor's proficiency bonus.
+- Existing Graze/Cleave structured actions and D&D5e `type: "damage"` message flow are preserved; Character Builder does not duplicate the native mastery label/link.
+
+### Chat hook modernization
+- Removed all Character Builder registrations of the deprecated core `renderChatMessage` hook from Weapon Mastery, Managed Summons, Concentration decisions, and Player Sheet Integrity.
+- Modern chat decorators now consume `HTMLElement` directly through `renderChatMessageHTML`; Weapon Mastery uses the later D&D5e-specific render hook because it depends on fully rendered structured attack content.
+
+### Require Ammunition
+- Removed the former **Homebrew — Ammunition Automation** selection/persistence/footer layer. Character Builder no longer selects ammunition, remembers stacks, displays remaining quantity, consumes ammunition, or calculates ammunition bonuses.
+- Added **Require Ammunition** as a new Rules Assistance option, **Off by default**. For a Weapon Attack with the Ammunition property, Character Builder checks D&D5e's own prepared ammunition options and blocks the attack only when none has usable quantity.
+- The blocked attack shows exactly: `No eligible ammunition is available in this character's inventory.`
+- If eligible ammunition exists, Character Builder performs no further ammunition work. D&D5e owns the normal roll-dialog selection, quantity consumption, magical attack/damage bonuses, damage linkage, auto-destroy, and all native ammunition behavior. The removed rule's stored setting is not promoted into the new gate; worlds opt into Require Ammunition explicitly.
+
+### Scoped window priority polish
+- Starting Character Creation or Level Up now minimizes the target Actor sheet when that sheet is already open. Multiclass and native Advancement flows launched inside those transactions inherit the same foreground-safe state. The sheet is minimized, never closed.
+
+### Compatibility
+- Verified development target updated to **Foundry VTT 14.368 + D&D5e 6.0.5** while retaining Foundry 14.367 minimum and D&D5e 6.0.0–6.0.999 compatibility declarations.
+
 ## 0.9.915 — Managed Summons Lifecycle v2
 
 ### Generic fresh-summon HP reconciliation

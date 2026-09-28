@@ -97,7 +97,6 @@ export class PlayerSheetIntegrityService {
     });
 
     Hooks.on("renderChatMessageHTML", (message, element) => this.#protectChat(message, element));
-    Hooks.on("renderChatMessage", (message, html) => this.#protectChat(message, html));
     Hooks.on("renderTokenHUD", (app, html) => this.#protectTokenHud(app, html));
 
     // Usage Guard authority lives at the Activity boundary, before D&D5e opens
@@ -797,8 +796,9 @@ export class PlayerSheetIntegrityService {
     if (!this.enabled() || game.user?.isGM || !this.ruleEnabled(RULES.RESOURCES)) return;
     const actor = this.#messageActor(message);
     if (!this.protects(actor)) return;
-    const root = element?.querySelectorAll ? element : element?.[0];
-    if (!root?.querySelectorAll) return;
+    const HTMLElementCtor = globalThis.HTMLElement;
+    const root = HTMLElementCtor && element instanceof HTMLElementCtor ? element : null;
+    if (!root) return;
 
     for (const button of root.querySelectorAll(`[data-action="${REFUND_ACTION}"]`)) {
       button.hidden = true;

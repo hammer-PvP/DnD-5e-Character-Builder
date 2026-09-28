@@ -1,7 +1,7 @@
 import { MODULE_ID } from "../constants.mjs";
 import { PlayerSheetIntegrityService } from "./player-sheet-integrity-service.mjs";
 import { TransformationActorCleanupService } from "./transformation-actor-cleanup-service.mjs";
-import { AmmunitionAssistanceService } from "./ammunition-assistance-service.mjs";
+import { AmmunitionRequirementService } from "./ammunition-requirement-service.mjs";
 import { WeaponMasteryAssistanceService } from "./weapon-mastery-assistance-service.mjs";
 
 const ADVANCEMENT_CLOSE_TARGET = "dnd5e.applications.advancement.AdvancementManager.prototype._onClose";
@@ -124,7 +124,7 @@ export class LibWrapperService {
         MODULE_ID,
         DND5E_ATTACK_ROLL_TARGET,
         function (wrapped, config = {}, dialog = {}, message = {}) {
-          return AmmunitionAssistanceService.wrapRollAttack(this, wrapped, config, dialog, message);
+          return AmmunitionRequirementService.wrapRollAttack(this, wrapped, config, dialog, message);
         },
         "WRAPPER"
       );

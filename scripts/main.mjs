@@ -805,11 +805,30 @@ function openForActor(actor) {
   return ui.notifications.warn(eligibility.reason || "Character Builder is not currently available for this Actor.");
 }
 
+function minimizeTargetActorSheet(actor) {
+  const sheet = actor?.sheet ?? null;
+  if (!sheet || typeof sheet.minimize !== "function") return;
+
+  const HTMLElementCtor = globalThis.HTMLElement;
+  const connected = HTMLElementCtor && sheet.element instanceof HTMLElementCtor && sheet.element.isConnected;
+  if (sheet.rendered !== true && !connected) return;
+
+  try {
+    const result = sheet.minimize();
+    if (result?.catch) result.catch(error => {
+      console.warn(`${MODULE_ID} | Could not minimize the target Actor sheet before opening Character Builder.`, error);
+    });
+  } catch (error) {
+    console.warn(`${MODULE_ID} | Could not minimize the target Actor sheet before opening Character Builder.`, error);
+  }
+}
+
 function openBuilder(actor) {
   if (!actor || actor.type !== "character") return ui.notifications.error("Character Builder can only be used with Player Character Actors.");
   if (!actor.isOwner) return ui.notifications.error("You do not own this Actor.");
   if (actor.getFlag(MODULE_ID, "commitSafetyLock")) return ui.notifications.error("Character Builder is locked for this Actor because a protected transaction could not be restored. Ask the GM to inspect the preserved backup.", { permanent: true });
   if (!isCreationEligible(actor)) return ui.notifications.warn("This Actor has already completed level 1 character creation.");
+  minimizeTargetActorSheet(actor);
   CharacterBuilderApp.open(actor);
 }
 
@@ -826,6 +845,7 @@ async function openEpicBoon(actor) {
 function openLevelUp(actor) {
   const eligibility = LevelUpService.eligibility(actor);
   if (!eligibility.ready) return ui.notifications.warn(eligibility.reason);
+  minimizeTargetActorSheet(actor);
   new LevelUpApp(actor).render({ force: true });
 }
 
