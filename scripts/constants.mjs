@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.918";
-export const MODULE_BUILD = "background-advancement-transaction-identity";
+export const MODULE_VERSION = "0.9.919";
+export const MODULE_BUILD = "glancing-blows-homebrew";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -209,6 +209,16 @@ export const RULES_ASSISTANCE_DEFINITIONS = Object.freeze([
     tag: "Source Policy"
   }),
   Object.freeze({
+    key: "glancingBlows",
+    ruleId: "glancing-blows",
+    label: "Glancing Blows",
+    description: "Optional homebrew that maps fixed attack margins around target AC to D&D5e's native damage multipliers. Each margin band can be enabled independently and configured with native 0, ¼, ½, or 1 damage.",
+    tag: "Homebrew",
+    defaultEnabled: false,
+    configureAction: "configure-glancing-blows",
+    configureLabel: "Configure"
+  }),
+  Object.freeze({
     key: "healingPotionMaximumAction",
     ruleId: "healing-potion-maximum-action",
     label: "Homebrew — Healing Potion: Maximum Healing as Action",
@@ -222,6 +232,22 @@ export const RULES_ASSISTANCE_DEFINITIONS = Object.freeze([
 
 export function defaultRulesAssistanceRules() {
   return Object.fromEntries(RULES_ASSISTANCE_DEFINITIONS.map(rule => [rule.key, rule.defaultEnabled !== false]));
+}
+
+export const GLANCING_BLOW_BAND_DEFINITIONS = Object.freeze([
+  Object.freeze({ key: "above", margin: ">= +1", label: "Above AC", defaultMultiplier: 1 }),
+  Object.freeze({ key: "exact", margin: "0", label: "Exact AC", defaultMultiplier: 0.5 }),
+  Object.freeze({ key: "minusOne", margin: "-1", label: "One Below AC", defaultMultiplier: 0.25 }),
+  Object.freeze({ key: "below", margin: "<= -2", label: "Two or More Below AC", defaultMultiplier: 0 })
+]);
+
+export function defaultGlancingBlowsConfig() {
+  return {
+    bands: Object.fromEntries(GLANCING_BLOW_BAND_DEFINITIONS.map(band => [band.key, {
+      enabled: true,
+      multiplier: band.defaultMultiplier
+    }]))
+  };
 }
 
 export const PLAYER_SHEET_INTEGRITY_DEFINITIONS = Object.freeze([
@@ -399,6 +425,7 @@ export function defaultSettings() {
       managedSummons: {
         organizeFolders: true
       },
+      glancingBlows: defaultGlancingBlowsConfig(),
       healingPotionMaximumAction: {
         customPotions: []
       }

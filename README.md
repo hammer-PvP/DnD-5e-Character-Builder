@@ -1,8 +1,8 @@
 # Character Builder
 
-**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14. **v0.9.918 allows D&D5e native linked Cast Activities to use their cached spells without being mistaken for ordinary unprepared spell casts, and corrects the Require Ammunition libWrapper contract so its no-ammo gate can intentionally stop an attack.**
+**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14. **v0.9.919 adds the optional Glancing Blows combat homebrew, using D&D5e native per-target damage multipliers for configurable attack margins around AC.**
 
-> **Post-migration status:** the `v0.9.x1–x4` series was the D&D5e 6.x migration branch. v0.9.918 preserves the stabilized D&D5e 6.x runtime baseline on the normal `v0.9.9xx` line and continues the evidence-driven compatibility-fix policy.
+> **Post-migration status:** the `v0.9.x1–x4` series was the D&D5e 6.x migration branch. v0.9.919 preserves the stabilized D&D5e 6.x runtime baseline on the normal `v0.9.9xx` line and continues the evidence-driven compatibility-fix policy.
 
 It uses the official D&D5e documents and native Advancement system as its rules spine. Character Builder guides the choices, prepares them in drafts, validates the result, and commits the completed transaction to the live Actor.
 
@@ -315,7 +315,8 @@ The current rule list includes:
 - Druid — Wild Shape Restore Lifecycle;
 - Summon Profile Level Guard;
 - Weapon Mastery Chat Assistance;
-- Require Ammunition (Off by default).
+- Require Ammunition (Off by default);
+- Glancing Blows (Off by default).
 
 Roll-modifier assistance uses native D&D5e roll hooks and changes only the current roll configuration. Weapon Mastery damage assistance posts specialized native D&D5e `DamageRoll` messages from the source weapon without permanently editing its formula. Effect assistance reuses the native Active Effect already supplied by the source spell or feature. Rules Assistance never creates duplicate weapons, duplicate spells, duplicate Activities, replacement chat commands, or permanent formula edits.
 
@@ -334,6 +335,8 @@ Agonizing Blast uses Character Builder's managed Invocation target to apply and 
 **Require Ammunition** is **Off by default**. When enabled, Character Builder checks the exact native D&D5e ammunition options for a Weapon Attack that has the Ammunition property. If none of those options has a usable quantity, the attack is cancelled before the roll with `No eligible ammunition is available in this character's inventory.` If eligible ammunition exists, Character Builder immediately gets out of the way and the normal D&D5e attack dialog handles the already-selected ammunition and the list of available alternatives.
 
 Character Builder does **not** select ammunition, persist ammunition preferences, consume quantity, calculate magical ammunition bonuses, modify damage, add a remaining-ammunition footer, or implement special-ammunition effects. Those responsibilities belong entirely to D&D5e 6.x. The former custom Ammunition Automation has been removed rather than migrated.
+
+**Glancing Blows** is **Off by default**. When enabled, **Configure** exposes four fixed attack-margin bands around the target AC: `>= +1`, `0`, `-1`, and `<= -2`. Each band can be enabled independently and selects one of the native D&D5e damage multipliers `0`, `¼`, `½`, or `1`; the defaults are `1`, `½`, `¼`, and `0`. Unchecked bands keep D&D5e's normal hit/miss result, while native critical and fumble results always take precedence. The multiplier is resolved separately for every target, so a multi-target attack can use different native damage multipliers against different ACs. Character Builder does not calculate or apply the reduced damage itself: D&D5e's Damage Application component remains responsible for resistance, vulnerability, rounding, HP changes, and the final Apply Damage action.
 
 Lay on Hands `Remove Poison` waits for the native Activity to complete and spend its normal 5-point cost, then removes only the native `Poisoned` status from the single recorded target. It never searches for or deletes unrelated Active Effects.
 

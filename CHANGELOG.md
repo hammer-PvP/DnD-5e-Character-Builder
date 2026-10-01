@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.919 — Glancing Blows Homebrew
+
+### Glancing Blows — native per-target damage multipliers
+- Added **Glancing Blows** as an optional Rules Automation Assistance homebrew, **Off by default**. The GM can enable the rule and open **Configure** without changing any existing world's combat rules automatically.
+- Added four fixed attack-margin bands around the recorded target AC: `>= +1`, `0`, `-1`, and `<= -2`. Every band can be enabled independently. Defaults are `1`, `½`, `¼`, and `0` respectively.
+- Multiplier choices use D&D5e's native damage-multiplier vocabulary (`0`, `¼`, `½`, `1`). Character Builder reads the native Damage Application component labels when available and keeps only a compatibility fallback for those same values.
+- Resolution is per target. One attack can therefore resolve as a normal hit against one target, a half-damage or quarter-damage Glancing Blow against another, and a miss against another according to each target's recorded AC.
+- Character Builder supplies only the target multiplier through D&D5e's native `DamageApplicationElement` options. D&D5e remains authoritative for the damage roll, resistance, vulnerability, rounding, HP changes, and the final Apply Damage action. No custom damage arithmetic or HP application was added.
+- Unchecked margin bands fall back to D&D5e's normal hit/miss result. Native critical and fumble states always take precedence over the homebrew bands.
+- Attack-card decoration is presentation-only and does not rewrite D&D5e's stored hit/miss result, preserving native downstream attack semantics.
+
+### Regression scope
+- No changes to Advancement, Player Sheet Integrity, Require Ammunition, Weapon Mastery, Managed Summons, Character Keeper, or Item Creator integrations.
+- Preserves the live-validated v0.9.918 linked Cast Activity and Require Ammunition fixes.
+
 ## 0.9.918 — Linked Cast Activities + Require Ammunition Wrapper Contract
 
 ### Player Sheet Integrity — native linked Cast Activities

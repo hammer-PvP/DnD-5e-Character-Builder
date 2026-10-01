@@ -2,6 +2,7 @@ import { MODULE_ID, defaultSettings } from "../constants.mjs";
 import { RulesAssistanceService } from "../services/rules-assistance-service.mjs";
 import { RulesAssistanceSettingsService } from "../services/rules-assistance-settings-service.mjs";
 import { HealingPotionConfigApp } from "./healing-potion-config-app.mjs";
+import { GlancingBlowsConfigApp } from "./glancing-blows-config-app.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -53,6 +54,13 @@ export class RulesAssistanceConfigApp extends HandlebarsApplicationMixin(Applica
       button.addEventListener("click", event => {
         event.preventDefault();
         const app = new HealingPotionConfigApp(this);
+        app.render({ force: true });
+      });
+    });
+    this.element.querySelectorAll('[data-action="configure-glancing-blows"]').forEach(button => {
+      button.addEventListener("click", event => {
+        event.preventDefault();
+        const app = new GlancingBlowsConfigApp(this);
         app.render({ force: true });
       });
     });

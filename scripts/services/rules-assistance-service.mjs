@@ -17,6 +17,7 @@ import { SummonProfileLevelGuardService } from "./summon-profile-level-guard-ser
 import { WeaponMasteryAssistanceService } from "./weapon-mastery-assistance-service.mjs";
 import { ManagedSummonsService } from "./managed-summons-service.mjs";
 import { HealingPotionAssistanceService } from "./healing-potion-assistance-service.mjs";
+import { GlancingBlowsService } from "./glancing-blows-service.mjs";
 
 
 const RULES = Object.freeze({
@@ -58,6 +59,7 @@ export class RulesAssistanceService {
     WeaponMasteryAssistanceService.initialize();
     ManagedSummonsService.initialize();
     HealingPotionAssistanceService.initialize();
+    GlancingBlowsService.initialize();
 
     Hooks.on("dnd5e.preUseActivity", (activity, usageConfig, dialogConfig, messageConfig) =>
       this.#prepareCast(activity, usageConfig, dialogConfig, messageConfig)

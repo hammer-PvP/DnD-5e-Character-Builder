@@ -6690,3 +6690,133 @@
   border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
   border-radius: 5px;
 }
+
+/* v0.9.919 — Glancing Blows homebrew */
+#character-builder-glancing-blows-config,
+.character-builder.glancing-blows-config-app {
+  max-width: calc(100vw - 28px);
+  max-height: calc(100vh - 28px);
+  overflow: hidden;
+}
+.cb-glancing-config {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--cb-bg, #111113);
+}
+.cb-glancing-config > .cb-app-header { flex: 0 0 auto; }
+.cb-glancing-config-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  padding: 14px 16px;
+}
+.cb-glancing-native-note {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 1px solid var(--cb-border);
+  border-radius: 6px;
+  background: rgba(209,176,107,.045);
+  color: var(--cb-muted);
+  line-height: 1.4;
+}
+.cb-glancing-native-note > i { color: var(--cb-gold); margin-top: 2px; }
+.cb-glancing-table {
+  overflow: hidden;
+  border: 1px solid var(--cb-border);
+  border-radius: 6px;
+  background: rgba(255,255,255,.025);
+}
+.cb-glancing-table-head,
+.cb-glancing-row {
+  display: grid;
+  grid-template-columns: 64px minmax(110px, .8fr) minmax(130px, 1fr) minmax(110px, .7fr);
+  gap: 10px;
+  align-items: center;
+  padding: 9px 12px;
+}
+.cb-glancing-table-head {
+  background: rgba(209,176,107,.09);
+  color: var(--cb-gold);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.cb-glancing-row { border-top: 1px solid var(--cb-border-soft); }
+.cb-glancing-row.disabled { opacity: .5; }
+.cb-glancing-enabled { display: inline-flex; justify-content: center; }
+.cb-glancing-margin { font-variant-numeric: tabular-nums; }
+.cb-glancing-row select { width: 100%; min-width: 86px; }
+.cb-glancing-example { margin: 0; color: var(--cb-muted); }
+.cb-glancing-footer {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+}
+.cb-glancing-footer > div { display: flex; gap: 8px; }
+
+/* Presentation only: D&D5e's stored target outcome remains authoritative.
+   These attributes visually express the configured homebrew damage result. */
+.dnd5e2 .pills target-pill.pill[data-cb-glancing] {
+  --pip-fill: var(--color-level-warning);
+  background: color-mix(in srgb, var(--color-level-warning) 32%, var(--dnd5e-background-card));
+  border-color: var(--color-level-warning);
+  color: var(--pill-colored-text-color);
+}
+.dnd5e2 .pills target-pill.pill[data-cb-glancing]::before {
+  color: var(--color-level-warning);
+  content: "\f0e7";
+}
+.dnd5e2 .pills target-pill.pill[data-cb-homebrew-hit] {
+  --pip-fill: var(--color-level-success);
+  background-color: #1a6b22;
+  border-color: var(--color-level-success-border);
+  color: var(--pill-colored-text-color);
+}
+.dnd5e2 .pills target-pill.pill[data-cb-homebrew-hit]::before {
+  color: var(--color-level-success);
+  content: "\f00c";
+}
+.dnd5e2 .pills target-pill.pill[data-cb-homebrew-miss] {
+  background-color: #591010;
+  border-color: var(--color-level-error-border);
+  color: var(--pill-colored-text-color);
+}
+.dnd5e2 .pills target-pill.pill[data-cb-homebrew-miss]::before {
+  color: var(--color-level-error);
+  content: "\f00d";
+}
+.dnd5e2 .pills target-pill.pill .cb-glancing-multiplier {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  margin-inline-start: 4px;
+  padding: 0 4px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+@media (max-width: 700px) {
+  .cb-glancing-table-head,
+  .cb-glancing-row {
+    grid-template-columns: 52px minmax(90px, .8fr) minmax(110px, 1fr) minmax(80px, .7fr);
+    gap: 7px;
+    padding-inline: 8px;
+  }
+  .cb-glancing-footer { align-items: stretch; flex-direction: column; }
+  .cb-glancing-footer > div { display: grid; grid-template-columns: 1fr 1fr; }
+}

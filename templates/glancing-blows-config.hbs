@@ -1,0 +1,49 @@
+<section class="cb-glancing-config">
+  <header class="cb-app-header cb-glancing-header">
+    <i class="fa-solid fa-shield-halved"></i>
+    <div>
+      <h1>Glancing Blows</h1>
+      <p>Map fixed attack margins around target AC to D&amp;D5e's native damage multipliers.</p>
+    </div>
+  </header>
+
+  <div class="cb-glancing-config-body">
+    <div class="cb-glancing-native-note">
+      <i class="fa-solid fa-circle-info"></i>
+      <span>Unchecked rows use normal D&amp;D5e hit/miss behavior. Critical successes and fumbles always keep their native result. Damage calculation, resistance, vulnerability, rounding, and HP application remain native D&amp;D5e behavior.</span>
+    </div>
+
+    <div class="cb-glancing-table" role="table" aria-label="Glancing Blow margins">
+      <div class="cb-glancing-table-head" role="row">
+        <span>Active</span>
+        <span>Margin vs AC</span>
+        <span>Result</span>
+        <span>Damage</span>
+      </div>
+      {{#each rows}}
+      <div class="cb-glancing-row {{#unless enabled}}disabled{{/unless}}" data-glancing-band="{{key}}" role="row">
+        <label class="cb-glancing-enabled" aria-label="Enable {{margin}}">
+          <input type="checkbox" {{checked enabled}}>
+        </label>
+        <strong class="cb-glancing-margin">{{margin}}</strong>
+        <span data-glancing-result>{{result}}</span>
+        <select aria-label="Damage multiplier for {{margin}}">
+          {{#each options}}
+          <option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>
+          {{/each}}
+        </select>
+      </div>
+      {{/each}}
+    </div>
+
+    <p class="cb-glancing-example"><strong>Default:</strong> above AC = 1, exact AC = ½, AC − 1 = ¼, AC − 2 or lower = 0.</p>
+  </div>
+
+  <footer class="cb-footer cb-glancing-footer">
+    <button type="button" data-action="cancel"><i class="fa-solid fa-arrow-left"></i> Back</button>
+    <div>
+      <button type="button" data-action="reset"><i class="fa-solid fa-arrow-rotate-left"></i> Reset to Defaults</button>
+      <button type="button" class="gold-button" data-action="save" {{#if busy}}disabled{{/if}}><i class="fa-solid fa-floppy-disk"></i> Save</button>
+    </div>
+  </footer>
+</section>
