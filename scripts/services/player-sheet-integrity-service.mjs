@@ -196,6 +196,15 @@ export class PlayerSheetIntegrityService {
 
     const mode = PlayerSheetIntegritySettingsService.unpreparedSpellUsageMode();
     if (mode === "off") return true;
+
+    // D&D5e Cast Activities execute their granted spell through a hidden
+    // cached Spell Item. That cached spell is intentionally independent from
+    // the Actor's prepared-spell list; the source Cast Activity owns its
+    // availability and consumption rules. Only bypass this guard when the
+    // current use was actually initiated by D&D5e's linked-spell lifecycle and
+    // all native provenance values agree.
+    if (this.#isNativeLinkedCastUse(activity, usageConfig)) return true;
+
     if (!this.#isRestrictedUnpreparedSpell(actor, item)) return true;
 
     const inCombat = this.#actorInCombat(actor);
@@ -736,6 +745,22 @@ export class PlayerSheetIntegrityService {
     if (mode === "combatOnly") return inCombat;
     if (mode === "always" && !inCombat && this.#wizardRitualAdeptEligible(actor, spell)) return false;
     return mode === "always";
+  }
+
+  static #isNativeLinkedCastUse(activity, usageConfig = {}) {
+    const spell = activity?.item ?? activity?.parent ?? null;
+    if (spell?.type !== "spell") return false;
+
+    const cachedFor = String(spell.getFlag?.("dnd5e", "cachedFor") ?? "");
+    const causeActivity = String(usageConfig?.cause?.activity ?? "");
+    if (!cachedFor || !causeActivity || causeActivity !== cachedFor) return false;
+
+    const linkedActivity = activity?.getLinkedActivity?.(causeActivity) ?? null;
+    if (linkedActivity?.type !== "cast" || String(linkedActivity.relativeUUID ?? "") !== causeActivity) return false;
+
+    const actor = activity?.actor ?? spell?.actor ?? spell?.parent ?? null;
+    const linkedActor = linkedActivity?.actor ?? linkedActivity?.item?.actor ?? linkedActivity?.item?.parent ?? null;
+    return Boolean(actor && linkedActor && actor.id === linkedActor.id);
   }
 
   static #isRestrictedUnpreparedSpell(actor, spell) {

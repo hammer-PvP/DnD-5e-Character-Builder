@@ -1,8 +1,8 @@
 # Character Builder
 
-**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14. **v0.9.917 fixes Background completion when native D&D5e Advancement materializes a Background with a normalized identifier that differs from the source document, while preserving the v0.9.916 Foundry 14 / D&D5e 6.x chat, roll, Weapon Mastery, and Require Ammunition baseline unchanged.**
+**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14. **v0.9.918 allows D&D5e native linked Cast Activities to use their cached spells without being mistaken for ordinary unprepared spell casts, and corrects the Require Ammunition libWrapper contract so its no-ammo gate can intentionally stop an attack.**
 
-> **Post-migration status:** the `v0.9.x1–x4` series was the D&D5e 6.x migration branch. v0.9.917 preserves that stabilized runtime baseline on the normal `v0.9.9xx` line and applies only evidence-driven compatibility fixes and small policy guards.
+> **Post-migration status:** the `v0.9.x1–x4` series was the D&D5e 6.x migration branch. v0.9.918 preserves the stabilized D&D5e 6.x runtime baseline on the normal `v0.9.9xx` line and continues the evidence-driven compatibility-fix policy.
 
 It uses the official D&D5e documents and native Advancement system as its rules spine. Character Builder guides the choices, prepares them in drafts, validates the result, and commits the completed transaction to the live Actor.
 

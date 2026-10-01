@@ -126,7 +126,9 @@ export class LibWrapperService {
         function (wrapped, config = {}, dialog = {}, message = {}) {
           return AmmunitionRequirementService.wrapRollAttack(this, wrapped, config, dialog, message);
         },
-        "WRAPPER"
+        // Require Ammunition is intentionally a gate: when no eligible stack
+        // exists it must be allowed to stop the roll instead of chaining.
+        "MIXED"
       );
       api.register(
         MODULE_ID,

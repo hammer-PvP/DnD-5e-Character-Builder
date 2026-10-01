@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.918 — Linked Cast Activities + Require Ammunition Wrapper Contract
+
+### Player Sheet Integrity — native linked Cast Activities
+- Fixed the Unprepared Spell Usage guard incorrectly blocking spells invoked through D&D5e native `CastActivity` documents, such as spells granted directly by equipment or features.
+- Character Builder now recognizes the actual D&D5e linked-spell lifecycle instead of treating the hidden cached Spell Item as a normal spellbook cast.
+- Authorization is generic and content-agnostic: the cached spell's native `flags.dnd5e.cachedFor`, the prepared usage `cause.activity`, and the resolved linked `cast` Activity must all agree on the same Actor.
+- Ordinary unprepared spell usage remains protected. No Item Creator, item-name, spell-name, or campaign-specific exception was added.
+
+### Require Ammunition — libWrapper gate semantics
+- Changed the `AttackActivity.prototype.rollAttack` interception from libWrapper `WRAPPER` to `MIXED`, matching the rule's intentional ability to stop an attack when no eligible ammunition exists.
+- The gate behavior is otherwise unchanged: with ammunition Character Builder immediately chains to D&D5e; without ammunition it shows `No eligible ammunition is available in this character's inventory.` and stops the attack.
+- D&D5e remains authoritative for ammunition selection, magical ammunition bonuses, quantity consumption, damage linkage, and auto-destroy.
+
+### Regression scope
+- Preserves the v0.9.917 Background Advancement transaction fix and the validated Topple, Graze, Cleave, Blind Skill/Tool, and native ammunition behavior.
+- Draft Actor cleanup timing remains a minor backlog item and is intentionally unchanged.
+
 ## 0.9.917 — Background Advancement Transaction Identity
 
 ### Background completion — native transaction result
