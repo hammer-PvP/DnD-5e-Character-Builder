@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.919";
-export const MODULE_BUILD = "glancing-blows-homebrew";
+export const MODULE_VERSION = "0.9.920";
+export const MODULE_BUILD = "structured-recent-roll-registry";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {

@@ -36,7 +36,9 @@ export class RecentRollRegistryService {
   }
 
   static #captureMessage(message) {
-    const rollType = String(message?.getFlag?.("dnd5e", "roll.type") ?? "");
+    const rollType = this.#structuredRollType(message);
+    if (!rollType) return;
+
     const rolls = Array.from(message?.rolls ?? []).filter(roll => Number.isFinite(Number(roll?.total)));
     if (!rolls.length) return;
     const actor = message.getAssociatedActor?.()
@@ -69,6 +71,33 @@ export class RecentRollRegistryService {
     }
     if (rollType === "damage") this.#upsertDamage(row);
     this.#prune();
+  }
+
+
+
+  /**
+   * Classify the D&D5e 6.x structured ChatMessage without consulting rendered
+   * chat HTML or the removed flags.dnd5e.roll.type compatibility data.
+   *
+   * Eligibility is intentionally based only on the kind of roll. In
+   * particular, Attack rolls are registered whether they hit or miss and
+   * Checks are registered whether they succeed or fail. Cutting Words leaves
+   * those outcomes to the GM.
+   *
+   * @param {ChatMessage} message
+   * @returns {"attack"|"ability"|"skill"|"tool"|"damage"|null}
+   */
+  static #structuredRollType(message) {
+    const type = String(message?.type ?? "");
+    if (type === "attack") return "attack";
+    if (type === "damage") return "damage";
+    if (type !== "check") return null;
+
+    const system = message?.system ?? {};
+    if (String(system.type ?? "ability") === "initiative") return null;
+    if (String(system.skill ?? "").trim()) return "skill";
+    if (String(system.tool ?? "").trim()) return "tool";
+    return String(system.ability ?? "").trim() ? "ability" : null;
   }
 
   static #publicResolution(message, roll) {

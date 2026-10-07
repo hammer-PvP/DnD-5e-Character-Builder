@@ -1,10 +1,10 @@
 # Character Builder — Complete Manual
 
-**Version:** 0.9.916  
+**Version:** 0.9.920  
 **Foundry VTT:** 14  
-**D&D5e:** 6.0.0–6.0.999 — active 6.x runtime line (verified target 6.0.5)
+**D&D5e:** 6.0.0–6.0.999 — active 6.x runtime line (verified target 6.0.6)
 
-> **Migration note:** the temporary `v0.9.x1–x4` D&D5e 6.x migration branch is complete. v0.9.916 preserves that stabilized baseline on the normal `v0.9.9xx` line and applies evidence-driven Foundry 14 / D&D5e 6.x compatibility fixes without reimplementing mechanics already owned by the game system.
+> **Migration note:** the temporary `v0.9.x1–x4` D&D5e 6.x migration branch is complete. v0.9.920 preserves that stabilized baseline on the normal `v0.9.9xx` line and applies evidence-driven Foundry 14 / D&D5e 6.x compatibility fixes without reimplementing mechanics already owned by the game system.
 
 This is the single user-facing manual shipped in the installable Character Builder module. The root `README.md` remains the GitHub overview; internal development protocols and duplicated documentation assets are intentionally not distributed to installed worlds.
 
@@ -23,7 +23,7 @@ It uses the official D&D5e documents and native Advancement system as its rules 
 ## Compatibility
 
 - Foundry VTT 14.367 or newer within v14 (verified target 14.368)
-- D&D5e 6.0.0–6.0.999 (verified target 6.0.5)
+- D&D5e 6.0.0–6.0.999 (verified target 6.0.6)
 - Player's Handbook 2024 content package
 - SRD 5.2 Modern
 - SRD 5.1 Legacy and compatible 2014 compendiums through the Legacy progression mode
@@ -346,7 +346,7 @@ Lay on Hands `Remove Poison` waits for the native Activity to complete and spend
 
 **Source-to-Target Damage Riders** extend contextual automation to damage that exists because a specific source Actor has marked or cursed a specific target. The runtime resolves the controller from the target effect, requires that controller to be the current attacker and that target to be the single selected target, then appends the source document's own Damage Activity to the native Attack damage process. Hunter's Mark uses `Bonus Mark Damage`, upgrading to Foe Slayer's native improved Activity when present; Hex uses `Bonus Hex Damage`. The formulas and damage types remain source-authored rather than hard-coded into weapons. Hunter's Mark keeps the native validated application path. Hex uses a focused compatibility path because D&D5e 5.3.3 can create the usage message without exposing a usable Effects tray in this workflow: after a Hex utility Activity that declares the six curse effects is used, Character Builder presents those same source-authored `Hexed Strength/Dexterity/Constitution/Intelligence/Wisdom/Charisma` choices, applies the selected native Active Effect to the single recorded target, and binds it to the live D&D5e concentration effect. Character Builder does not recreate the disadvantage mechanic or the `1d6` damage formula.
 
-**Cutting Words** remains a manual Bard decision. The Bard targets a hostile roller to reduce that creature's most recent eligible D20 roll, or targets a friendly recipient to arm a reduction against the latest pending damage message. For hostile/D20 targets, the Recent Roll Registry prefers the shared queue's finalized `currentTotal`, so later Item-origin modifiers already resolved by the queue are included exactly once before Cutting Words subtracts its die. The public handoff never includes hidden AC/DC or success/failure state. The damage mode uses the campaign-approved simplified order: D&D5e first calculates its normal final damage, then Cutting Words subtracts the Bardic die immediately before HP/temporary HP are changed. No automatic success-sensitive prompt appears. Cutting Words consumes the same native Bardic Inspiration reserve used by the normal Inspiration Activity.
+**Cutting Words** remains a manual Bard decision. The Bard targets a hostile roller to reduce that creature's most recent eligible Attack/Ability/Skill/Tool roll, or targets a friendly recipient to arm a reduction against the latest pending Damage message. On D&D5e 6.x, the Recent Roll Registry reads the native structured ChatMessage types (`attack`, `check`, and `damage`) and Check system data rather than legacy roll flags or rendered chat HTML. Attack and Check eligibility does not depend on hit/miss or success/failure; those outcomes remain for the GM to adjudicate. For hostile/D20 targets, the registry prefers the shared queue's finalized `currentTotal`, so later Item-origin modifiers already resolved by the queue are included exactly once before Cutting Words subtracts its die. The public handoff never includes hidden AC/DC or success/failure state. The damage mode uses the campaign-approved simplified order: D&D5e first calculates its normal final damage, then Cutting Words subtracts the Bardic die immediately before HP/temporary HP are changed. No automatic success-sensitive prompt appears. Cutting Words consumes the same native Bardic Inspiration reserve used by the normal Inspiration Activity.
 
 Character Builder also exposes a versioned **Resource Consumption Event** after D&D5e finishes native Activity consumption. Consumers can subscribe through `api.resourceEvents` to learn which reserve actually changed and which Item/Activity caused it. This deliberately does not mean that a Bardic Inspiration effect was granted to a target.
 

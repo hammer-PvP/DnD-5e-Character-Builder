@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.920 — D&D5e 6 Structured Recent Roll Registry
+
+### Cutting Words — structured ChatMessage discovery
+- Fixed **Bard — Cutting Words** failing to find recent eligible rolls after the D&D5e 6.x ChatMessage migration. The shared Recent Roll Registry no longer reads the removed legacy `flags.dnd5e.roll.type` contract.
+- Attack rolls are now discovered from D&D5e's structured `ChatMessage.type === "attack"` messages. Eligibility is intentionally independent of hit/miss state, target AC, or any success/failure evaluation: the latest eligible Attack Roll made by the targeted Actor remains available for the GM's adjudication.
+- Ability, Skill, and Tool checks are now discovered from `ChatMessage.type === "check"` plus the native `message.system.ability`, `message.system.skill`, `message.system.tool`, and `message.system.type` fields. Native Initiative checks are explicitly excluded from Cutting Words eligibility.
+- Pending damage discovery now uses `ChatMessage.type === "damage"`, preserving the existing friendly-target Cutting Words flow that arms the Bardic die reduction against the latest pending Damage message before HP/Temporary HP are changed.
+- The registry continues to prefer the shared roll-resolution queue's finalized public `currentTotal` when available, so already-resolved public modifiers are included exactly once.
+
+### Regression / compatibility scope
+- No chat HTML parsing was added and no rendered-card structure is used for roll discovery.
+- Cutting Words service behavior, Bardic Inspiration consumption, Weapon Mastery/Topple, Graze, Cleave, Blind Skill & Tool Checks, Glancing Blows, Require Ammunition, Advancement, and Managed Summons are intentionally unchanged.
+- D&D5e compatibility verified target updated to **6.0.6**; the supported system range remains 6.0.0–6.0.999.
+
 ## 0.9.919 — Glancing Blows Homebrew
 
 ### Glancing Blows — native per-target damage multipliers
