@@ -11,6 +11,7 @@ import { AlwaysPreparedSpellReconciliationService } from "./always-prepared-spel
 import { NativeFeatureCompatibilityService } from "./native-feature-compatibility-service.mjs";
 import { AdvancementCompletionGateService } from "./advancement-completion-gate-service.mjs";
 import { InternalActorReferenceRebindingService } from "./internal-actor-reference-rebinding-service.mjs";
+import { SubclassSpellcastingService } from "./subclass-spellcasting-service.mjs";
 
 /**
  * Applies a completed Level Up draft as one recoverable transaction. The live
@@ -323,22 +324,23 @@ export class LevelUpCommitService {
 
   static #validateSubclassCasterSpellLevels(draft, state) {
     const classIdentifier = String(state.selectedClassIdentifier ?? "");
-    if (!["fighter", "rogue"].includes(classIdentifier)) return;
-    const subclassIdentifiers = new Set(draft.items.filter(item => item.type === "subclass")
-      .map(item => String(item.system?.identifier ?? "").toLowerCase()));
-    const expectedSubclass = classIdentifier === "fighter" ? "eldritch-knight" : "arcane-trickster";
-    if (!subclassIdentifiers.has(expectedSubclass)) return;
+    const cls = draft.items.find(item => item.type === "class"
+      && String(item.system?.identifier ?? "") === classIdentifier);
+    if (!cls || String(cls.system?.spellcasting?.progression ?? "none") !== "none") return;
+    const caster = SubclassSpellcastingService.find(draft, classIdentifier);
+    if (!caster) return;
 
     const level = Number(state.targetClassLevel ?? 0);
-    const maximum = level < 3 ? 0 : level < 7 ? 1 : level < 13 ? 2 : level < 19 ? 3 : 4;
+    const maximum = SubclassSpellcastingService.maximumSpellLevel(caster.progression, level);
     const invalid = draft.items.find(item => {
       if (item.type !== "spell" || Number(item.system?.level ?? 0) <= maximum) return false;
       const acquisition = item.getFlag(MODULE_ID, "levelUpSpell");
       return acquisition?.transactionId === state.transactionId
-        && acquisition?.classIdentifier === classIdentifier;
+        && acquisition?.classIdentifier === classIdentifier
+        && (!acquisition.subclassItemId || acquisition.subclassItemId === caster.subclass.id);
     });
     if (invalid) {
-      throw new Error(`${invalid.name} is a level ${invalid.system?.level} spell, but ${expectedSubclass === "eldritch-knight" ? "Eldritch Knight" : "Arcane Trickster"} level ${level} can learn spells only through level ${maximum}. Return to Additional Choices and select an eligible spell.`);
+      throw new Error(`${invalid.name} is a level ${invalid.system?.level} spell, but ${caster.subclass.name} level ${level} can learn spells only through level ${maximum}. Return to Spells & Features and select an eligible spell.`);
     }
   }
 

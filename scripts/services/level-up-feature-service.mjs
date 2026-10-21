@@ -5,6 +5,7 @@ import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
 import { AdditionalCantripEntitlementService } from "./additional-cantrip-entitlement-service.mjs";
 import { advancementName } from "../utils/advancement-utils.mjs";
+import { SubclassSpellcastingService } from "./subclass-spellcasting-service.mjs";
 
 const LAND_SPELLS = Object.freeze({
   arid: {
@@ -501,57 +502,17 @@ export class LevelUpFeatureService {
     return this.#classSpellPool("bard", registry);
   }
 
+  // Kept as delegation points for existing Level Up feature/owner consumers.
   static subclassCaster(draft, classIdentifier) {
-    const subclasses = draft.items.filter(item => {
-      if (item.type !== "subclass") return false;
-      const parent = item.system?.classIdentifier ?? item.system?.class?.identifier ?? item.system?.class;
-      return !parent || String(parent) === String(classIdentifier);
-    });
-    const identify = item => {
-      const explicit = String(item?.system?.identifier ?? "").trim().toLowerCase();
-      if (explicit) return explicit;
-      const source = String(item?.getFlag?.("dnd5e", "sourceId") ?? item?._stats?.compendiumSource ?? "").toLowerCase();
-      if (source.includes("eldritch") && source.includes("knight")) return "eldritch-knight";
-      if (source.includes("arcane") && source.includes("trickster")) return "arcane-trickster";
-      return this.#slug(item?.name ?? "");
-    };
-
-    if (classIdentifier === "fighter") {
-      const subclass = subclasses.find(item => identify(item) === "eldritch-knight") ?? null;
-      if (subclass) return { subclass, identifier: "eldritch-knight", spellList: "wizard", ability: "int", sourceItem: "subclass:eldritch-knight" };
-    }
-    if (classIdentifier === "rogue") {
-      const subclass = subclasses.find(item => ["arcane-trickster", "trickster"].includes(identify(item))) ?? null;
-      if (subclass) return { subclass, identifier: "arcane-trickster", spellList: "wizard", ability: "int", sourceItem: "subclass:arcane-trickster" };
-    }
-    return null;
+    return SubclassSpellcastingService.find(draft, classIdentifier);
   }
 
   static subclassCasterCantripCount(caster, oldLevel, newLevel) {
-    if (!caster) return 0;
-    const known = level => {
-      if (level < 3) return 0;
-      if (caster.identifier === "arcane-trickster") return level >= 10 ? 4 : 3;
-      return level >= 10 ? 3 : 2;
-    };
-    let count = Math.max(0, known(newLevel) - known(oldLevel));
-    if (caster.identifier === "arcane-trickster" && oldLevel < 3 && newLevel >= 3) count -= 1; // Mage Hand is a native fixed grant.
-    return Math.max(0, count);
+    return SubclassSpellcastingService.cantripCount(caster, oldLevel, newLevel);
   }
 
   static subclassCasterPreparedCount(caster, oldLevel, newLevel) {
-    if (!caster) return 0;
-    const scale = caster.subclass?.toObject().system?.advancement ?? {};
-    const advancement = Object.values(scale).find(entry => entry.type === "ScaleValue"
-      && String(entry.configuration?.identifier ?? advancementName(entry)).toLowerCase().includes("prepared"));
-    const value = level => {
-      const rows = Object.entries(advancement?.configuration?.scale ?? {})
-        .map(([minimum, row]) => [Number(minimum), Number(row?.value ?? 0)])
-        .filter(([minimum]) => minimum <= level)
-        .sort((a, b) => a[0] - b[0]);
-      return rows.at(-1)?.[1] ?? 0;
-    };
-    return Math.max(0, value(newLevel) - value(oldLevel));
+    return SubclassSpellcastingService.preparedCount(caster, oldLevel, newLevel);
   }
 
   static #spellSection(config, registry) {

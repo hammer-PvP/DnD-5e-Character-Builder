@@ -4,6 +4,7 @@ import { SourceResolver } from "./source-resolver.mjs";
 import { AdvancementChoiceAnnotationService } from "./advancement-choice-annotation-service.mjs";
 import { ItemGrantIntegrityService } from "./item-grant-integrity-service.mjs";
 import { LevelUpFeatureService } from "./level-up-feature-service.mjs";
+import { SubclassSpellcastingService } from "./subclass-spellcasting-service.mjs";
 import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.mjs";
 import { NativeAdvancementValidationService, StructuralLevelUpError } from "./native-advancement-validation-service.mjs";
 import { PactOfTheTomeService } from "./pact-of-the-tome-service.mjs";
@@ -26,13 +27,24 @@ export class LevelUpRulesService {
     const identifier = cls.system?.identifier;
     const oldClassLevel = Number(state.sourceClassLevel ?? Math.max(0, Number(cls.system?.levels ?? 1) - 1));
     const newClassLevel = Number(state.targetClassLevel ?? cls.system?.levels ?? 1);
-    const subclassCaster = LevelUpFeatureService.subclassCaster(draft, identifier);
+    const classProgression = String(cls.system?.spellcasting?.progression ?? "none");
+    // A subclass can introduce spellcasting to a martial class. Do not override
+    // a casting class's own preparation model with unrelated subclass metadata.
+    const subclassCaster = classProgression === "none"
+      ? SubclassSpellcastingService.find(draft, identifier)
+      : null;
     const model = subclassCaster ? "limited" : this.#modelFor(cls);
-    const progression = subclassCaster ? "third" : (cls.system?.spellcasting?.progression ?? "none");
+    const progression = subclassCaster?.progression ?? classProgression;
     const oldMaximumSpellLevel = this.#maximumSpellLevel(progression, oldClassLevel);
     const maximumSpellLevel = this.#maximumSpellLevel(progression, newClassLevel);
-    const spellListIdentifier = subclassCaster?.spellList ?? identifier;
-    const baseSpellPool = progression === "none" ? [] : await this.#classSpellPool(spellListIdentifier, registry);
+    const spellList = subclassCaster
+      ? await SubclassSpellcastingService.spellList(subclassCaster, draft, newClassLevel)
+      : { type: "class", identifier };
+    const baseSpellPool = progression === "none" || !spellList ? []
+      : await this.#classSpellPool(spellList.identifier, registry, spellList.type);
+    const spellListIssue = subclassCaster && !baseSpellPool.length
+      ? `Unable to resolve an eligible spell list for ${subclassCaster.subclass.name}. Register a D&D5e subclass spell list, provide an explicit spell-list source in its granted Spellcasting feature, or configure a class spell list. Character Builder will not guess which spells are legal.`
+      : "";
     let spellPool = baseSpellPool;
     const magicalSecretsActive = identifier === "bard" && LevelUpFeatureService.magicalSecretsActive(draft, newClassLevel);
     if (magicalSecretsActive) spellPool = await LevelUpFeatureService.magicalSecretsPool(registry);
@@ -268,7 +280,7 @@ export class LevelUpRulesService {
       levelLabel: this.#levelLabel(option.system?.level)
     })));
 
-    const hasChoices = cantripCount > 0 || spellCount > 0 || savant.count > 0 || invocations.count > 0
+    const hasChoices = Boolean(spellListIssue) || cantripCount > 0 || spellCount > 0 || savant.count > 0 || invocations.count > 0
       || replacement.available || cantripReplacement.available || invocations.replacement.available || features.hasChoices
       || pactOfTheTome.visible || metamagic.active;
     const hasAutomatic = automaticSpells.length > 0 || automaticItemGrants.length > 0
@@ -297,6 +309,8 @@ export class LevelUpRulesService {
       model,
       progression,
       maximumSpellLevel,
+      spellListIssue,
+      spellListSource: spellList?.source ?? "",
       cantripCount,
       spellCount,
       rangerPreparationIncrease,
@@ -308,7 +322,7 @@ export class LevelUpRulesService {
       selectedSpellCount: selectedSpellSet.size,
       requiredSpellSelections,
       selectedSpellSelections,
-      spellSelectionComplete: baseSelectionComplete && spellReplacementComplete && cantripReplacementComplete
+      spellSelectionComplete: !spellListIssue && baseSelectionComplete && spellReplacementComplete && cantripReplacementComplete
         && features.complete && tomeSelectionComplete && metamagic.complete,
       duplicateSelectionCount,
       cantripGroups: registry.groupOptions(cantripOptions),
@@ -356,6 +370,7 @@ export class LevelUpRulesService {
   static async apply(sourceActor, draft, registry, formData) {
     const context = await this.buildContext(sourceActor, draft, registry);
     const state = LevelUpDraftManager.getState(draft);
+    if (context.spellListIssue) throw new Error(context.spellListIssue);
     if (state.additionalComplete) return { created: 0, deleted: 0 };
     const cls = draft.items.get(state.selectedClassId);
     if (!cls) throw new Error("The advanced Class no longer exists.");
@@ -761,13 +776,13 @@ export class LevelUpRulesService {
     return cls.system?.spellcasting?.progression === "none" ? "none" : "limited";
   }
 
-  static async #classSpellPool(identifier, registry) {
+  static async #classSpellPool(identifier, registry, type = "class") {
     const spellLists = globalThis.dnd5e?.registry?.spellLists;
     if (!spellLists) throw new Error("The D&D5e spell-list registry is unavailable.");
     for (let attempt = 0; attempt < 20 && !spellLists.ready; attempt++) {
       await new Promise(resolve => setTimeout(resolve, 50));
     }
-    const list = spellLists.forType("class", identifier);
+    const list = spellLists.forType(type, identifier);
     if (!list) return [];
     const options = new Map();
     for (const index of list.indexes) {

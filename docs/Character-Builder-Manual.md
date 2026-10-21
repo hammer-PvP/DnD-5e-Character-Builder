@@ -951,3 +951,12 @@ A useful report includes:
 
 A stack frame from a generated `Bundle.js` should include the package or browser source path shown when the frame is opened in developer tools.
 
+
+
+## Generic Subclass Spellcasting (v0.9.921)
+
+When a noncasting parent Class gains spellcasting through its selected Subclass, Level Up reads the Subclass's native D&D5e spellcasting progression and class-level `ScaleValue` entitlements. Registered subclass spell lists take priority. If the subclass does not register a dedicated list, an unambiguous spell-list reference in its granted Spellcasting Feature can select a registered class list (e.g., a Wizard list) without identifying the subclass by name. A registered parent-class list is a secondary fallback.
+
+If no usable list can be resolved, the Spells & Features step displays an explicit diagnostic and cannot be confirmed. Generic parsing of arbitrary prose is deliberately not attempted: only a uniquely named class spell list verified in D&D5e's native registry qualifies. Native ScaleValues remain authoritative over contradictory descriptive prose.
+
+Existing official third-caster subclass compatibility and fixed Feature grants remain intact; Character Builder does not modify the source module's Items or replace native D&D5e Advancement.

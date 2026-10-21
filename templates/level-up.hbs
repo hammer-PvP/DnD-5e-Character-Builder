@@ -318,6 +318,9 @@
       </header>
 
       <div class="cb-level-up-choices-scroll">
+      {{#if rules.spellListIssue}}
+      <p class="cb-notice"><i class="fa-solid fa-triangle-exclamation"></i> {{rules.spellListIssue}}</p>
+      {{/if}}
       <p class="cb-notice"><i class="fa-solid fa-bolt"></i> {{rules.cantripScaling.note}} Current scaling multiplier: ×{{rules.cantripScaling.threshold}}.</p>
 
       {{#if rules.automaticItemGrantCount}}

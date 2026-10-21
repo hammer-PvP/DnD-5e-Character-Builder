@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.921 — Generic Subclass Spellcasting Resolution
+
+### Third-party / homebrew subclass spellcasting
+- Level Up now recognizes a subclass's native `system.spellcasting.progression` and ability when the parent Class has `progression: none`, without requiring Fighter, Rogue, or any specific third-party class identifier.
+- Reads native subclass `ScaleValue` progression for Cantrips Known and Max Prepared Spells; respects `system.spellcasting.preparation.formula` when it references the subclass scale. Data-model records override inconsistent feature-description tables.
+- Resolves spell lists in a conservative order: native D&D5e subclass Spell List registry, an explicitly configured native source field, a uniquely identified list in the subclass's granted Spellcasting Feature, then registered class lists. Never assumes all third-casters use Wizard.
+- For descriptions containing a single explicit class spell-list reference, only a list confirmed present in D&D5e's native spell-list registry is accepted. Conflicting lists are not guessed, and unresolvable spell sources produce a visible explanation and prevent completing an invalid spell selection.
+- Preserves class/subclass attribution, spellcasting ability, native spell Item creation/preparation flags, Source Registry prioritization, and the native Advancement grants.
+- Existing Eldritch Knight and Arcane Trickster legacy fallback counts and fixed Mage Hand handling remain narrowly available for prior content lacking structured scale/progression data; structured data takes precedence.
+- Level Up commit spell-level validation now uses the discovered subclass's actual spellcasting progression rather than restricting the check to Fighter/Rogue.
+
+### Regression scope
+- Source changes are limited to subclass spellcasting resolution, Level Up spell choices, the matching commit guard, and explicit unresolved-list presentation.
+- Creation/class-list management, multiclass mechanics, Player Sheet Integrity, Weapon Mastery (Topple/Graze/Cleave), Cutting Words, Glancing Blows, ammunition, managed summons, and Draft Cleanup are unchanged.
+- Fixture QA covers the reported Monster Hunter / Occultist Guild / Spellcasting JSONs: 2 cantrips + 3 level-1 spells at class level 3, third cantrip at level 11 (native ScaleValue), prepared scale at level 16, feature-text Wizard source, alternative Druid-list subclass, native subclass list priority, legacy EK/AT, and missing-list safety.
+
 ## 0.9.920 — D&D5e 6 Structured Recent Roll Registry
 
 ### Cutting Words — structured ChatMessage discovery
