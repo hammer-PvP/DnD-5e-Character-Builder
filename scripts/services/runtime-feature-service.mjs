@@ -1,3 +1,4 @@
+import { SpellProgressionService } from "./spell-progression-service.mjs";
 import { CURRENCY_CP, MODULE_ID } from "../constants.mjs";
 import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.mjs";
 import { PactOfTheTomeService } from "./pact-of-the-tome-service.mjs";
@@ -2004,15 +2005,7 @@ export class RuntimeFeatureService {
   }
 
   static #maximumSpellLevel(progression, level) {
-    const value = Number(level ?? 0);
-    if (value <= 0) return 0;
-    switch (String(progression ?? "")) {
-      case "full": return Math.min(9, Math.ceil(value / 2));
-      case "half": return Math.min(5, Math.max(1, Math.floor((value + 3) / 4)));
-      case "third": return Math.min(4, Math.max(1, Math.floor((value + 2) / 3)));
-      case "pact": return Math.min(5, Math.ceil(value / 2));
-      default: return 0;
-    }
+    return SpellProgressionService.maximumSpellLevel(progression, level);
   }
 
   static #itemReferenceUuid(item) {

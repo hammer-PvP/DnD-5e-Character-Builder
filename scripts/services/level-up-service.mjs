@@ -150,10 +150,30 @@ export class LevelUpService {
     }
     const checks = [];
     const originalClass = this.originalClass(actor);
-    const identifiers = [originalClass?.system?.identifier, newClassIdentifier].filter(Boolean);
-    for (const identifier of [...new Set(identifiers)]) {
-      const alternatives = MULTICLASS_PRIMARY_ABILITIES[identifier] ?? [];
-      if (!alternatives.length) continue;
+    // The selected class option includes system data from the enabled source
+    // registry. Do not skip prerequisites for new classes absent from the PHB map.
+    const target = typeof newClassIdentifier === "string" ? null : newClassIdentifier;
+    const targetIdentifier = String(target?.identifier ?? newClassIdentifier ?? "");
+    const classes = [
+      { identifier: originalClass?.system?.identifier, system: originalClass?.system },
+      { identifier: targetIdentifier, system: target?.system }
+    ];
+    for (const { identifier, system } of classes.filter(row => row.identifier)) {
+      if (checks.some(row => row.identifier === identifier)) continue;
+      const primary = system?.primaryAbility;
+      const values = Array.isArray(primary?.value) ? primary.value
+        : primary?.value instanceof Set ? [...primary.value] : [];
+      const abilities = [...new Set(values.map(v => String(v).trim().toLowerCase()).filter(Boolean))];
+      const legacy = MULTICLASS_PRIMARY_ABILITIES[identifier] ?? [];
+      // Preserve all previously approved PHB prerequisite behavior. New
+      // source classes without a legacy mapping use the native class metadata.
+      const alternatives = legacy.length ? legacy
+        : abilities.length ? (primary?.all ? [abilities] : abilities.map(ability => [ability]))
+          : [];
+      if (!alternatives.length) {
+        checks.push({ identifier, qualified: false, requirements: "source-declared primary ability (unavailable)" });
+        continue;
+      }
       const qualified = alternatives.some(group => group.every(ability =>
         Number(actor.system?.abilities?.[ability]?.value ?? 0) >= 13
       ));

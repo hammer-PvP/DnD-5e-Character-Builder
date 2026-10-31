@@ -7,6 +7,8 @@ const TextEditorImplementation = foundry.applications.ux.TextEditor.implementati
 const INDEX_FIELDS = [
   "name", "img", "type",
   "system.identifier",
+  "system.primaryAbility.value",
+  "system.primaryAbility.all",
   "system.source",
   "system.type.value",
   "system.type.subtype",

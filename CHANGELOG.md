@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.922 — Native Spellcasting Progression Pilot (Artificer EFA)
+
+### Creation / Level Up / Validator
+- Fixed non-PHB registered class spellcasting progressions being treated as unavailable (maximum spell level 0). A shared resolver now reads the live D&D5e `CONFIG.DND5E.spellProgression` registration, native method `divisor` / `roundUp`, and the registered method's `calculateSlots` table. No class, book, or Item UUID is special-cased.
+- Applies the shared calculation to Creation spell access, Level Up choices, build-validation projections, runtime spell-level lookup, and spellcasting subclasses. Class spell lists and preparation entitlements remain sourced from the existing native registry and the class's `ScaleValue` metadata.
+- Preserves all four v0.9.921 progression calculations (`full`, `half`, `third`, `pact`) exactly, including the existing distinct third-caster subclass behavior; no changes to their established spell acquisition rules.
+- Artificer EFA level 1 with two structured cantrips, `@scale.artificer.max-prepared = 2`, and the 13 available registered level-1 spells now displays the level-1 spell selection instead of an empty `0/2` list. Actual offered options still depend on the enabled source compendiums and the D&D5e spell-list registry.
+
+### Multiclass prerequisites
+- Class compendium indexes now include native `system.primaryAbility.value` and `.all`. For classes not covered by the existing vetted PHB map, multiclass eligibility uses that structured class source data (AND/OR requirements), and fails closed if the requirements are missing instead of silently skipping them.
+- Existing PHB multiclass prerequisite checks remain on their approved compatibility path; the new generic handling does not change those classes.
+
+### Scope / known limits
+- This is the incremental progression pilot, not the full Source-Driven migration. No changes were made to the legacy PHB class models, Keeper's class-specific preparation cadence, Long Rest spell-list swapping, or cantrip replacement rules; a class's Long Rest cadence cannot be safely inferred from the native preparation formula alone.
+- The BCC's incomplete Artificer spell list is independent and remains a BCC issue. The native system remains responsible for total spell slots, including multiclass aggregation.
+- QA LOCAL: Node syntax and mocked native-progressions/Creation/Multiclass tests passed. End-to-end Foundry V14.369 + D&D5e 6.0.6 live validation is pending and this candidate is not marked live-stable.
+
 ## 0.9.921 — Generic Subclass Spellcasting Resolution
 
 ### Third-party / homebrew subclass spellcasting

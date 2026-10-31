@@ -1,5 +1,5 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.921";
+export const MODULE_VERSION = "0.9.922";
 export const MODULE_BUILD = "generic-subclass-spellcasting";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 

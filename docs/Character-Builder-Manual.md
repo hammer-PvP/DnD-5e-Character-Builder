@@ -1,6 +1,6 @@
 # Character Builder — Complete Manual
 
-**Version:** 0.9.920  
+**Version:** 0.9.922  
 **Foundry VTT:** 14  
 **D&D5e:** 6.0.0–6.0.999 — active 6.x runtime line (verified target 6.0.6)
 
@@ -960,3 +960,16 @@ When a noncasting parent Class gains spellcasting through its selected Subclass,
 If no usable list can be resolved, the Spells & Features step displays an explicit diagnostic and cannot be confirmed. Generic parsing of arbitrary prose is deliberately not attempted: only a uniquely named class spell list verified in D&D5e's native registry qualifies. Native ScaleValues remain authoritative over contradictory descriptive prose.
 
 Existing official third-caster subclass compatibility and fixed Feature grants remain intact; Character Builder does not modify the source module's Items or replace native D&D5e Advancement.
+
+
+## Native Spellcasting Progression Pilot (v0.9.922)
+
+Character Builder can now derive a class-local maximum accessible spell level for an additional progression registered by D&D5e 6.x (such as the official Artificer progression), using `CONFIG.DND5E.spellProgression` and the system's native spell-slot method and table. The existing `full`, `half`, `third` and `pact` calculations are preserved during this pilot. The class's enabled spell list and structured preparation ScaleValue remain authoritative.
+
+**Artificer EFA level 1:** with a correctly imported class source and spell registry, the two cantrip selections and two leveled prepared-spell choices are offered from the enabled sources. The EFA class uses `progression: artificer`; do **not** rewrite it to `half` to work around the Builder.
+
+**Multiclass:** for a class outside the vetted PHB prerequisite map, the Builder uses `system.primaryAbility.value` and `system.primaryAbility.all` from the enabled class source. A source missing this mechanical prerequisite data is not silently accepted.
+
+**Limitations:** The Keeper's Long Rest preparation policy and cantrip replacement cadence are still class-policy-dependent; `spellcasting.preparation.formula` is a quantity, **not** a statement about when or how spells may be swapped. The pilot does not infer a Long Rest rule from that formula or offer undocumented swaps. Further Source-Driven class policy support remains a separate increment. Missing spells from an imported class spell list must be corrected in the source/importer.
+
+**QA:** local code/fixture verification only until live Creation, Level Up, Validator, Long Rest and Multiclass checks are completed in Foundry V14/D&D5e 6.0.6.

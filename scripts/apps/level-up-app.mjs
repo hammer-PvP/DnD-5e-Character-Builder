@@ -79,7 +79,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
         items: group.items
           .filter(option => !ownedIdentifiers.has(option.identifier))
           .map(option => {
-            const prerequisite = LevelUpService.multiclassPrerequisite(this.draft, option.identifier);
+            const prerequisite = LevelUpService.multiclassPrerequisite(this.draft, option);
             return {
               ...option,
               qualified: prerequisite.qualified,
@@ -355,7 +355,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     if (this.draft.items.some(item => item.type === "class" && item.system?.identifier === option.identifier)) {
       throw new Error(`${option.name} already exists on this Actor. Advance its existing Class row instead.`);
     }
-    const prerequisite = LevelUpService.multiclassPrerequisite(this.draft, option.identifier);
+    const prerequisite = LevelUpService.multiclassPrerequisite(this.draft, option);
     if (!prerequisite.qualified) throw new Error(prerequisite.message);
     const lockedResult = HitPointAdvancementService.assertClassSelectionAllowed(this.actor, {
       selectedClassIdentifier: option.identifier,
