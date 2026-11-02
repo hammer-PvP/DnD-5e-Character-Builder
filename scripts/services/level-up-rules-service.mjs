@@ -1,4 +1,4 @@
-import { SpellProgressionService } from "./spell-progression-service.mjs";
+import { AdditionalNativeSpellProgressionService } from "./additional-native-spell-progression-service.mjs";
 import { MODULE_ID, SPELL_ACCESS_MODELS, WIZARD_SCHOOLS } from "../constants.mjs";
 import { LevelUpDraftManager } from "./level-up-draft-manager.mjs";
 import { SourceResolver } from "./source-resolver.mjs";
@@ -821,7 +821,20 @@ export class LevelUpRulesService {
   }
 
   static #maximumSpellLevel(progression, level) {
-    return SpellProgressionService.maximumSpellLevel(progression, level);
+    if (level <= 0) return 0;
+    switch (progression) {
+      case "full": return Math.min(9, Math.ceil(level / 2));
+      case "half": return Math.min(5, Math.max(1, Math.floor((level + 3) / 4)));
+      case "third": {
+        if (level < 3) return 0;
+        if (level < 7) return 1;
+        if (level < 13) return 2;
+        if (level < 19) return 3;
+        return 4;
+      }
+      case "pact": return Math.min(5, Math.ceil(level / 2));
+      default: return AdditionalNativeSpellProgressionService.maximumSpellLevel(progression, level);
+    }
   }
 
   static async #wizardSavantContext(draft, cls, spellPool, existingIdentifiers, options) {

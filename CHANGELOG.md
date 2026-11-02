@@ -1,21 +1,14 @@
 # Changelog
 
-## 0.9.922 — Native Spellcasting Progression Pilot (Artificer EFA)
+## 0.9.923 — Safe Native Additional Spell Progressions (rebased on 0.9.921)
 
-### Creation / Level Up / Validator
-- Fixed non-PHB registered class spellcasting progressions being treated as unavailable (maximum spell level 0). A shared resolver now reads the live D&D5e `CONFIG.DND5E.spellProgression` registration, native method `divisor` / `roundUp`, and the registered method's `calculateSlots` table. No class, book, or Item UUID is special-cased.
-- Applies the shared calculation to Creation spell access, Level Up choices, build-validation projections, runtime spell-level lookup, and spellcasting subclasses. Class spell lists and preparation entitlements remain sourced from the existing native registry and the class's `ScaleValue` metadata.
-- Preserves all four v0.9.921 progression calculations (`full`, `half`, `third`, `pact`) exactly, including the existing distinct third-caster subclass behavior; no changes to their established spell acquisition rules.
-- Artificer EFA level 1 with two structured cantrips, `@scale.artificer.max-prepared = 2`, and the 13 available registered level-1 spells now displays the level-1 spell selection instead of an empty `0/2` list. Actual offered options still depend on the enabled source compendiums and the D&D5e spell-list registry.
+- **Base is the user-supplied stable 0.9.921, NOT 0.9.922.** Only supplemental native progression support was added.
+- A new service reads registered additional D&D5e progression definitions (`CONFIG.DND5E.spellProgression` / `spellcasting`), class-level divisor and rounding, and the native slot table. This enables the `artificer` progression without class/book/compendium hardcodes.
+- Creation, Level Up, Validator, Runtime and subclass spellcasting now defer to the supplemental service **only for previously unsupported progression identifiers**.
+- All legacy `full`, `half`, `third`, `pact` calculations remain EXACTLY as implemented in 0.9.921 in each consumer, including the Arcane Trickster/Eldritch Knight Level Up third-caster thresholds.
+- No changes to Commit/rollback, Player Sheet Integrity, ASI, source choice policy, Keeper cadence, or source material. The known external managed-Item transaction conflict is separately pending and not claimed fixed.
+- Local regression QA verifies native Artificer access and preservation of legacy spell-level logic. Foundry Player/GM live QA remains required.
 
-### Multiclass prerequisites
-- Class compendium indexes now include native `system.primaryAbility.value` and `.all`. For classes not covered by the existing vetted PHB map, multiclass eligibility uses that structured class source data (AND/OR requirements), and fails closed if the requirements are missing instead of silently skipping them.
-- Existing PHB multiclass prerequisite checks remain on their approved compatibility path; the new generic handling does not change those classes.
-
-### Scope / known limits
-- This is the incremental progression pilot, not the full Source-Driven migration. No changes were made to the legacy PHB class models, Keeper's class-specific preparation cadence, Long Rest spell-list swapping, or cantrip replacement rules; a class's Long Rest cadence cannot be safely inferred from the native preparation formula alone.
-- The BCC's incomplete Artificer spell list is independent and remains a BCC issue. The native system remains responsible for total spell slots, including multiclass aggregation.
-- QA LOCAL: Node syntax and mocked native-progressions/Creation/Multiclass tests passed. End-to-end Foundry V14.369 + D&D5e 6.0.6 live validation is pending and this candidate is not marked live-stable.
 
 ## 0.9.921 — Generic Subclass Spellcasting Resolution
 

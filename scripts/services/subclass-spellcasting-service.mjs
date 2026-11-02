@@ -1,4 +1,4 @@
-import { SpellProgressionService } from "./spell-progression-service.mjs";
+import { AdditionalNativeSpellProgressionService } from "./additional-native-spell-progression-service.mjs";
 /**
  * Resolves spellcasting introduced by a subclass of a non-spellcasting class.
  * Native D&D5e 6.x spellcasting, Spell List registry and ScaleValue records
@@ -30,7 +30,8 @@ export class SubclassSpellcastingService {
       const identifier = String(subclass.system?.identifier ?? "").trim().toLowerCase();
       const progression = String(subclass.system?.spellcasting?.progression ?? "none").trim().toLowerCase();
       const legacy = this.#legacyCasterNames.get(`${id}:${identifier}`) ?? null;
-      if (!(SpellProgressionService.isRegistered(progression) || legacy)) continue;
+      if (!(["full", "half", "third", "pact"].includes(progression)
+        || AdditionalNativeSpellProgressionService.isAdditionalRegistered(progression) || legacy)) continue;
       return {
         subclass, identifier,
         legacy,
@@ -93,7 +94,14 @@ export class SubclassSpellcastingService {
   }
 
   static maximumSpellLevel(progression, level) {
-    return SpellProgressionService.maximumSpellLevel(progression, level, { legacyThirdFlavor: "subclass" });
+    if (level <= 0) return 0;
+    switch (progression) {
+      case "full": return Math.min(9, Math.ceil(level / 2));
+      case "half": return Math.min(5, Math.max(1, Math.floor((level + 3) / 4)));
+      case "third": return level < 3 ? 0 : level < 7 ? 1 : level < 13 ? 2 : level < 19 ? 3 : 4;
+      case "pact": return Math.min(5, Math.ceil(level / 2));
+      default: return AdditionalNativeSpellProgressionService.maximumSpellLevel(progression, level);
+    }
   }
 
   /** Resolve native subclass list, explicit source feature, class list, then legacy compatibility. */

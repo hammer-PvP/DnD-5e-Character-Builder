@@ -1,4 +1,4 @@
-import { SpellProgressionService } from "./spell-progression-service.mjs";
+import { AdditionalNativeSpellProgressionService } from "./additional-native-spell-progression-service.mjs";
 import { MODULE_ID, SPELL_ACCESS_MODELS } from "../constants.mjs";
 import { DraftManager } from "./draft-manager.mjs";
 import { PactOfTheTomeService } from "./pact-of-the-tome-service.mjs";
@@ -525,7 +525,13 @@ export class SpellAccessService {
   }
 
   static #maximumSpellLevel(progression, level) {
-    return SpellProgressionService.maximumSpellLevel(progression, level);
+    switch (progression) {
+      case "full": return Math.min(9, Math.ceil(level / 2));
+      case "half": return Math.min(5, Math.max(1, Math.floor((level + 3) / 4)));
+      case "third": return Math.min(4, Math.max(1, Math.floor((level + 2) / 3)));
+      case "pact": return Math.min(5, Math.ceil(level / 2));
+      default: return AdditionalNativeSpellProgressionService.maximumSpellLevel(progression, level);
+    }
   }
 
   static #validateSelections(selected, expected, validOptions, label) {
