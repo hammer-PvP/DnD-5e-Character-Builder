@@ -31,7 +31,7 @@ export class AdditionalCantripEntitlementService {
         if (!effect || effect.transfer === false) continue;
         const changes = this.#changes(effect);
         for (const change of changes) {
-          if (String(change?.key ?? "") !== key) continue;
+          if (change?.key !== key && change?.key !== `${key}.value`) continue;
           if (!this.#isAddChange(change)) continue;
           const value = Number(change?.value ?? 0);
           if (!Number.isFinite(value) || value <= 0 || !Number.isInteger(value)) continue;

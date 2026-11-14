@@ -6,6 +6,7 @@ import { SpellPreparationPolicyService } from "./spell-preparation-policy-servic
 import { AdditionalCantripEntitlementService } from "./additional-cantrip-entitlement-service.mjs";
 import { advancementName } from "../utils/advancement-utils.mjs";
 import { SubclassSpellcastingService } from "./subclass-spellcasting-service.mjs";
+import { ManagedItemChoiceLedgerService } from "./managed-item-choice-ledger-service.mjs";
 
 const LAND_SPELLS = Object.freeze({
   arid: {
@@ -47,6 +48,29 @@ const LAND_RESISTANCES = Object.freeze({
  * Runtime triggers are deliberately excluded from this service.
  */
 export class LevelUpFeatureService {
+  static async restoreDraftSpellChoices(draft, state) {
+    const cls = draft.items.get(state.selectedClassId);
+    const level = Number(state.targetClassLevel);
+    await ManagedItemChoiceLedgerService.restoreDraftChoices(draft, cls, { workflow: "levelUp", level });
+    if (!cls) return;
+    const updates = [];
+    for (const spell of draft.items) {
+      if (spell.type !== "spell") continue;
+      const choice = spell.getFlag(MODULE_ID, "levelUpSpell");
+      if (choice?.category !== "mystic-arcanum" || choice.classItemId !== cls.id
+        || choice.transactionId !== state.transactionId || spell.system.method === "atwill") continue;
+      const data = spell.toObject();
+      this.#configureMysticArcanum(data);
+      updates.push({
+        _id: spell.id,
+        "system.method": data.system.method,
+        "system.uses": data.system.uses,
+        "system.activities": data.system.activities
+      });
+    }
+    if (updates.length) await draft.updateEmbeddedDocuments("Item", updates);
+  }
+
   static async buildContext(draft, cls, registry, {
     oldClassLevel,
     newClassLevel,
@@ -122,8 +146,9 @@ export class LevelUpFeatureService {
     if (identifier === "warlock") {
       const arcanumLevel = this.#mysticArcanumLevel(newClassLevel, oldClassLevel);
       const arcanumFeature = this.#feature(draft, "mystic-arcanum");
+      const pool = arcanumFeature && (arcanumLevel || oldClassLevel >= 11)
+        ? await this.#classSpellPool("warlock", registry) : [];
       if (arcanumLevel && arcanumFeature) {
-        const pool = await this.#classSpellPool("warlock", registry);
         spellSections.push(this.#spellSection({
           id: `mystic-arcanum-${arcanumLevel}`,
           title: `Mystic Arcanum — Spell Level ${arcanumLevel}`,
@@ -138,8 +163,8 @@ export class LevelUpFeatureService {
           special: "mystic-arcanum",
           sourceItem: "class:warlock"
         }, registry));
-      } else if (arcanumFeature && oldClassLevel >= 11) {
-        const pool = await this.#classSpellPool("warlock", registry);
+      }
+      if (arcanumFeature && oldClassLevel >= 11) {
         replacementSections.push(this.#featureSpellReplacement({
           id: "mystic-arcanum",
           title: "Optional Mystic Arcanum Replacement",
@@ -343,11 +368,17 @@ export class LevelUpFeatureService {
         for (const identifier of values) additionalClassCantripSelections.add(identifier);
       }
       featureChoices.spells[section.id] = values;
+      const selected = [];
       for (const identifier of values) {
         const option = section.options.find(row => row.identifier === identifier);
         const item = await this.#ensureFeatureSpell(draft, cls, section, option, state);
         if (item.created) createdItemIds.push(item.spell.id);
+        selected.push(item.spell);
       }
+      const owner = section.featureItemId ? draft.items.get(section.featureItemId) : null;
+      if (owner && selected.length) await this.#recordSpellChoice(draft, cls, owner, selected, state, {
+        additionalCantrip: section.additionalClassCantrip
+      });
     }
 
     for (const section of context.targetSpellSections) {
@@ -381,6 +412,9 @@ export class LevelUpFeatureService {
       }
       const oldSpell = draft.items.get(removeId);
       if (!oldSpell) throw new Error(`The spell selected for ${section.title} no longer exists.`);
+      const originalLevel = (oldSpell.getFlag(MODULE_ID, "featureSpellOwners") ?? [])
+        .find(owner => owner.featureItemId === section.featureItemId && owner.category === section.category)
+        ?.acquiredAtClassLevel;
       const remaining = await FeatureSpellOwnershipService.removeOwner(oldSpell, owner =>
         owner.category === section.category && (!section.featureItemId || owner.featureItemId === section.featureItemId)
       );
@@ -400,6 +434,10 @@ export class LevelUpFeatureService {
       };
       const result = await this.#ensureFeatureSpell(draft, cls, replacementSection, option, state);
       if (result.created) createdItemIds.push(result.spell.id);
+      const owner = section.featureItemId ? draft.items.get(section.featureItemId) : null;
+      if (owner) await this.#recordSpellChoice(draft, cls, owner, [result.spell], state, {
+        original: oldSpell, originalLevel
+      });
       featureChoices.replacements[section.id] = { removeId, addIdentifier: addValue };
     }
 
@@ -774,6 +812,25 @@ export class LevelUpFeatureService {
     return true;
   }
 
+  static async #recordSpellChoice(draft, cls, owner, items, state, {
+    additionalCantrip = false, original = null, originalLevel = null
+  } = {}) {
+    const options = { classIdentifier: cls.system.identifier, workflow: "levelUp" };
+    if (!ManagedItemChoiceLedgerService.hasManagedSpellChoices(owner, options)) return;
+    if (additionalCantrip) {
+      const selection = draft.items.filter(item => item.type === "spell"
+        && (item.getFlag(MODULE_ID, "featureSpellOwners") ?? []).some(row =>
+          row.featureItemId === owner.id && row.classItemId === cls.id));
+      const classLevel = Number(state.targetClassLevel);
+      return ManagedItemChoiceLedgerService.reconcile(draft, owner, [{ items: selection }], {
+        ...options, throughLevel: classLevel
+      });
+    }
+    return ManagedItemChoiceLedgerService.reconcile(draft, owner, [{
+      items, level: state.targetClassLevel, original, originalLevel
+    }], options);
+  }
+
   static async #ensureFeatureSpell(draft, cls, section, option, state) {
     if (!option) throw new Error(`${section.title} contains an unavailable spell.`);
     const owner = this.#ownerRecord(cls, section, state, option);
@@ -835,6 +892,7 @@ export class LevelUpFeatureService {
         const data = spell.toObject();
         this.#configureMysticArcanum(data);
         await spell.update({
+          "system.method": data.system.method,
           "system.uses": data.system.uses,
           "system.activities": data.system.activities,
           "system.prepared": 2
@@ -897,13 +955,15 @@ export class LevelUpFeatureService {
   }
 
   static #configureMysticArcanum(data) {
+    data.system.method = "atwill";
     data.system.uses ??= {};
     data.system.uses.max = "1";
-    data.system.uses.spent = 0;
+    data.system.uses.spent ??= 0;
     data.system.uses.recovery = [{ period: "lr", type: "recoverAll" }];
     for (const activity of Object.values(data.system.activities ?? {})) {
       if (!activity.consumption) activity.consumption = {};
-      if (!activity.consumption.spellSlot) continue;
+      // The raw source can omit the flag when it uses the native default (true).
+      if (activity.consumption.spellSlot === false) continue;
       activity.consumption.spellSlot = false;
       activity.consumption.targets ??= [];
       if (!activity.consumption.targets.some(target => target.type === "itemUses")) {

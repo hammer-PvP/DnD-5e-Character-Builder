@@ -13,6 +13,7 @@ import { ModalStackService } from "../services/modal-stack-service.mjs";
 import { ProtectedTransactionDialogService } from "../services/protected-transaction-dialog-service.mjs";
 import { SourceFullDetailsApp } from "./source-full-details-app.mjs";
 import { AdvancementCompletionGateService } from "../services/advancement-completion-gate-service.mjs";
+import { LevelUpFeatureService } from "../services/level-up-feature-service.mjs";
 import {
   advancementName, itemPrerequisiteKeys, meetsItemPrerequisites, orderItemPrerequisites
 } from "../utils/advancement-utils.mjs";
@@ -464,6 +465,9 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     }
     const state = LevelUpDraftManager.getState(this.draft);
     try {
+      if (state.additionalComplete && state.commitReady) {
+        await LevelUpFeatureService.restoreDraftSpellChoices(this.draft, state);
+      }
       await AdvancementCompletionGateService.assertComplete(this.draft, {
         registry: this.registry,
         baselineActor: this.actor,

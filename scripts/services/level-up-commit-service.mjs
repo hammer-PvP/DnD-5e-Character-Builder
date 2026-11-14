@@ -10,6 +10,7 @@ import { TemporaryActorService } from "./temporary-actor-service.mjs";
 import { AlwaysPreparedSpellReconciliationService } from "./always-prepared-spell-reconciliation-service.mjs";
 import { NativeFeatureCompatibilityService } from "./native-feature-compatibility-service.mjs";
 import { AdvancementCompletionGateService } from "./advancement-completion-gate-service.mjs";
+import { LevelUpFeatureService } from "./level-up-feature-service.mjs";
 import { InternalActorReferenceRebindingService } from "./internal-actor-reference-rebinding-service.mjs";
 import { SubclassSpellcastingService } from "./subclass-spellcasting-service.mjs";
 
@@ -67,6 +68,7 @@ export class LevelUpCommitService {
 
       await this.#validateClassIntegrity(actor, draft, state);
       this.#validateSubclassCasterSpellLevels(draft, state);
+      await LevelUpFeatureService.restoreDraftSpellChoices(draft, state);
       await AdvancementChoiceAnnotationService.refresh(draft, { state: LevelUpDraftManager.getState(draft) });
       ItemGrantIntegrityService.validate(draft, { context: "levelUp", state });
       AlwaysPreparedSpellReconciliationService.validate(draft, { context: "levelUp", state });

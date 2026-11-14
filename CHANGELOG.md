@@ -1,3 +1,11 @@
+## 0.9.928 — PHB 3.0 spell choices and Level Up completion
+
+- Record Mystic Arcanum, Magical Discoveries, Arcane Trickster cantrips, and Primal Order: Magician in their source ItemChoices using the embedded Item IDs and source UUIDs. Reuse the Pact of the Tome ledger service.
+- Retain the native acquisition and replacement history. A completed 0.9.927 Level Up draft can reconnect an unambiguous saved selection to its native ItemChoice before Commit.
+- Validate Level Up completion before Review and require a live spell Item with matching source and Advancement origin for managed spell choices.
+- Read both native scale paths for additional cantrips so Magician and Thaumaturge offer the feature choice independently of class cantrips.
+- Configure Mystic Arcanum with an independent use recovered on a Long Rest, including spells that omit the slot-consumption flag and rely on the native default.
+
 ## 0.9.927 — Structured Item prerequisites
 
 - Evaluate D&D5e Item prerequisites as either `identifier` or `type:identifier`. An explicit type must match the document type. Alternative prerequisites follow the system's any-match rule.

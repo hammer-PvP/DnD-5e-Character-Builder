@@ -6,6 +6,7 @@ import { AdvancementChoiceAnnotationService } from "./advancement-choice-annotat
 import { CharacterValidationBuildProjectionService } from "./character-validation-build-projection-service.mjs";
 import { NativeSpellGrantProjectionService } from "./native-spell-grant-projection-service.mjs";
 import { advancementName } from "../utils/advancement-utils.mjs";
+import { ManagedAdvancementRegistry } from "./managed-advancement-registry.mjs";
 
 const PHYSICAL_ITEM_TYPES = new Set(["weapon", "equipment", "consumable", "tool", "container", "loot"]);
 const CANONICAL_OWNER_TYPES = new Set(["class", "subclass", "race", "background", "feat"]);
@@ -176,10 +177,20 @@ export class CharacterValidationProgressionService {
 
         const expected = this.#itemChoiceExpected(sourceAdvancement, ownerLevel);
         if (!expected) continue;
-        const actualLedger = local ? this.#itemChoiceActual(local.advancement, ownerLevel) : 0;
+        const classIdentifier = this.#classIdentifier(owner, actor)
+          ?? (choiceType === "spell" ? actor.items.filter(item => item.type === "class")
+            .find(item => ManagedAdvancementRegistry.isManaged(sourceAdvancement, {
+              owner, classIdentifier: item.system?.identifier, workflow: "levelUp"
+            }))?.system?.identifier : null);
+        const managedSpell = choiceType === "spell" && ManagedAdvancementRegistry.isManaged(sourceAdvancement, {
+          owner, classIdentifier, workflow: "levelUp"
+        });
+        const actualLedger = local ? (managedSpell
+          ? this.#liveSpellChoiceCount(actor, owner, local, ownerLevel)
+          : this.#itemChoiceActual(local.advancement, ownerLevel)) : 0;
         const linked = this.#linkedAdvancementItems(actor, owner.id, local?.id ?? sourceAdvancementId);
         const actualLinked = linked.length;
-        const actual = Math.max(actualLedger, actualLinked);
+        const actual = managedSpell ? actualLedger : Math.max(actualLedger, actualLinked);
         if (actual >= expected) {
           if (local && actualLinked >= expected && actualLedger < expected) {
             const activeLevels = this.#activeItemChoiceLevels(sourceAdvancement, ownerLevel);
@@ -1369,6 +1380,25 @@ export class CharacterValidationProgressionService {
       } else if (typeof choices === "string") total += 1;
     }
     return total || this.#flattenAddedMappings(added).length;
+  }
+
+  static #liveSpellChoiceCount(actor, owner, local, currentLevel) {
+    const value = local.advancement.value ?? {};
+    const replaced = new Set(Object.entries(value.replaced ?? {})
+      .filter(([level, entry]) => Number(level) <= currentLevel && entry?.replacement)
+      .map(([, entry]) => entry.original));
+    const active = new Set();
+    for (const [level, entries] of Object.entries(value.added ?? {})) {
+      if (Number(level) > currentLevel) continue;
+      for (const [id, uuid] of Object.entries(entries ?? {})) {
+        if (replaced.has(id)) continue;
+        const item = actor.items.get(id);
+        if (item?.type !== "spell" || item.getFlag("dnd5e", "advancementOrigin") !== `${owner.id}.${local.id}`) continue;
+        const source = item.getFlag("dnd5e", "sourceId") ?? item._stats?.compendiumSource;
+        if (source === uuid) active.add(id);
+      }
+    }
+    return active.size;
   }
 
   static #firstItemChoiceDeficitLevel(sourceAdvancement, localAdvancement, currentLevel) {

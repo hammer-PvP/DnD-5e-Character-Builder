@@ -5,6 +5,8 @@ import { PactOfTheTomeService } from "./pact-of-the-tome-service.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
 import { AdditionalCantripEntitlementService } from "./additional-cantrip-entitlement-service.mjs";
 import { advancementName } from "../utils/advancement-utils.mjs";
+import { AdvancementService } from "./advancement-service.mjs";
+import { ManagedItemChoiceLedgerService } from "./managed-item-choice-ledger-service.mjs";
 
 /**
  * Populates native Spell Items during creation. Spell Items, slots, and casting
@@ -276,8 +278,22 @@ export class SpellAccessService {
     const oldIds = draft.items
       .filter(item => item.getFlag(MODULE_ID, "classSpellAccess"))
       .map(item => item.id);
-    if (oldIds.length) await draft.deleteEmbeddedDocuments("Item", oldIds);
-    if (createData.length) await draft.createEmbeddedDocuments("Item", createData);
+    const options = { classIdentifier: identifier, workflow: "creation", throughLevel: context.classLevel };
+    const managedSections = (context.additionalCantripSections ?? []).filter(section =>
+      ManagedItemChoiceLedgerService.hasManagedSpellChoices(draft.items.get(section.featureItemId), options));
+    const snapshot = managedSections.length ? AdvancementService.snapshotDraft(draft) : null;
+    try {
+      if (oldIds.length) await draft.deleteEmbeddedDocuments("Item", oldIds);
+      const created = createData.length ? await draft.createEmbeddedDocuments("Item", createData) : [];
+      for (const section of managedSections) {
+        const owner = draft.items.get(section.featureItemId);
+        const items = created.filter(item => AdditionalCantripEntitlementService.hasOwner(item, section));
+        await ManagedItemChoiceLedgerService.reconcile(draft, owner, [{ items }], options);
+      }
+    } catch (error) {
+      if (snapshot) await AdvancementService.restoreDraft(draft, snapshot);
+      throw error;
+    }
 
     let tomeResult = { active: false, createdItemIds: [], deletedItemIds: [] };
     if (context.pactOfTheTome?.active) {

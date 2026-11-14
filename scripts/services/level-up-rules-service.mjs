@@ -18,6 +18,7 @@ import { AgonizingBlastBindingService } from "./agonizing-blast-binding-service.
 import { AlwaysPreparedSpellReconciliationService } from "./always-prepared-spell-reconciliation-service.mjs";
 import { NativeFeatureCompatibilityService } from "./native-feature-compatibility-service.mjs";
 import { AdvancementCompletionGateService } from "./advancement-completion-gate-service.mjs";
+import { ManagedItemChoiceLedgerService } from "./managed-item-choice-ledger-service.mjs";
 import {
   advancementName, itemPrerequisiteIndex, itemPrerequisiteKeys, itemPrerequisiteLabel, itemPrerequisites,
   meetsItemPrerequisites, orderItemPrerequisites
@@ -593,6 +594,11 @@ export class LevelUpRulesService {
     }
 
     const createdSpellIds = await this.#createSpells(draft, cls, uniqueEntries, state);
+    if (context.subclassCaster && (selectedCantrips.length || removeCantripId)) {
+      await this.#recordSubclassCantrips(draft, cls, context.subclassCaster, state, {
+        createdSpellIds, selectedCantrips, original: draft.items.get(removeCantripId), addCantripIdentifier
+      });
+    }
     if (context.classIdentifier === "ranger" && context.model === "fullList" && selectedSpells.length) {
       const selectedSet = new Set(selectedSpells);
       const updates = draft.items
@@ -707,6 +713,9 @@ export class LevelUpRulesService {
       workflow: "Spells & Features"
     });
     AdvancementCompletionGateService.assertItemPrerequisites(draft, rollbackSnapshot.items);
+    await AdvancementCompletionGateService.assertComplete(draft, {
+      registry, baselineActor: sourceActor, context: "Level Up"
+    });
     await AdvancementChoiceAnnotationService.refresh(draft, { state: LevelUpDraftManager.getState(draft) });
 
     const reconciledRemovedSpellIds = new Set(
@@ -1697,6 +1706,40 @@ export class LevelUpRulesService {
       if (!survives) {
         throw new Error(`${target.name} cannot be targeted because every eligible acquisition will be removed during this Level Up.`);
       }
+    }
+  }
+
+  static async #recordSubclassCantrips(draft, cls, caster, state, {
+    createdSpellIds, selectedCantrips, original, addCantripIdentifier
+  }) {
+    const options = { classIdentifier: cls.system.identifier, workflow: "levelUp" };
+    const subclass = draft.items.get(caster.itemId);
+    const sources = new Set(this.#advancementData(subclass).filter(entry => entry.type === "ItemGrant")
+      .flatMap(entry => (entry.configuration?.items ?? []).map(item => item.uuid)));
+    const matched = draft.items.filter(item => {
+      if (!ManagedItemChoiceLedgerService.hasManagedSpellChoices(item, options)) return false;
+      const link = item.getFlag("dnd5e", "advancementOrigin") ?? "";
+      const root = item.getFlag("dnd5e", "advancementRoot") ?? "";
+      return link.split(".")[0] === caster.itemId || root.split(".")[0] === caster.itemId
+        || sources.has(item.getFlag("dnd5e", "sourceId") ?? item._stats?.compendiumSource);
+    });
+    if (!matched.length) return;
+    if (matched.length !== 1) throw new Error("Cannot identify a unique native subclass cantrip ItemChoice.");
+    const [owner] = matched;
+    const level = Number(state.targetClassLevel);
+    const related = createdSpellIds.map(id => draft.items.get(id)).filter(item => item?.system?.level === 0);
+    const acquisitions = [];
+    if (selectedCantrips.length) acquisitions.push({
+      level, items: related.filter(item => selectedCantrips.includes(item.system.identifier))
+    });
+    if (original && addCantripIdentifier) acquisitions.push({
+      level,
+      items: related.filter(item => item.system.identifier === addCantripIdentifier),
+      original,
+      originalLevel: original.getFlag(MODULE_ID, "levelUpSpell")?.acquiredAtClassLevel
+    });
+    if (acquisitions.length) {
+      await ManagedItemChoiceLedgerService.reconcile(draft, owner, acquisitions, options);
     }
   }
 
