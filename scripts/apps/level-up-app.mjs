@@ -13,7 +13,9 @@ import { ModalStackService } from "../services/modal-stack-service.mjs";
 import { ProtectedTransactionDialogService } from "../services/protected-transaction-dialog-service.mjs";
 import { SourceFullDetailsApp } from "./source-full-details-app.mjs";
 import { AdvancementCompletionGateService } from "../services/advancement-completion-gate-service.mjs";
-import { advancementName } from "../utils/advancement-utils.mjs";
+import {
+  advancementName, itemPrerequisiteKeys, meetsItemPrerequisites, orderItemPrerequisites
+} from "../utils/advancement-utils.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -157,8 +159,6 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     root.querySelectorAll('[name^="levelUp.invocation."], [name^="levelUp.replaceInvocation."]').forEach(input => {
       input.addEventListener("change", () => {
         this.#clearInvalidInvocationDependents(input);
-        this.#refreshInvocationSelectionState();
-        this.#refreshPactOfTheTomeVisibility();
         this.#refreshSpellSelectionState();
       });
     });
@@ -176,8 +176,6 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       });
     });
     this.#bindSpellCardDetails(root);
-    this.#refreshInvocationSelectionState();
-    this.#refreshPactOfTheTomeVisibility();
     this.#refreshSpellSelectionState();
   }
 
@@ -927,75 +925,77 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const targetClassLevel = Number(section?.dataset.targetClassLevel
       ?? selectionRoot?.dataset.invocationTargetClassLevel
       ?? 0);
-    const existing = new Set(String(section?.dataset.existingInvocations
-      ?? selectionRoot?.dataset.existingInvocations
-      ?? "").split("|").filter(Boolean));
-    const available = new Set(existing);
-    const selectedUuids = new Set();
-    const slots = section ? [...section.querySelectorAll("[data-invocation-slot]")] : [];
-
-    for (const slot of slots) {
-      const select = slot.querySelector('select[data-invocation-select]');
-      if (!select) continue;
-      const current = select.value;
-      let currentValid = true;
-      for (const option of [...select.options].slice(1)) {
-        const identifier = option.dataset.identifier ?? "";
-        const minimumLevel = Number(option.dataset.minimumLevel ?? 0);
-        const prerequisites = String(option.dataset.prerequisites ?? "").split("|").filter(Boolean);
-        const repeatable = option.dataset.repeatable === "true";
-        const alreadyKnown = option.dataset.alreadyKnown === "true";
-        const levelValid = minimumLevel <= targetClassLevel;
-        const prerequisiteValid = !prerequisites.length || prerequisites.some(id => available.has(id));
-        const duplicate = selectedUuids.has(option.value) && !repeatable;
-        const valid = levelValid && prerequisiteValid && !alreadyKnown && !duplicate;
-        const baseLabel = option.dataset.baseLabel ?? option.textContent;
-        let reason = "";
-        if (!levelValid) reason = `Requires Warlock Level ${minimumLevel}`;
-        else if (!prerequisiteValid) reason = `Requires ${option.dataset.prerequisiteLabels || prerequisites.join(" or ")}`;
-        else if (alreadyKnown) reason = "Already known";
-        else if (duplicate) reason = "Already selected";
-        option.disabled = !valid;
-        option.textContent = reason ? `${baseLabel} — ${reason}` : baseLabel;
-        if (option.value === current && !valid) currentValid = false;
-      }
-      if (current && !currentValid) select.value = "";
-      const selectedOption = select.selectedOptions?.[0];
-      if (select.value && selectedOption) {
-        selectedUuids.add(select.value);
-        if (selectedOption.dataset.identifier) available.add(selectedOption.dataset.identifier);
-      }
-      this.#refreshInvocationSlot(slot, selectedOption);
-    }
-
     const replacement = root.querySelector("[data-invocation-replacement]");
-    if (replacement) {
-      const select = replacement.querySelector('select[name="levelUp.replaceInvocation.add"]');
-      const current = select?.value ?? "";
-      let currentValid = true;
-      for (const option of [...(select?.options ?? [])].slice(1)) {
+    if (!section && !replacement) return;
+    const remove = replacement?.querySelector('select[name="levelUp.replaceInvocation.remove"]');
+    if (remove?.selectedOptions?.[0]?.disabled) remove.value = "";
+    const excluded = new Set(String(remove?.selectedOptions?.[0]?.dataset.excludedItemIds ?? "").split("|"));
+    const available = this.#projectedItemPrerequisites(selectionRoot, excluded);
+    const slots = section ? [...section.querySelectorAll("[data-invocation-slot]")] : [];
+    const controls = slots.map(slot => ({
+      container: slot,
+      select: slot.querySelector("[data-invocation-select]")
+    }));
+    if (replacement && remove?.value) controls.push({
+      container: replacement,
+      select: replacement.querySelector('[name="levelUp.replaceInvocation.add"]')
+    });
+    const splitKeys = value => String(value ?? "").split("|").filter(Boolean);
+    const selected = controls.map(({ select }) => select?.selectedOptions?.[0]).filter(option => option?.value);
+    for (const { container, select } of controls) {
+      if (!select) continue;
+      const current = select.selectedOptions?.[0];
+      const others = selected.filter(option => option !== current);
+      const { prerequisites: projected } = orderItemPrerequisites(
+        others.filter(option => Number(option.dataset.minimumLevel ?? 0) <= targetClassLevel
+          && option.dataset.alreadyKnown !== "true").map(option => ({
+          requires: splitKeys(option.dataset.prerequisites),
+          provides: splitKeys(option.dataset.prerequisiteKeys)
+        })),
+        available
+      );
+      for (const option of [...select.options].slice(1)) {
         const minimumLevel = Number(option.dataset.minimumLevel ?? 0);
-        const prerequisites = String(option.dataset.prerequisites ?? "").split("|").filter(Boolean);
-        const prerequisiteValid = !prerequisites.length || prerequisites.some(id => available.has(id));
-        const levelValid = minimumLevel <= targetClassLevel;
-        const alreadyKnown = option.dataset.alreadyKnown === "true";
-        const duplicate = selectedUuids.has(option.value) && option.dataset.repeatable !== "true";
-        const valid = levelValid && prerequisiteValid && !alreadyKnown && !duplicate;
-        const baseLabel = option.dataset.baseLabel ?? option.textContent;
-        let reason = "";
-        if (!levelValid) reason = `Requires Warlock Level ${minimumLevel}`;
-        else if (!prerequisiteValid) reason = `Requires ${option.dataset.prerequisiteLabels || prerequisites.join(" or ")}`;
-        else if (alreadyKnown) reason = "Already known";
-        else if (duplicate) reason = "Already selected";
-        option.disabled = !valid;
-        option.textContent = reason ? `${baseLabel} — ${reason}` : baseLabel;
-        if (option.value === current && !valid) currentValid = false;
+        const prerequisites = splitKeys(option.dataset.prerequisites);
+        const duplicate = option.dataset.repeatable !== "true" && others.some(other => other.value === option.value);
+        const reason = minimumLevel > targetClassLevel ? `Requires Warlock Level ${minimumLevel}`
+          : !meetsItemPrerequisites(prerequisites, projected) ? `Requires ${option.dataset.prerequisiteLabels}`
+          : option.dataset.alreadyKnown === "true" ? "Already known"
+          : duplicate ? "Already selected" : "";
+        option.disabled = Boolean(reason);
+        option.textContent = `${option.dataset.baseLabel}${reason ? ` — ${reason}` : ""}`;
       }
-      if (select && current && !currentValid) select.value = "";
-      this.#refreshInvocationSlot(replacement, select?.selectedOptions?.[0]);
+      this.#refreshInvocationSlot(container, current);
+    }
+    if (replacement && !remove?.value) {
+      const select = replacement.querySelector('[name="levelUp.replaceInvocation.add"]');
+      if (select) {
+        select.value = "";
+        select.disabled = true;
+      }
+      this.#refreshInvocationSlot(replacement, null);
+    } else if (replacement) {
+      const select = replacement.querySelector('[name="levelUp.replaceInvocation.add"]');
+      if (select) select.disabled = false;
     }
 
     this.#refreshInvocationDetailCards();
+  }
+
+  #projectedItemPrerequisites(root, excluded) {
+    for (const field of ["replaceSpell", "replaceCantrip"]) {
+      const id = root.querySelector(`[name="levelUp.${field}.remove"]`)?.value;
+      if (id) excluded.add(id);
+    }
+    const owned = JSON.parse(root.dataset.prerequisiteItems || "[]");
+    const available = new Set(owned.filter(item => !excluded.has(item.id)).flatMap(item => item.keys));
+    for (const control of root.querySelectorAll(
+      '[data-spell-selection-control]:checked, [name="levelUp.replaceSpell.add"], [name="levelUp.replaceCantrip.add"]'
+    )) {
+      if (control.disabled) continue;
+      for (const key of itemPrerequisiteKeys({ type: "spell", identifier: control.value })) available.add(key);
+    }
+    return available;
   }
 
   #refreshInvocationSlot(container, selectedOption) {
@@ -1149,6 +1149,8 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!selectionRoot) return;
 
     this.#refreshCantripReplacementProjection();
+    this.#refreshInvocationSelectionState();
+    this.#refreshPactOfTheTomeVisibility();
     this.#refreshInvocationTargetEligibility();
     const metamagicComplete = this.#refreshMetamagicSelectionState(selectionRoot);
 
@@ -1341,56 +1343,65 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const selectedIdentifiers = new Set(selectedControls.map(control => control.dataset.metamagicIdentifier).filter(Boolean));
     const remove = replacementSection?.querySelector("[data-metamagic-replace-remove]") ?? null;
     const add = replacementSection?.querySelector("[data-metamagic-replace-add]") ?? null;
+    const section = selectionSection ?? replacementSection;
+    const targetLevel = Number(section.dataset.targetLevel ?? 0);
+    const splitKeys = value => String(value ?? "").split("|").filter(Boolean);
+    const owned = this.#projectedItemPrerequisites(selectionRoot, new Set(remove?.value ? [remove.value] : []));
 
     if (add && !remove?.value && add.value) add.value = "";
 
     const removeIdentifier = String(remove?.selectedOptions?.[0]?.dataset.identifier ?? "");
     let addOption = add?.selectedOptions?.[0] ?? null;
     let addIdentifier = String(addOption?.dataset.identifier ?? "");
-    let conflict = false;
-
-    for (const control of controls) {
-      const baseDisabled = control.dataset.baseDisabled === "true";
-      const selectedAsReplacement = Boolean(addIdentifier && control.dataset.metamagicIdentifier === addIdentifier);
-      const duplicateDisabled = !control.checked && selectedAsReplacement;
-      control.disabled = baseDisabled || duplicateDisabled;
-      const card = control.closest("[data-metamagic-option]");
-      card?.classList.toggle("duplicate-disabled", baseDisabled || duplicateDisabled);
-      if (card) {
-        if (baseDisabled) card.title = "Already known.";
-        else if (duplicateDisabled) card.title = "Already selected as the Metamagic replacement.";
-        else card.removeAttribute("title");
-      }
-      if (control.checked && selectedAsReplacement) conflict = true;
-    }
+    const selectionRules = control => {
+      if (control.dataset.alreadyKnown === "true") return "Already known";
+      const minimumLevel = Number(control.dataset.minimumLevel ?? 0);
+      if (minimumLevel > targetLevel) return `Requires Sorcerer Level ${minimumLevel}`;
+      return "";
+    };
+    const prerequisiteReason = (control, available) => meetsItemPrerequisites(
+      splitKeys(control.dataset.prerequisites), available
+    ) ? "" : `Requires ${control.dataset.prerequisiteLabels}`;
+    const projected = choices => orderItemPrerequisites(choices.filter(control => !selectionRules(control))
+      .map(control => ({
+        requires: splitKeys(control.dataset.prerequisites),
+        provides: splitKeys(control.dataset.prerequisiteKeys)
+      })), owned).prerequisites;
 
     if (add) {
+      const available = projected(selectedControls);
       for (const option of add.options) {
         if (!option.value) continue;
-        const baseDisabled = option.dataset.baseDisabled === "true";
         const identifier = String(option.dataset.identifier ?? "");
-        const selfReplacement = Boolean(removeIdentifier && identifier === removeIdentifier);
-        const selectedAsNew = selectedIdentifiers.has(identifier);
-        option.disabled = baseDisabled || selfReplacement || selectedAsNew;
-        const reason = baseDisabled
-          ? "Already known"
-          : selfReplacement
-            ? "Cannot replace itself"
-            : selectedAsNew
-              ? "Selected as a new option"
-              : "";
-        option.textContent = `${option.dataset.baseLabel ?? option.textContent}${reason ? ` — ${reason}` : ""}`;
+        const reason = selectionRules(option)
+          || (identifier === removeIdentifier ? "Cannot replace itself" : "")
+          || (selectedIdentifiers.has(identifier) ? "Selected as a new option" : "")
+          || prerequisiteReason(option, available);
+        option.disabled = Boolean(reason);
+        option.textContent = `${option.dataset.baseLabel}${reason ? ` — ${reason}` : ""}`;
       }
-      addOption = add.selectedOptions?.[0] ?? null;
-      if (add.value && addOption?.disabled) {
-        add.value = "";
-        addOption = add.selectedOptions?.[0] ?? null;
-        addIdentifier = "";
-      }
+      if (add.value && addOption?.disabled) add.value = "";
+      addOption = add.value ? add.selectedOptions?.[0] : null;
+      addIdentifier = String(addOption?.dataset.identifier ?? "");
     }
 
-    addIdentifier = String(add?.selectedOptions?.[0]?.dataset.identifier ?? "");
-    conflict = Boolean(addIdentifier && selectedIdentifiers.has(addIdentifier));
+    let conflict = false;
+    for (const control of controls) {
+      const selectedAsReplacement = Boolean(addIdentifier && control.dataset.metamagicIdentifier === addIdentifier);
+      const choices = selectedControls.filter(selected => selected !== control);
+      if (addOption) choices.push(addOption);
+      const reason = selectionRules(control)
+        || (selectedAsReplacement ? "Already selected as the Metamagic replacement" : "")
+        || prerequisiteReason(control, projected(choices));
+      control.disabled = Boolean(reason) && !control.checked;
+      const card = control.closest("[data-metamagic-option]");
+      card?.classList.toggle("duplicate-disabled", Boolean(reason));
+      if (card) {
+        if (reason) card.title = reason;
+        else card.removeAttribute("title");
+      }
+      if (control.checked && reason) conflict = true;
+    }
 
     const details = replacementSection?.querySelector("[data-metamagic-replacement-details]") ?? null;
     const removeColumn = details?.querySelector("[data-metamagic-remove-detail-column]") ?? null;

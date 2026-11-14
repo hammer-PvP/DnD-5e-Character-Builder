@@ -13,6 +13,7 @@ import { ItemChoiceReplacementIntegrityService } from "./item-choice-replacement
 import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
 import { RulesCompatibilityService } from "./rules-compatibility-service.mjs";
 import { normalizedAdvancementName } from "../utils/advancement-utils.mjs";
+import { AdvancementCompletionGateService } from "./advancement-completion-gate-service.mjs";
 
 export class LevelUpAdvancementService {
   static async apply(draft, registry) {
@@ -99,6 +100,7 @@ export class LevelUpAdvancementService {
         beforeItemIds,
         workflow: "Class Progression"
       });
+      AdvancementCompletionGateService.assertItemPrerequisites(draft, rollbackSnapshot.items);
       await AdvancementChoiceAnnotationService.refresh(draft, { state: LevelUpDraftManager.getState(draft) });
 
       const classItem = state.multiclass

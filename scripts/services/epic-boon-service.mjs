@@ -4,6 +4,7 @@ import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mj
 import { NativeFeatChoiceGuard } from "./native-feat-choice-guard.mjs";
 import { ModalStackService } from "./modal-stack-service.mjs";
 import { SourceRegistry } from "./source-registry.mjs";
+import { AdvancementCompletionGateService } from "./advancement-completion-gate-service.mjs";
 
 /**
  * GM-granted Epic Boon rewards. A grant only creates a pending permission.
@@ -124,7 +125,10 @@ export class EpicBoonService {
       }
 
       return await NativeAdvancementModalGuard.run(manager, {
-        onComplete: async () => this.#finalizeClaim(actor, { transactionId, sourceUuid, pending })
+        onComplete: async () => {
+          AdvancementCompletionGateService.assertItemPrerequisites(actor, snapshot.items);
+          return this.#finalizeClaim(actor, { transactionId, sourceUuid, pending });
+        }
       });
     } catch (error) {
       if (snapshot && transactionId && this.#claimChanged(actor, snapshot, transactionId)) {
@@ -196,6 +200,10 @@ export class EpicBoonService {
       && NativeFeatChoiceGuard.findOwnedEquivalent(candidate, actor)) {
       return `${candidate.name} is already owned and cannot be selected more than once.`;
     }
+    const prerequisites = await candidate.system?.assertPrerequisites?.(actor, {
+      level: LevelUpService.actorLevel(actor)
+    });
+    if (Array.isArray(prerequisites) && prerequisites.length) return prerequisites.join(" ");
     return null;
   }
 
@@ -238,6 +246,7 @@ export class EpicBoonService {
   static #claimSnapshot(actor) {
     return {
       itemIds: new Set(actor.items.map(item => item.id)),
+      items: actor.items.map(item => item.toObject()),
       abilities: Object.fromEntries(["str", "dex", "con", "int", "wis", "cha"]
         .map(key => [key, Number(actor.system?.abilities?.[key]?.value ?? 0)])),
       pending: foundry.utils.deepClone(this.pending(actor)),

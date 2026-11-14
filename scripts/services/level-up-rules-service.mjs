@@ -17,7 +17,11 @@ import { SpellPreparationPolicyService } from "./spell-preparation-policy-servic
 import { AgonizingBlastBindingService } from "./agonizing-blast-binding-service.mjs";
 import { AlwaysPreparedSpellReconciliationService } from "./always-prepared-spell-reconciliation-service.mjs";
 import { NativeFeatureCompatibilityService } from "./native-feature-compatibility-service.mjs";
-import { advancementName } from "../utils/advancement-utils.mjs";
+import { AdvancementCompletionGateService } from "./advancement-completion-gate-service.mjs";
+import {
+  advancementName, itemPrerequisiteIndex, itemPrerequisiteKeys, itemPrerequisiteLabel, itemPrerequisites,
+  meetsItemPrerequisites, orderItemPrerequisites
+} from "../utils/advancement-utils.mjs";
 
 export class LevelUpRulesService {
   static async buildContext(sourceActor, draft, registry) {
@@ -340,6 +344,9 @@ export class LevelUpRulesService {
       savant,
       invocations,
       metamagic,
+      prerequisiteItems: JSON.stringify([...draft.items].map(item => ({
+        id: item.id, keys: itemPrerequisiteKeys(item)
+      }))),
       pactOfTheTome,
       replacement,
       cantripReplacement,
@@ -443,8 +450,6 @@ export class LevelUpRulesService {
       ...selectedCantrips,
       ...(addCantripIdentifier ? [addCantripIdentifier] : [])
     ]);
-    this.#validateInvocations(context.invocations, invocationSelections);
-    this.#validatePendingInvocationTargets(context.invocations, invocationSelections, pendingInvocationCantrips);
 
     const replaceInvocationId = String(formData.get("levelUp.replaceInvocation.remove") ?? "");
     const replaceInvocationUuid = String(formData.get("levelUp.replaceInvocation.add") ?? "");
@@ -455,7 +460,7 @@ export class LevelUpRulesService {
     const invocationBeingReplaced = replaceInvocationId
       ? context.invocations.replacement.existing.find(item => item.id === replaceInvocationId)
       : null;
-    if (replaceInvocationId && !invocationBeingReplaced) {
+    if (replaceInvocationId && (!context.invocations.replacement.available || !invocationBeingReplaced)) {
       throw new Error("The invocation selected for replacement is not eligible.");
     }
     if (invocationBeingReplaced?.blocked) {
@@ -475,14 +480,14 @@ export class LevelUpRulesService {
     let invocationReplacementSelection = null;
     if (replaceInvocationUuid) {
       invocationReplacementSelection = { uuid: replaceInvocationUuid, targetIdentifier: replaceInvocationTarget };
-      this.#validateInvocations(context.invocations, [invocationReplacementSelection], {
-        replacingItemId: replaceInvocationId
-      });
-      this.#validatePendingInvocationTargets(context.invocations, [invocationReplacementSelection], pendingInvocationCantrips);
     }
+    const allInvocationSelections = invocationReplacementSelection
+      ? [...invocationSelections, invocationReplacementSelection] : invocationSelections;
+    this.#validateInvocations(context.invocations, allInvocationSelections);
+    this.#validatePendingInvocationTargets(context.invocations, allInvocationSelections, pendingInvocationCantrips);
     this.#validateInvocationTargetSurvival(
       context.invocations,
-      [...invocationSelections, ...(invocationReplacementSelection ? [invocationReplacementSelection] : [])],
+      allInvocationSelections,
       {
         removeInvocationId: replaceInvocationId,
         removeCantripId,
@@ -568,6 +573,25 @@ export class LevelUpRulesService {
       uniqueEntries.push(entry);
     }
 
+    let orderedInvocations = [];
+    if (allInvocationSelections.length) {
+      const removedIds = new Set([removeSpellId, removeCantripId, replaceInvocationId].filter(Boolean));
+      const survivors = draft.items.filter(item => !removedIds.has(item.id)
+        && (!replaceInvocationId || !this.#isInvocationContent(item, replaceInvocationId)));
+      const pendingSpells = uniqueEntries.map(({ option }) => ({ type: "spell", identifier: option.identifier }));
+      const available = itemPrerequisiteIndex([...survivors, ...pendingSpells]).keys();
+      const choices = allInvocationSelections.map(selection => {
+        const option = context.invocations.options.find(option => option.uuid === selection.uuid);
+        return { selection, option, requires: option.prerequisiteIdentifiers, provides: option.prerequisiteKeys };
+      });
+      const { ordered, pending } = orderItemPrerequisites(choices, available);
+      if (pending.length) {
+        const { option } = pending[0];
+        throw new Error(`${option.name} requires ${option.prerequisiteLabelsString}.`);
+      }
+      orderedInvocations = ordered.map(choice => choice.selection);
+    }
+
     const createdSpellIds = await this.#createSpells(draft, cls, uniqueEntries, state);
     if (context.classIdentifier === "ranger" && context.model === "fullList" && selectedSpells.length) {
       const selectedSet = new Set(selectedSpells);
@@ -607,40 +631,27 @@ export class LevelUpRulesService {
     );
     deleted += Number(metamagicResult.deletedItemIds?.length ?? 0);
 
+    let invocationReplacementRecord = null;
+    if (replaceInvocationId) {
+      const originalLevel = this.#findAdvancementItemLevel(
+        draft.items.get(context.invocations.advancementOwnerId) ?? cls,
+        context.invocations.advancementId, replaceInvocationId
+      );
+      invocationReplacementRecord = { original: replaceInvocationId, originalLevel };
+      const cascadeDeleted = await this.#deleteInvocationCascade(draft, replaceInvocationId);
+      deleted += cascadeDeleted.length;
+    }
+
     const createdInvocationIds = [];
     const createdInvocationTargetBindings = [];
-    for (const selection of invocationSelections) {
+    for (const selection of orderedInvocations) {
       const item = await this.#createInvocation(draft, cls, context.invocations, selection, state, registry);
       createdInvocationIds.push(item.id);
       if (selection.targetIdentifier) createdInvocationTargetBindings.push({
         invocationItemId: item.id,
         targetIdentifier: selection.targetIdentifier
       });
-    }
-    let invocationReplacementRecord = null;
-    if (replaceInvocationId) {
-      const original = draft.items.get(replaceInvocationId);
-      const originalLevel = this.#findAdvancementItemLevel(
-        draft.items.get(context.invocations.advancementOwnerId) ?? cls,
-        context.invocations.advancementId, replaceInvocationId
-      );
-      const cascadeDeleted = await this.#deleteInvocationCascade(draft, replaceInvocationId);
-      deleted += cascadeDeleted.length;
-      const item = await this.#createInvocation(draft, cls, context.invocations, {
-        uuid: replaceInvocationUuid,
-        targetIdentifier: replaceInvocationTarget
-      }, state, registry);
-      createdInvocationIds.push(item.id);
-      if (replaceInvocationTarget) createdInvocationTargetBindings.push({
-        invocationItemId: item.id,
-        targetIdentifier: replaceInvocationTarget
-      });
-      invocationReplacementRecord = {
-        original: replaceInvocationId,
-        originalLevel,
-        originalName: original?.name ?? null,
-        replacement: item.id
-      };
+      if (selection === invocationReplacementSelection) invocationReplacementRecord.replacement = item.id;
     }
 
     await this.#writeInvocationAdvancementValue(
@@ -695,6 +706,7 @@ export class LevelUpRulesService {
       beforeItemIds: new Set(rollbackSnapshot.items.map(item => item._id)),
       workflow: "Spells & Features"
     });
+    AdvancementCompletionGateService.assertItemPrerequisites(draft, rollbackSnapshot.items);
     await AdvancementChoiceAnnotationService.refresh(draft, { state: LevelUpDraftManager.getState(draft) });
 
     const reconciledRemovedSpellIds = new Set(
@@ -942,9 +954,13 @@ export class LevelUpRulesService {
       const document = await fromUuid(uuid);
       if (document) documents.push({ uuid, document });
     }
-    const names = new Map(documents.map(({ document }) => [
-      String(document.system?.identifier ?? this.#slug(document.name)), document.name
-    ]));
+    const ownedItems = [...draft.items];
+    const names = itemPrerequisiteIndex([...ownedItems, ...documents.map(({ document }) => document)]);
+    const savedRemoveId = stateChoices.invocationReplacement?.removeId ?? "";
+    const replacementRows = this.#invocationReplacementRows(existing, ownedItems);
+    const removedKeys = replacementRows.find(item => item.id === savedRemoveId)?.excludedPrerequisiteKeys ?? [];
+    const startingPrerequisites = new Set([...itemPrerequisiteIndex(ownedItems).keys()]
+      .filter(key => !removedKeys.includes(key)));
 
     const options = documents.map(({ uuid, document }) => {
       const rawLevel = Number(document.system?.prerequisites?.level ?? 0) || 0;
@@ -952,13 +968,13 @@ export class LevelUpRulesService {
       const repeatable = Boolean(document.system?.prerequisites?.repeatable)
         || /repeatable/i.test(document.system?.description?.value ?? "");
       const identifier = String(document.system?.identifier ?? this.#slug(document.name));
-      const prerequisiteIdentifiers = this.#prerequisiteIdentifiers(document);
-      const prerequisiteLabels = prerequisiteIdentifiers.map(id => names.get(id) ?? this.#humanizeIdentifier(id));
+      const prerequisiteIdentifiers = itemPrerequisites(document);
+      const prerequisiteLabels = prerequisiteIdentifiers.map(key => itemPrerequisiteLabel(key, names));
+      const prerequisiteKeys = itemPrerequisiteKeys(document);
       const alreadyKnown = !repeatable && (existingSourceUuids.has(uuid) || existingIdentifiers.has(identifier));
       const targetCantrip = this.#invocationTargetsCantrip(document);
       const levelQualified = minimumLevel <= Number(state.targetClassLevel);
-      const prerequisiteQualified = !prerequisiteIdentifiers.length
-        || prerequisiteIdentifiers.some(id => existingIdentifiers.has(id));
+      const prerequisiteQualified = meetsItemPrerequisites(prerequisiteIdentifiers, startingPrerequisites);
       let disabledReason = "";
       if (!levelQualified) disabledReason = `Requires Warlock Level ${minimumLevel}`;
       else if (!prerequisiteQualified) disabledReason = `Requires ${prerequisiteLabels.join(" or ")}`;
@@ -971,6 +987,8 @@ export class LevelUpRulesService {
         repeatable,
         targetCantrip,
         minimumLevel,
+        prerequisiteKeys,
+        prerequisiteKeysString: prerequisiteKeys.join("|"),
         prerequisiteIdentifiers,
         prerequisiteIdentifiersString: prerequisiteIdentifiers.join("|"),
         prerequisiteLabels,
@@ -991,15 +1009,21 @@ export class LevelUpRulesService {
       selectedPendingCantrips ?? new Set(stateChoices.cantrips ?? [])
     );
     const selected = stateChoices.invocationSelections ?? [];
-    const availableIdentifiers = new Set(existingIdentifiers);
-    const selectedUuids = new Set();
+    const savedSelections = Array.from({ length: count }, (_, index) => selected[index]?.uuid)
+      .map(uuid => options.find(option => option.uuid === uuid));
+    const savedReplacement = savedRemoveId
+      ? options.find(option => option.uuid === stateChoices.invocationReplacement?.uuid) : null;
     const slots = Array.from({ length: count }, (_, index) => {
       const selectedUuid = selected[index]?.uuid ?? "";
+      const others = [...savedSelections.filter((_, slot) => slot !== index), savedReplacement]
+        .filter(option => option?.levelQualified && !option.alreadyKnown);
+      const { prerequisites: availablePrerequisites } = orderItemPrerequisites(others.map(option => ({
+        requires: option.prerequisiteIdentifiers, provides: option.prerequisiteKeys
+      })), startingPrerequisites);
       const slotOptions = options.map(option => {
         const levelQualified = option.minimumLevel <= Number(state.targetClassLevel);
-        const prerequisiteQualified = !option.prerequisiteIdentifiers.length
-          || option.prerequisiteIdentifiers.some(id => availableIdentifiers.has(id));
-        const duplicate = selectedUuids.has(option.uuid) && !option.repeatable;
+        const prerequisiteQualified = meetsItemPrerequisites(option.prerequisiteIdentifiers, availablePrerequisites);
+        const duplicate = !option.repeatable && others.some(other => other.uuid === option.uuid);
         let disabledReason = "";
         if (!levelQualified) disabledReason = `Requires Warlock Level ${option.minimumLevel}`;
         else if (!prerequisiteQualified) disabledReason = `Requires ${option.prerequisiteLabelsString}`;
@@ -1007,11 +1031,6 @@ export class LevelUpRulesService {
         else if (duplicate) disabledReason = "Already selected";
         return { ...option, disabled: Boolean(disabledReason), disabledReason };
       });
-      const selectedOption = slotOptions.find(option => option.uuid === selectedUuid && !option.disabled);
-      if (selectedOption) {
-        availableIdentifiers.add(selectedOption.identifier);
-        selectedUuids.add(selectedOption.uuid);
-      }
       return {
         index,
         selectedUuid,
@@ -1021,14 +1040,18 @@ export class LevelUpRulesService {
       };
     });
 
+    const selectedNew = savedSelections.filter(option => option?.levelQualified && !option.alreadyKnown);
+    const { prerequisites: availablePrerequisites } = orderItemPrerequisites(selectedNew.map(option => ({
+      requires: option.prerequisiteIdentifiers, provides: option.prerequisiteKeys
+    })), startingPrerequisites);
     const replacementOptions = options.map(option => {
       const levelQualified = option.minimumLevel <= Number(state.targetClassLevel);
-      const prerequisiteQualified = !option.prerequisiteIdentifiers.length
-        || option.prerequisiteIdentifiers.some(id => availableIdentifiers.has(id));
+      const prerequisiteQualified = meetsItemPrerequisites(option.prerequisiteIdentifiers, availablePrerequisites);
       let disabledReason = "";
       if (!levelQualified) disabledReason = `Requires Warlock Level ${option.minimumLevel}`;
       else if (!prerequisiteQualified) disabledReason = `Requires ${option.prerequisiteLabelsString}`;
       else if (option.alreadyKnown) disabledReason = "Already known";
+      else if (!option.repeatable && selectedNew.some(other => other.uuid === option.uuid)) disabledReason = "Already selected";
       return { ...option, disabled: Boolean(disabledReason), disabledReason };
     });
 
@@ -1042,14 +1065,12 @@ export class LevelUpRulesService {
       slots,
       targetCantrips,
       targetClassLevel: Number(state.targetClassLevel),
-      existingIdentifiers: [...existingIdentifiers],
-      existingIdentifiersString: [...existingIdentifiers].join("|"),
       replacement: {
         available: allowReplacement && existing.length > 0,
-        selectedRemoveId: stateChoices.invocationReplacement?.removeId ?? "",
+        selectedRemoveId: savedRemoveId,
         selectedUuid: stateChoices.invocationReplacement?.uuid ?? "",
         selectedTarget: stateChoices.invocationReplacement?.targetIdentifier ?? "",
-        existing: await this.#invocationReplacementRows(existing),
+        existing: replacementRows,
         options: replacementOptions,
         levelGroups: this.#groupInvocationOptions(replacementOptions)
       },
@@ -1059,44 +1080,27 @@ export class LevelUpRulesService {
     };
   }
 
-  static async #invocationReplacementRows(existing) {
-    const nodes = [];
-    for (const item of existing) {
-      const sourceUuid = item.getFlag("dnd5e", "sourceId") ?? item._stats?.compendiumSource ?? null;
-      const document = sourceUuid ? await fromUuid(sourceUuid) : item;
-      nodes.push({
-        item,
-        identifier: String(item.system?.identifier ?? document?.system?.identifier ?? this.#slug(item.name)),
-        prerequisites: this.#prerequisiteIdentifiers(document ?? item),
-        sourceUuid
-      });
-    }
-
-    const identifierCounts = new Map();
-    for (const node of nodes) identifierCounts.set(node.identifier, (identifierCounts.get(node.identifier) ?? 0) + 1);
-
-    return nodes.map(candidate => {
-      const counts = new Map(identifierCounts);
-      counts.set(candidate.identifier, Math.max(0, (counts.get(candidate.identifier) ?? 0) - 1));
-      const active = new Set([...counts.entries()].filter(([, count]) => count > 0).map(([identifier]) => identifier));
+  static #invocationReplacementRows(existing, ownedItems) {
+    if (!existing.length) return [];
+    const currentKeys = itemPrerequisiteIndex(ownedItems);
+    const invocationIds = new Set(existing.map(item => item.id));
+    const nodes = ownedItems.map(item => ({ item, prerequisites: itemPrerequisites(item) }));
+    const dependentNodes = nodes.filter(node => node.prerequisites.length
+      && meetsItemPrerequisites(node.prerequisites, currentKeys));
+    return nodes.filter(node => invocationIds.has(node.item.id)).map(candidate => {
+      const survivors = ownedItems.filter(item => item.id !== candidate.item.id
+        && !this.#isInvocationContent(item, candidate.item.id));
+      const survivingIds = new Set(survivors.map(item => item.id));
+      let active = itemPrerequisiteIndex(survivors);
+      const excludedItemIds = ownedItems.filter(item => !survivingIds.has(item.id)).map(item => item.id);
+      const excludedPrerequisiteKeys = [...currentKeys.keys()].filter(key => !active.has(key));
       const invalidIds = new Set();
-      let changed = true;
-      while (changed) {
-        changed = false;
-        for (const node of nodes) {
-          if (node.item.id === candidate.item.id || invalidIds.has(node.item.id)) continue;
-          if (!active.has(node.identifier)) continue;
-          if (!node.prerequisites.length || node.prerequisites.some(identifier => active.has(identifier))) continue;
-          invalidIds.add(node.item.id);
-          // Only remove the identifier from the active set when no other valid
-          // instance remains. This preserves repeatable invocation instances.
-          const otherValid = nodes.some(other => other.item.id !== candidate.item.id
-            && other.item.id !== node.item.id
-            && !invalidIds.has(other.item.id)
-            && other.identifier === node.identifier);
-          if (!otherValid) active.delete(node.identifier);
-          changed = true;
-        }
+      while (true) {
+        const invalid = dependentNodes.filter(node => survivingIds.has(node.item.id)
+          && !invalidIds.has(node.item.id) && !meetsItemPrerequisites(node.prerequisites, active));
+        if (!invalid.length) break;
+        for (const node of invalid) invalidIds.add(node.item.id);
+        active = itemPrerequisiteIndex(survivors.filter(item => !invalidIds.has(item.id)));
       }
       const dependents = nodes.filter(node => invalidIds.has(node.item.id)).map(node => node.item.name);
       const instance = candidate.item.getFlag(MODULE_ID, "invocationInstance") ?? {};
@@ -1109,8 +1113,10 @@ export class LevelUpRulesService {
         name: targetLabel ? `${candidate.item.name} [${targetLabel}]` : candidate.item.name,
         baseName: candidate.item.name,
         img: candidate.item.img,
-        identifier: candidate.identifier,
-        sourceUuid: candidate.sourceUuid,
+        identifier: itemPrerequisiteKeys(candidate.item)[0] ?? "",
+        excludedPrerequisiteKeys,
+        excludedItemIds: excludedItemIds.join("|"),
+        sourceUuid: candidate.item.getFlag("dnd5e", "sourceId") ?? candidate.item._stats?.compendiumSource ?? null,
         targetItemId: instance.targetCantripItemId ?? null,
         targetIdentifier: instance.targetCantripIdentifier ?? null,
         targetName: instance.targetCantripName ?? null,
@@ -1142,24 +1148,6 @@ export class LevelUpRulesService {
         ...group,
         items: group.items.sort((a, b) => a.name.localeCompare(b.name, game.i18n.lang))
       }));
-  }
-
-  static #prerequisiteIdentifiers(document) {
-    const values = document.system?.prerequisites?.items;
-    if (!values) return [];
-    const rows = values instanceof Set || values?.values ? [...values.values()] : Array.isArray(values) ? values : [];
-    return [...new Set(rows.map(value => {
-      if (typeof value === "string") return value;
-      return value?.identifier ?? value?.id ?? value?.value ?? "";
-    }).map(String).filter(Boolean))];
-  }
-
-  static #humanizeIdentifier(identifier) {
-    return String(identifier ?? "")
-      .split(/[-_]/g)
-      .filter(Boolean)
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(" ");
   }
 
   static async #eligibleWarlockCantrips(draft, pendingCantripOptions = [], selectedPending = new Set()) {
@@ -1650,13 +1638,8 @@ export class LevelUpRulesService {
     if (invalid) throw new Error(`A selected ${label} is not available from the enabled prioritized source list.`);
   }
 
-  static #validateInvocations(context, selections, { replacingItemId = null } = {}) {
+  static #validateInvocations(context, selections) {
     const byUuid = new Map(context.options.map(option => [option.uuid, option]));
-    const availableIdentifiers = new Set(context.existingIdentifiers ?? []);
-    if (replacingItemId) {
-      const replacing = context.replacement.existing?.find(item => item.id === replacingItemId);
-      if (replacing?.identifier) availableIdentifiers.delete(replacing.identifier);
-    }
     const seen = new Map();
     const targets = new Set();
     for (const selection of selections) {
@@ -1664,10 +1647,6 @@ export class LevelUpRulesService {
       if (!option) throw new Error("A selected Eldritch Invocation is not available from the enabled sources.");
       if (option.minimumLevel > Number(context.targetClassLevel ?? Infinity)) {
         throw new Error(`${option.name} requires Warlock level ${option.minimumLevel}.`);
-      }
-      if (option.prerequisiteIdentifiers?.length
-        && !option.prerequisiteIdentifiers.some(identifier => availableIdentifiers.has(identifier))) {
-        throw new Error(`${option.name} requires ${option.prerequisiteLabelsString || option.prerequisiteIdentifiers.join(" or ")}.`);
       }
       if (option.alreadyKnown && !option.repeatable) throw new Error(`${option.name} is already known and is not repeatable.`);
       const count = (seen.get(option.uuid) ?? 0) + 1;
@@ -1682,7 +1661,6 @@ export class LevelUpRulesService {
         if (targets.has(key)) throw new Error(`${option.name} must target a different cantrip each time it is selected.`);
         targets.add(key);
       }
-      availableIdentifiers.add(option.identifier);
     }
   }
 
@@ -1787,6 +1765,9 @@ export class LevelUpRulesService {
     if (!option) throw new Error("The selected Eldritch Invocation is no longer available.");
     const document = await fromUuid(option.uuid);
     if (!document) throw new Error(`Unable to load ${option.name}.`);
+    if (!meetsItemPrerequisites(itemPrerequisites(document), itemPrerequisiteIndex(draft.items))) {
+      throw new Error(`${option.name} requires ${option.prerequisiteLabelsString}.`);
+    }
     document.system?.assertPrerequisites?.(draft, {
       level: Number(state.targetClassLevel),
       showMessage: false,
@@ -1882,18 +1863,8 @@ export class LevelUpRulesService {
     // Defensive cleanup is limited to explicit Advancement or Character
     // Builder ownership. Cached spells are intentionally excluded because they
     // were handled before the root deletion.
-    const leftovers = draft.items.filter(item => {
-      const origin = String(item.getFlag("dnd5e", "advancementOrigin") ?? "");
-      const root = String(item.getFlag("dnd5e", "advancementRoot") ?? "");
-      const featureOwner = item.getFlag(MODULE_ID, "featureAcquisition")?.featureItemId
-        ?? item.getFlag(MODULE_ID, "featureGrantedSpell")?.featureItemId
-        ?? item.getFlag(MODULE_ID, "pactOfTheTomeSelection")?.invocationItemId
-        ?? item.getFlag(MODULE_ID, "pactOfTheTomeBook")?.invocationItemId
-        ?? null;
-      return origin.startsWith(`${invocationId}.`)
-        || root.startsWith(`${invocationId}.`)
-        || featureOwner === invocationId;
-    }).map(item => item.id).filter(id => draft.items.get(id));
+    const leftovers = draft.items.filter(item => this.#isInvocationContent(item, invocationId))
+      .map(item => item.id);
     if (leftovers.length) {
       await draft.deleteEmbeddedDocuments("Item", leftovers, {
         deleteContents: false,
@@ -1902,6 +1873,19 @@ export class LevelUpRulesService {
     }
 
     return [...beforeIds].filter(id => !draft.items.get(id));
+  }
+
+  static #isInvocationContent(item, invocationId) {
+    const origin = String(item.getFlag("dnd5e", "advancementOrigin") ?? "");
+    const root = String(item.getFlag("dnd5e", "advancementRoot") ?? "");
+    const cachedFor = String(item.getFlag("dnd5e", "cachedFor") ?? "");
+    return origin.startsWith(`${invocationId}.`)
+      || root.startsWith(`${invocationId}.`)
+      || cachedFor.includes(`.Item.${invocationId}.`)
+      || item.getFlag(MODULE_ID, "featureAcquisition")?.featureItemId === invocationId
+      || item.getFlag(MODULE_ID, "featureGrantedSpell")?.featureItemId === invocationId
+      || item.getFlag(MODULE_ID, "pactOfTheTomeSelection")?.invocationItemId === invocationId
+      || item.getFlag(MODULE_ID, "pactOfTheTomeBook")?.invocationItemId === invocationId;
   }
 
   static async #writeInvocationAdvancementValue(cls, advancementId, targetLevel, itemIds, replacementRecord = null) {
@@ -2108,8 +2092,6 @@ export class LevelUpRulesService {
       slots: [],
       targetCantrips: [],
       targetClassLevel: 0,
-      existingIdentifiers: [],
-      existingIdentifiersString: "",
       replacement: { available: false, existing: [], options: [] },
       note: ""
     };

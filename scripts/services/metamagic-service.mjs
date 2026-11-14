@@ -1,7 +1,10 @@
 import { MODULE_ID } from "../constants.mjs";
 import { SourceResolver } from "./source-resolver.mjs";
 import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
-import { normalizedAdvancementName } from "../utils/advancement-utils.mjs";
+import {
+  itemPrerequisiteIndex, itemPrerequisiteKeys, itemPrerequisiteLabel, itemPrerequisites, meetsItemPrerequisites,
+  normalizedAdvancementName, orderItemPrerequisites
+} from "../utils/advancement-utils.mjs";
 
 const TextEditorImplementation = foundry.applications.ux.TextEditor.implementation;
 
@@ -72,16 +75,22 @@ export class MetamagicService {
     const knownUuids = new Set(existing.map(item => item.uuid).filter(Boolean));
     const selectedUuids = new Set(stateChoices.metamagicSelections ?? []);
     const selectedReplacementUuid = String(stateChoices.metamagicReplacement?.uuid ?? "");
+    const selectedRemoveId = String(stateChoices.metamagicReplacement?.removeId ?? "");
+    const ownedPrerequisites = itemPrerequisiteIndex(draft.items.filter(item => item.id !== selectedRemoveId));
 
     const options = pool.map(option => {
       const alreadyKnown = knownIdentifiers.has(option.identifier) || knownUuids.has(option.uuid);
       const checked = selectedUuids.has(option.uuid);
+      const reason = alreadyKnown ? "Already known"
+        : option.minimumLevel > targetLevel ? `Requires Sorcerer Level ${option.minimumLevel}`
+        : !meetsItemPrerequisites(option.prerequisites, ownedPrerequisites) ? `Requires ${option.prerequisiteLabels}`
+        : "";
       return {
         ...option,
         alreadyKnown,
         checked,
-        disabled: alreadyKnown && !checked,
-        disabledReason: alreadyKnown ? "Already known" : ""
+        disabled: Boolean(reason) && !checked,
+        disabledReason: reason
       };
     });
 
@@ -89,12 +98,10 @@ export class MetamagicService {
     const replacementOptions = options.map(option => ({
       ...option,
       checked: false,
-      disabled: option.alreadyKnown,
-      disabledReason: option.alreadyKnown ? "Already known" : "",
+      disabled: Boolean(option.disabledReason),
       selected: selectedReplacementUuid === option.uuid
     }));
 
-    const selectedRemoveId = String(stateChoices.metamagicReplacement?.removeId ?? "");
     const selectedCount = [...selectedUuids].filter(uuid => options.some(option => option.uuid === uuid)).length;
     const pairComplete = Boolean(selectedRemoveId) === Boolean(selectedReplacementUuid);
     const selectionComplete = selectedCount === count;
@@ -110,6 +117,7 @@ export class MetamagicService {
       existing,
       existingIdentifiers: [...knownIdentifiers],
       existingIdentifiersString: [...knownIdentifiers].join("|"),
+      targetLevel,
       replacement: {
         available: allowReplacement && existing.length > 0,
         selectedRemoveId,
@@ -159,7 +167,9 @@ export class MetamagicService {
     const original = removeId
       ? context.replacement.existing.find(item => item.id === removeId)
       : null;
-    if (removeId && !original) throw new Error("The Metamagic option selected for replacement is not eligible.");
+    if (removeId && (!context.replacement.available || !original)) {
+      throw new Error("The Metamagic option selected for replacement is not eligible.");
+    }
 
     const replacementOption = replacementUuid ? byUuid.get(replacementUuid) : null;
     if (replacementUuid && !replacementOption) {
@@ -177,13 +187,21 @@ export class MetamagicService {
 
     const createdItemIds = [];
     const deletedItemIds = [];
-    for (const uuid of selectedUuids) {
-      const item = await this.#createOption(draft, cls, context, byUuid.get(uuid), state, registry);
-      createdItemIds.push(item.id);
+    const options = selectedUuids.map(uuid => byUuid.get(uuid));
+    if (replacementOption) options.push(replacementOption);
+    const aboveLevel = options.find(option => option.minimumLevel > Number(state.targetClassLevel));
+    if (aboveLevel) throw new Error(`${aboveLevel.name} requires Sorcerer level ${aboveLevel.minimumLevel}.`);
+    const survivingItems = draft.items.filter(item => item.id !== original?.id);
+    const { ordered, pending } = orderItemPrerequisites(options.map(option => ({
+      option, requires: option.prerequisites, provides: option.prerequisiteKeys
+    })), itemPrerequisiteIndex(survivingItems).keys());
+    if (pending.length) {
+      const { option } = pending[0];
+      throw new Error(`${option.name} requires ${option.prerequisiteLabels}.`);
     }
 
     let replacementRecord = null;
-    if (original && replacementOption) {
+    if (original) {
       const originalLevel = Number(original.acquiredLevel ?? this.#findAdvancementItemLevel(
         this.#findAdvancementOwner(draft, cls)?.advancement, original.id, state.targetClassLevel
       ));
@@ -192,13 +210,13 @@ export class MetamagicService {
         characterBuilderMetamagicReplacement: true
       });
       deletedItemIds.push(original.id);
-      const item = await this.#createOption(draft, cls, context, replacementOption, state, registry);
+      replacementRecord = { original: original.id, originalLevel };
+    }
+
+    for (const { option } of ordered) {
+      const item = await this.#createOption(draft, cls, context, option, state, registry);
       createdItemIds.push(item.id);
-      replacementRecord = {
-        original: original.id,
-        originalLevel,
-        replacement: item.id
-      };
+      if (option === replacementOption) replacementRecord.replacement = item.id;
     }
 
     await this.#writeAdvancementValue(
@@ -291,11 +309,19 @@ export class MetamagicService {
       if (!registry.isUuidAllowed(uuid)) continue;
       const preferredDocument = uuid === sourceUuid ? document : await fromUuid(uuid);
       if (!preferredDocument) continue;
+      const prerequisites = itemPrerequisites(preferredDocument);
+      const prerequisiteKeys = itemPrerequisiteKeys(preferredDocument);
       options.set(identifier, {
         uuid,
         name: preferredDocument.name,
         img: preferredDocument.img,
         identifier,
+        minimumLevel: Number(preferredDocument.system?.prerequisites?.level ?? 0) || 0,
+        prerequisites,
+        prerequisitesString: prerequisites.join("|"),
+        prerequisiteKeys,
+        prerequisiteKeysString: prerequisiteKeys.join("|"),
+        prerequisiteLabels: prerequisites.map(key => itemPrerequisiteLabel(key)).join(" or "),
         sourceId: preferred?.sourceId ?? registry.sourceForUuid(uuid)?.sourceId ?? "unknown",
         sourceLabel: preferred?.sourceLabel ?? registry.sourceForUuid(uuid)?.sourceLabel ?? "Source",
         sourceRank: preferred?.sourceRank ?? registry.sourceRankForUuid(uuid),
@@ -327,6 +353,9 @@ export class MetamagicService {
     const document = await fromUuid(option.uuid);
     if (!document) throw new Error(`Unable to load ${option.name}.`);
 
+    if (!meetsItemPrerequisites(itemPrerequisites(document), itemPrerequisiteIndex(draft.items))) {
+      throw new Error(`${option.name} requires ${option.prerequisiteLabels}.`);
+    }
     document.system?.assertPrerequisites?.(draft, {
       level: Number(state.targetClassLevel),
       showMessage: false,

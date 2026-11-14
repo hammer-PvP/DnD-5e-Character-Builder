@@ -1,3 +1,10 @@
+## 0.9.927 — Structured Item prerequisites
+
+- Evaluate D&D5e Item prerequisites as either `identifier` or `type:identifier`. An explicit type must match the document type. Alternative prerequisites follow the system's any-match rule.
+- Use the Actor's Items and the pending Level Up choices for Eldritch Invocation and Metamagic eligibility. Resolve supporting choices before dependent choices and account for Items removed during a replacement.
+- Verify structured Item prerequisites at Character Creation and Level Up completion, and during Epic Boon claims. Level Up compares existing deficiencies with its baseline so previously missing requirements do not block unrelated progression.
+- Reuse the existing Advancement utilities, completion gate, and native D&D5e validators. Foundry runtime QA remains pending.
+
 ## 0.9.926 — Warlock Level 1: Class Cantrips and Managed ItemChoice Completion
 
 - Read the structured `ScaleValue.configuration.identifier: cantrips-known` first (legacy display-name fallback retained) in creation, Level Up, and Character Validation. PHB 3.0 labels this scale simply `Cantrips`; Warlock level 1 now requests two ordinary class cantrips without changing other spellcasting formulas.

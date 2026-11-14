@@ -304,7 +304,7 @@
     {{/if}}
 
     {{#if (dnd5eCharacterBuilderEq state.step "choices")}}
-    <section class="cb-level-up-panel cb-level-up-choices {{#if rules.spellSelectionComplete}}complete{{/if}}" data-spell-selection-root data-required="{{rules.requiredSpellSelections}}" data-invocation-target-class-level="{{rules.invocations.targetClassLevel}}" data-existing-invocations="{{rules.invocations.existingIdentifiersString}}">
+    <section class="cb-level-up-panel cb-level-up-choices {{#if rules.spellSelectionComplete}}complete{{/if}}" data-spell-selection-root data-required="{{rules.requiredSpellSelections}}" data-invocation-target-class-level="{{rules.invocations.targetClassLevel}}" data-prerequisite-items="{{rules.prerequisiteItems}}">
       <header class="cb-section-heading cb-spell-choice-heading cb-level-up-confirm-heading">
         <div>
           <span class="cb-kicker">Step 4</span>
@@ -545,6 +545,7 @@
       <section class="cb-choice-section cb-managed-selection-section cb-metamagic-section"
         data-managed-selection-section
         data-metamagic-selection-section
+        data-target-level="{{rules.metamagic.targetLevel}}"
         data-required="{{rules.metamagic.count}}">
         <header class="cb-choice-section-header">
           <div>
@@ -569,7 +570,11 @@
                 data-metamagic-control
                 data-metamagic-uuid="{{uuid}}"
                 data-metamagic-identifier="{{identifier}}"
-                data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}"
+                data-already-known="{{alreadyKnown}}"
+                data-minimum-level="{{minimumLevel}}"
+                data-prerequisites="{{prerequisitesString}}"
+                data-prerequisite-keys="{{prerequisiteKeysString}}"
+                data-prerequisite-labels="{{prerequisiteLabels}}"
                 {{checked checked}}
                 {{#if disabled}}disabled{{/if}}>
             </label>
@@ -587,6 +592,7 @@
       {{#if rules.metamagic.replacement.available}}
       <section class="cb-choice-section cb-metamagic-section"
         data-metamagic-replacement
+        data-target-level="{{rules.metamagic.targetLevel}}"
         data-optional-pair>
         <h3>Optional Metamagic Replacement</h3>
         <p>Replace one Metamagic option you know with one you do not know. New choices made above are also excluded.</p>
@@ -610,7 +616,11 @@
                 {{#each items}}
                 <option value="{{uuid}}"
                   data-identifier="{{identifier}}"
-                  data-base-disabled="{{#if disabled}}true{{else}}false{{/if}}"
+                  data-already-known="{{alreadyKnown}}"
+                  data-minimum-level="{{minimumLevel}}"
+                  data-prerequisites="{{prerequisitesString}}"
+                  data-prerequisite-keys="{{prerequisiteKeysString}}"
+                  data-prerequisite-labels="{{prerequisiteLabels}}"
                   data-base-label="{{name}}"
                   {{#if disabled}}disabled{{/if}}
                   {{#if (dnd5eCharacterBuilderEq ../../rules.metamagic.replacement.selectedUuid uuid)}}selected{{/if}}>{{name}}{{#if disabledReason}} — {{disabledReason}}{{/if}}</option>
@@ -826,7 +836,7 @@
       {{/if}}
 
       {{#if rules.invocations.count}}
-      <section class="cb-choice-section cb-invocation-section" data-invocation-selection-section data-required="{{rules.invocations.count}}" data-target-class-level="{{rules.invocations.targetClassLevel}}" data-existing-invocations="{{rules.invocations.existingIdentifiersString}}">
+      <section class="cb-choice-section cb-invocation-section" data-invocation-selection-section data-required="{{rules.invocations.count}}" data-target-class-level="{{rules.invocations.targetClassLevel}}">
         <header class="cb-choice-section-header"><div><h3>Eldritch Invocations</h3><p>{{rules.invocations.note}}</p></div><strong data-invocation-count>0 / {{rules.invocations.count}}</strong></header>
         {{#each rules.invocations.slots}}
         <div class="cb-invocation-slot" data-invocation-slot>
@@ -841,6 +851,7 @@
                     data-identifier="{{identifier}}"
                     data-target-cantrip="{{targetCantrip}}"
                     data-minimum-level="{{minimumLevel}}"
+                    data-prerequisite-keys="{{prerequisiteKeysString}}"
                     data-prerequisites="{{prerequisiteIdentifiersString}}"
                     data-prerequisite-labels="{{prerequisiteLabelsString}}"
                     data-repeatable="{{repeatable}}"
@@ -891,7 +902,7 @@
           <label>Replace
             <select name="levelUp.replaceInvocation.remove">
               <option value="">No replacement</option>
-              {{#each rules.invocations.replacement.existing}}<option value="{{id}}" data-identifier="{{identifier}}" {{#if blocked}}disabled{{/if}} {{#if (dnd5eCharacterBuilderEq ../rules.invocations.replacement.selectedRemoveId id)}}selected{{/if}}>{{name}}{{#if blocked}} — {{disabledReason}}{{/if}}</option>{{/each}}
+              {{#each rules.invocations.replacement.existing}}<option value="{{id}}" data-identifier="{{identifier}}" data-excluded-item-ids="{{excludedItemIds}}" {{#if blocked}}disabled{{/if}} {{#if (dnd5eCharacterBuilderEq @root.rules.invocations.replacement.selectedRemoveId id)}}selected{{/if}}>{{name}}{{#if blocked}} — {{disabledReason}}{{/if}}</option>{{/each}}
             </select>
           </label>
           <i class="fa-solid fa-arrow-right"></i>
@@ -902,10 +913,11 @@
               <optgroup label="{{label}}">
                 {{#each items}}
                 <option value="{{uuid}}"
-                  {{#if (dnd5eCharacterBuilderEq ../../selectedUuid uuid)}}selected{{/if}}
+                  {{#if (dnd5eCharacterBuilderEq @root.rules.invocations.replacement.selectedUuid uuid)}}selected{{/if}}
                   data-identifier="{{identifier}}"
                   data-target-cantrip="{{targetCantrip}}"
                   data-minimum-level="{{minimumLevel}}"
+                  data-prerequisite-keys="{{prerequisiteKeysString}}"
                   data-prerequisites="{{prerequisiteIdentifiersString}}"
                   data-prerequisite-labels="{{prerequisiteLabelsString}}"
                   data-repeatable="{{repeatable}}"
@@ -934,7 +946,7 @@
                 data-acquisition-bindings="{{acquisitionBindingsString}}"
                 data-base-label="{{name}}"
                 {{#unless eligible}}disabled{{/unless}}
-                {{#if (dnd5eCharacterBuilderEq ../rules.invocations.replacement.selectedTarget identifier)}}selected{{/if}}>{{name}}{{#if pending}}{{#unless eligible}} — choose this cantrip above first{{else}} — selected during this Level Up{{/unless}}{{/if}}</option>
+                {{#if (dnd5eCharacterBuilderEq @root.rules.invocations.replacement.selectedTarget identifier)}}selected{{/if}}>{{name}}{{#if pending}}{{#unless eligible}} — choose this cantrip above first{{else}} — selected during this Level Up{{/unless}}{{/if}}</option>
               {{/each}}
             </select>
           </label>

@@ -1,5 +1,6 @@
 import { CharacterValidationProgressionService } from "./character-validation-progression-service.mjs";
 import { SourceRegistry } from "./source-registry.mjs";
+import { itemPrerequisiteLabel, itemPrerequisites, newMissingItemPrerequisites } from "../utils/advancement-utils.mjs";
 
 const BLOCKING_KINDS = new Set([
   "advancement-choice-incomplete",
@@ -56,6 +57,7 @@ export class AdvancementCompletionGateService {
     baselineActor = null,
     context = "Character progression"
   } = {}) {
+    if (draft) this.assertItemPrerequisites(draft, baselineActor?.items);
     const issues = await this.issues(draft, { registry, baselineActor });
     if (!issues.length) return [];
 
@@ -69,6 +71,13 @@ export class AdvancementCompletionGateService {
     error.code = "DND5E_CHARACTER_BUILDER_ADVANCEMENT_INCOMPLETE";
     error.advancementCompletionIssues = issues;
     throw error;
+  }
+
+  static assertItemPrerequisites(draft, previousItems = []) {
+    const [invalid] = newMissingItemPrerequisites([...draft.items], [...previousItems]);
+    if (!invalid) return;
+    const alternatives = itemPrerequisites(invalid).map(key => itemPrerequisiteLabel(key)).join(" or ");
+    throw new Error(`Missing prerequisite: ${invalid.name} requires ${alternatives}.`);
   }
 
   static #blocking(issues) {
