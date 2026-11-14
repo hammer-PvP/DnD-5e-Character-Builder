@@ -1,5 +1,6 @@
 import { MODULE_ID } from "../constants.mjs";
 import { AdvancementChoiceAnnotationService } from "./advancement-choice-annotation-service.mjs";
+import { ManagedItemChoiceLedgerService } from "./managed-item-choice-ledger-service.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
 import { normalizedAdvancementName } from "../utils/advancement-utils.mjs";
 
@@ -156,6 +157,7 @@ export class PactOfTheTomeService {
     }
 
     const previousModuleFlags = foundry.utils.deepClone(invocation.flags?.[MODULE_ID] ?? {});
+    const previousNativeAdvancements = foundry.utils.deepClone(invocation.toObject().system?.advancement ?? {});
     const previousSpellData = actor.items
       .filter(item => item.type === "spell" && item.getFlag(MODULE_ID, "pactOfTheTomeSelection")?.invocationItemId === invocation.id)
       .map(item => item.toObject());
@@ -277,6 +279,14 @@ export class PactOfTheTomeService {
         : [];
       const createdCantrips = created.filter(item => item.getFlag(MODULE_ID, "pactOfTheTomeSelection")?.kind === "cantrip");
       const createdRituals = created.filter(item => item.getFlag(MODULE_ID, "pactOfTheTomeSelection")?.kind === "ritual");
+      // Native ItemChoice popups were intercepted before the Feature was
+      // granted. The exact CB-created spells now fill their original PHB
+      // Advancement ledgers, allowing both the system and our completion gate
+      // to recognize the choices without running the native UI a second time.
+      await ManagedItemChoiceLedgerService.reconcile(actor, invocation, [
+        { spellLevel: 0, items: createdCantrips },
+        { spellLevel: 1, items: createdRituals }
+      ], { classIdentifier: "warlock", workflow: mode === "maintenance" ? "creation" : (String(transactionId ?? "").startsWith("creation:") ? "creation" : "levelUp") });
       await invocation.update({
         [`flags.${MODULE_ID}.invocationInstance.selectedCantrips`]: createdCantrips.map(item => ({ id: item.id, identifier: item.system?.identifier, name: item.name })),
         [`flags.${MODULE_ID}.invocationInstance.selectedRituals`]: createdRituals.map(item => ({ id: item.id, identifier: item.system?.identifier, name: item.name })),
@@ -338,6 +348,14 @@ export class PactOfTheTomeService {
           await actor.deleteEmbeddedDocuments("Item", [book.id], {
             characterBuilderPactOfTheTomeRollback: true,
             deleteContents: false
+          });
+        }
+        // A failed acquisition must also restore the previous native choice
+        // records, not just CB flags and spell Items.
+        const ForcedReplacement = foundry.data?.operators?.ForcedReplacement;
+        if (typeof ForcedReplacement?.create === "function") {
+          await invocation.update({ "system.advancement": ForcedReplacement.create(previousNativeAdvancements) }, {
+            characterBuilderPactOfTheTomeRollback: true
           });
         }
         await invocation.update({ [`flags.${MODULE_ID}`]: previousModuleFlags }, {

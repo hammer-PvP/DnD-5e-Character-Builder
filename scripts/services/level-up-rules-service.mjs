@@ -109,10 +109,10 @@ export class LevelUpRulesService {
 
     const oldCantrips = subclassCaster
       ? 0
-      : this.#scaleValue(cls, oldClassLevel, { title: "cantrips known" });
+      : this.#scaleValue(cls, oldClassLevel, { identifier: "cantrips-known", title: "cantrips known" });
     const newCantrips = subclassCaster
       ? 0
-      : this.#scaleValue(cls, newClassLevel, { title: "cantrips known" });
+      : this.#scaleValue(cls, newClassLevel, { identifier: "cantrips-known", title: "cantrips known" });
     const cantripCount = subclassCaster
       ? LevelUpFeatureService.subclassCasterCantripCount(subclassCaster, oldClassLevel, newClassLevel)
       : Math.max(0, newCantrips - oldCantrips);
@@ -804,11 +804,10 @@ export class LevelUpRulesService {
   }
 
   static #scaleValue(cls, level, { identifier = null, title = null } = {}) {
-    const advancement = this.#advancementData(cls).find(entry => {
-      if (entry.type !== "ScaleValue") return false;
-      if (identifier && entry.configuration?.identifier === identifier) return true;
-      return title && advancementName(entry).toLowerCase().includes(title);
-    });
+    const scales = this.#advancementData(cls).filter(entry => entry.type === "ScaleValue");
+    // The D&D5e ScaleValue identifier is stable across PHB display-name changes.
+    const advancement = (identifier ? scales.find(entry => entry.configuration?.identifier === identifier) : null)
+      ?? (title ? scales.find(entry => advancementName(entry).toLowerCase().includes(String(title).toLowerCase())) : null);
     if (!advancement) return 0;
     const rows = Object.entries(advancement.configuration?.scale ?? {})
       .map(([minimumLevel, value]) => [Number(minimumLevel), Number(value?.value ?? 0)])

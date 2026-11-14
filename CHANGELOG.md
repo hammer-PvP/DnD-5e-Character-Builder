@@ -1,3 +1,11 @@
+## 0.9.926 — Warlock Level 1: Class Cantrips and Managed ItemChoice Completion
+
+- Read the structured `ScaleValue.configuration.identifier: cantrips-known` first (legacy display-name fallback retained) in creation, Level Up, and Character Validation. PHB 3.0 labels this scale simply `Cantrips`; Warlock level 1 now requests two ordinary class cantrips without changing other spellcasting formulas.
+- After Pact of the Tome creates exactly three cantrips and two level-1 rituals in the Character Builder UI, reconcile the two original native `ItemChoice.value.added` records using actual created spell Item IDs and source UUIDs; restore native `flags.dnd5e.advancementOrigin` / `advancementRoot` so the existing Advancement Completion Gate can prove these choices are resolved.
+- Introduce reusable, narrowly-scoped `ManagedItemChoiceLedgerService` which matches CB-owned ItemChoices by source-structured spell level and choice count, not PHB IDs or display names; fail on ambiguous or incomplete acquisition instead of fabricating native selections.
+- Update Pact maintenance/reselection to replace the corresponding native ledger references; preserve previous ledger on failed acquisition via rollback.
+- Preserve the v0.9.925 temporary native-popup interception, original Advancement definitions, Species/Background native behavior, third/full/half/pact/artificer spellcasting formulas, Commit and HIM integration. Foundry runtime QA remains required.
+
 ## 0.9.925 — Warlock Pact of the Tome Native ItemChoice Interception
 
 - Fixed the D&D5e 6.1 keyed Advancement collection merge issue that let native **Book of Shadows Cantrips** and **Book of Shadows Rituals** run alongside the Character Builder UI. Interception now applies `foundry.data.operators.ForcedReplacement.create` to the temporary granted Feature, rather than an ordinary merge which retained both native `ItemChoice` keys.

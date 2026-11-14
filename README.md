@@ -1,6 +1,6 @@
 # Character Builder
 
-**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14. **v0.9.925 fixes native `ItemChoice` interception for Pact of the Tome under D&D5e 6.1.x, preserving the v0.9.923 safe Artificer spellcasting path and all validated legacy caster progressions.**
+**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14. **v0.9.926 completes Warlock level 1 cantrip ScaleValue recognition and reconciles Pact of the Tome choices with the native ItemChoice ledger under D&D5e 6.1.x, preserving the v0.9.923 safe Artificer spellcasting path and all validated legacy caster progressions.**
 
 > **Post-migration status:** the `v0.9.x1–x4` series was the D&D5e 6.x migration branch. v0.9.921 preserves the stabilized D&D5e 6.x runtime baseline on the normal `v0.9.9xx` line and continues the evidence-driven compatibility-fix policy.
 

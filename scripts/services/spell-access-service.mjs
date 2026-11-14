@@ -39,7 +39,7 @@ export class SpellAccessService {
     // ScaleValue is the base class entitlement. Selected features that add to
     // the derived cantrips-known scale are projected separately and never
     // subtracted from the raw class progression.
-    const cantripCount = this.#scaleValue(cls, classLevel, { title: "cantrips known" });
+    const cantripCount = this.#scaleValue(cls, classLevel, { identifier: "cantrips-known", title: "cantrips known" });
     const additionalCantripGrants = AdditionalCantripEntitlementService.grants(draft, cls);
     const maxPrepared = this.#scaleValue(cls, classLevel, { identifier: "max-prepared" });
     const initialPreparedCount = model === "fullList" && identifier === "ranger" ? maxPrepared : 0;
@@ -497,12 +497,10 @@ export class SpellAccessService {
   }
 
   static #scaleValue(cls, level, { identifier = null, title = null } = {}) {
-    const advancements = this.#advancementData(cls);
-    const advancement = advancements.find(entry => {
-      if (entry.type !== "ScaleValue") return false;
-      if (identifier && entry.configuration?.identifier === identifier) return true;
-      return title && advancementName(entry).toLowerCase().includes(title);
-    });
+    const scales = this.#advancementData(cls).filter(entry => entry.type === "ScaleValue");
+    // The D&D5e ScaleValue identifier is stable across PHB display-name changes.
+    const advancement = (identifier ? scales.find(entry => entry.configuration?.identifier === identifier) : null)
+      ?? (title ? scales.find(entry => advancementName(entry).toLowerCase().includes(String(title).toLowerCase())) : null);
     if (!advancement) return 0;
 
     const rows = Object.entries(advancement.configuration?.scale ?? {})

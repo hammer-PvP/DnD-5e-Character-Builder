@@ -198,7 +198,7 @@ export class CharacterValidationBuildProjectionService {
       const maximumSpellLevel = this.#maximumSpellLevel(progression, classLevel);
       // The canonical ScaleValue is the base class entitlement. Additive
       // feature grants are projected separately and never subtracted from it.
-      const cantripTarget = this.#scaleValue(sourceClass, classLevel, { title: "cantrips known" });
+      const cantripTarget = this.#scaleValue(sourceClass, classLevel, { identifier: "cantrips-known", title: "cantrips known" });
       const maxPrepared = this.#scaleValue(sourceClass, classLevel, { identifier: "max-prepared", title: "max prepared" });
       const leveledPool = pool.filter(option => {
         const level = Number(option.system?.level ?? -1);
@@ -256,7 +256,7 @@ export class CharacterValidationBuildProjectionService {
       }
 
       if (cantripTarget > 0) {
-        const cantripSlots = this.#scaleChoiceSlots(sourceClass, classLevel, { title: "cantrips known" });
+        const cantripSlots = this.#scaleChoiceSlots(sourceClass, classLevel, { identifier: "cantrips-known", title: "cantrips known" });
         issues.push(...this.#choiceSpellIssues(actor, context, classCantrips, cantripPool, cantripSlots, "cantrip"));
       }
       issues.push(...this.#additionalCantripIssues(actor, context));
@@ -1762,11 +1762,15 @@ export class CharacterValidationBuildProjectionService {
   }
 
   static #findScaleAdvancement(sourceClass, { identifier = null, title = null } = {}) {
-    return this.#advancementEntries(sourceClass).map(([, row]) => row).find(row => {
-      if (row?.type !== "ScaleValue") return false;
-      if (identifier && row.configuration?.identifier === identifier) return true;
-      return title && advancementName(row).toLowerCase().includes(String(title).toLowerCase());
-    }) ?? null;
+    const scales = this.#advancementEntries(sourceClass).map(([, row]) => row)
+      .filter(row => row?.type === "ScaleValue");
+    // Structured identifier wins over translated/renamed display titles.
+    if (identifier) {
+      const exact = scales.find(row => row.configuration?.identifier === identifier);
+      if (exact) return exact;
+    }
+    return title ? scales.find(row => advancementName(row).toLowerCase()
+      .includes(String(title).toLowerCase())) ?? null : null;
   }
 
   static #maximumSpellLevel(progression, level) {
