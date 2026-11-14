@@ -1,3 +1,12 @@
+## 0.9.925 — Warlock Pact of the Tome Native ItemChoice Interception
+
+- Fixed the D&D5e 6.1 keyed Advancement collection merge issue that let native **Book of Shadows Cantrips** and **Book of Shadows Rituals** run alongside the Character Builder UI. Interception now applies `foundry.data.operators.ForcedReplacement.create` to the temporary granted Feature, rather than an ordinary merge which retained both native `ItemChoice` keys.
+- Immediately verifies that the managed keys really disappeared before the native manager can synthesize dependent steps; fails explicitly if the Foundry replacement API is unavailable or removal is ignored.
+- Preserves original source Advancements in the completed Draft, as well as all other native grants, Species/Background flows, and Warlock's native Invocation selection (only its dependent Tome spell choices are managed by CB).
+- Adds a manager-scoped `dnd5e.preAdvancementManagerComplete` safety guard: if an updated system bypasses interception, a newly granted Feature with a CB-managed ItemChoice already filled natively is rejected before changes reach the Draft.
+- Includes regression fixtures using real PHB 3.0 records and a DataModel mock that reproduces D&D5e's merge behavior to prevent recurrence.
+- No changes to spellcasting progression, Artificer, Third Casters, Actor Commit/rollback or Heroic Inspiration Manager integration. Runtime verification with a Player/GM in Foundry 14 + D&D5e 6.1.x remains pending.
+
 # Changelog
 
 ## 0.9.924 — D&D5e 6.1 / PHB 3.0 Feature Advancement compatibility (QA candidate)
