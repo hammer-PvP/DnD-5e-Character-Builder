@@ -18,6 +18,7 @@ export class ManagedAdvancementRegistry {
     { classIdentifier: "bard", ownerIdentifier: "magical-discoveries", type: "ItemChoice", choiceType: "spell", handler: "feature-spells", workflow: "levelUp" },
     { classIdentifier: "warlock", ownerIdentifier: "mystic-arcanum", type: "ItemChoice", choiceType: "spell", handler: "feature-spells", workflow: "levelUp" },
     { classIdentifier: "druid", ownerIdentifier: "primal-order-magician", type: "ItemChoice", choiceType: "spell", handler: "additional-cantrips" },
+    { classIdentifier: "druid", ownerIdentifier: "circle-of-the-land-spells", type: "ItemChoice", choiceType: "feat", atLevel: 3, handler: "circle-land", workflow: "levelUp" },
     // A third-caster subclass's Spellcasting Feature can carry native cantrip
     // selection that the established CB subclass spellcasting UI already owns.
     { classIdentifier: "rogue", ownerIdentifier: "spellcasting", type: "ItemChoice", choiceType: "spell", restrictionLevel: "0", handler: "subclass-cantrips", workflow: "levelUp" },
@@ -46,6 +47,7 @@ export class ManagedAdvancementRegistry {
       && (!rule.title || rule.title === title)
       && (!rule.choiceType || rule.choiceType === choiceType)
       && (!rule.restrictionLevel || rule.restrictionLevel === restrictionLevel)
+      && (!rule.atLevel || Number(source.configuration?.choices?.[rule.atLevel]?.count) === 1 && source.configuration?.pool?.length > 0)
       && (!rule.workflow || rule.workflow === requestedWorkflow)
       && type.includes(String(rule.type).toLowerCase())
     ) ?? null;

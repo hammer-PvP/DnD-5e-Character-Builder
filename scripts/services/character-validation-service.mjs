@@ -1,3 +1,7 @@
+import { AdvancementService } from "./advancement-service.mjs";
+import { AdvancementChoiceAnnotationService } from "./advancement-choice-annotation-service.mjs";
+import { LevelUpFeatureService } from "./level-up-feature-service.mjs";
+import { RuntimeFeatureService } from "./runtime-feature-service.mjs";
 import { MODULE_ID, MODULE_VERSION } from "../constants.mjs";
 import { SourceRegistry } from "./source-registry.mjs";
 import { CharacterValidationProgressionService } from "./character-validation-progression-service.mjs";
@@ -89,6 +93,27 @@ export class CharacterValidationService {
     issues.push(...await this.#scanBrokenActivityEffects(actor, registry));
     issues.push(...await this.#scanMissingAdvancementItems(actor, registry));
     issues.push(...this.#scanForeignSelfReferences(actor));
+    const land = RuntimeFeatureService.landState(actor);
+    if (land.needsRepair) {
+      issues.push({
+        id: `land-record:${land.feature.id}`, kind: "land-record-inconsistent",
+        severity: "warning", repairable: true, repairMode: "safe", repairLabel: "Reconcile Existing Land",
+        title: "Circle of the Land — Conflicting Land Records",
+        summary: `The native Advancement does not match the saved ${land.land} Land.`,
+        details: "Reconcile the native record and Circle Spells to the saved Land."
+      });
+    }
+    const wildShape = await LevelUpFeatureService.knownWildShapeContext(actor);
+    if (wildShape.count > 0) {
+      issues.push({
+        id: `known-wild-shape:${wildShape.featureItemId}`, kind: "known-wild-shape-missing",
+        severity: "warning", repairable: wildShape.options.length >= wildShape.count,
+        repairMode: "guided", repairLabel: "Choose Known Forms",
+        title: "Wild Shape — Known Forms Incomplete",
+        summary: wildShape.note,
+        details: "Choose the missing forms from the enabled sources. Eligible known forms are retained."
+      });
+    }
     const progression = await CharacterValidationProgressionService.scan(actor, registry);
     issues.push(...progression.issues);
 
@@ -125,6 +150,10 @@ export class CharacterValidationService {
         return this.#repairBrokenActivityEffects(actor, issue);
       case "missing-advancement-item":
         return this.#repairMissingAdvancementItem(actor, issue);
+      case "land-record-inconsistent":
+        return this.#repairLand(actor, issue);
+      case "known-wild-shape-missing":
+        return this.#repairKnownWildShape(actor, issue);
       case "foreign-self-reference":
         return this.#repairForeignSelfReferences(actor, issue);
       default: {
@@ -133,6 +162,44 @@ export class CharacterValidationService {
         throw new Error(`Unsupported validation repair: ${issue.kind}.`);
       }
     }
+  }
+
+  static async #repairLand(actor, issue) {
+    const state = RuntimeFeatureService.landState(actor);
+    if (!state.needsRepair) return { status: "repaired", issueId: issue.id, message: "The Land record is already consistent." };
+    const registry = new SourceRegistry();
+    await registry.load();
+    const snapshot = AdvancementService.snapshotDraft(actor);
+    try {
+      await RuntimeFeatureService.reconcileLand(actor, registry, state.land, foundry.utils.randomID(), {
+        force: true, context: "validation"
+      });
+    } catch (error) {
+      await AdvancementService.restoreDraft(actor, snapshot);
+      throw error;
+    }
+    return { status: "repaired", issueId: issue.id, message: `Reconciled the ${state.land} Land and Circle Spells.` };
+  }
+
+  static async #repairKnownWildShape(actor, issue) {
+    const context = await LevelUpFeatureService.knownWildShapeContext(actor);
+    if (!context.count) return { status: "repaired", issueId: issue.id, message: "Known Wild Shape Forms are complete." };
+    const escape = foundry.utils.escapeHTML;
+    const options = context.options.map(row => `<label><input type="checkbox" name="forms" value="${escape(row.uuid)}"> ${escape(row.name)} · CR ${escape(row.crLabel)} · ${escape(row.sourceLabel)}</label>`).join("");
+    const values = await foundry.applications.api.DialogV2.wait({
+      window: { title: "Choose Known Wild Shape Forms" },
+      content: `<p>${escape(context.note)}</p><div style="display:grid;max-height:22rem;overflow:auto" aria-label="Known Wild Shape Forms">${options}</div>`,
+      buttons: [
+        { action: "save", label: "Save Forms", default: true, callback: (_event, button) => new FormData(button.form).getAll("forms") },
+        { action: "cancel", label: "Cancel", callback: () => null }
+      ],
+      close: () => null
+    });
+    if (!values) return { status: "cancelled", issueId: issue.id };
+    const feature = actor.items.get(context.featureItemId);
+    await LevelUpFeatureService.saveKnownWildShapeForms(feature, context, values);
+    await AdvancementChoiceAnnotationService.refresh(actor);
+    return { status: "repaired", issueId: issue.id, message: "Saved Known Wild Shape Forms." };
   }
 
   static async finalize(actor, { sourceActor = null, results = [], unresolved = [] } = {}) {

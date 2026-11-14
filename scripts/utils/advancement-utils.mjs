@@ -76,3 +76,16 @@ export function newMissingItemPrerequisites(items, previousItems = []) {
   return missingItemPrerequisites(items, itemPrerequisiteIndex(items))
     .filter(item => !previousMissing.has(item.id ?? item._id));
 }
+
+/** Read modern feature-owned Wild Shape scales, with legacy class scales as fallback. */
+export function wildShapeScales(feature, cls, level) {
+  const find = (item, ids, title) => Object.values(item?.toObject?.().system?.advancement
+    ?? item?.system?.advancement ?? {}).find(row => row.type === "ScaleValue"
+      && (ids.includes(row.configuration?.identifier) || normalizedAdvancementName(row) === title));
+  const atLevel = row => Object.entries(row?.configuration?.scale ?? {})
+    .filter(([minimum]) => Number(minimum) <= level)
+    .sort(([left], [right]) => Number(left) - Number(right)).at(-1)?.[1]?.value;
+  const forms = find(feature, ["forms"], "known forms") ?? find(cls, ["wild-shape-forms", "known-forms"], "known forms");
+  const cr = find(feature, ["cr"], "wild shape cr") ?? find(cls, ["wild-shape-cr"], "wild shape cr");
+  return { count: Number(atLevel(forms) ?? 0), cr: atLevel(cr), tracked: Boolean(forms && cr) };
+}

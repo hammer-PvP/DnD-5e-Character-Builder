@@ -1,3 +1,4 @@
+import { LevelUpFeatureService } from "./level-up-feature-service.mjs";
 import { MODULE_ID } from "../constants.mjs";
 import { PlayerSheetIntegrityService } from "./player-sheet-integrity-service.mjs";
 import { TransformationActorCleanupService } from "./transformation-actor-cleanup-service.mjs";
@@ -12,6 +13,7 @@ const ACTOR_SHEET_DROP_TARGET = "dnd5e.applications.actor.BaseActorSheet.prototy
 const ACTOR_DIRECTORY_CONTEXT_TARGET = "foundry.applications.sidebar.tabs.ActorDirectory.prototype._getEntryContextOptions";
 const DND5E_ACTOR_MODIFY_TOKEN_ATTRIBUTE_TARGET = "dnd5e.documents.Actor5e.prototype.modifyTokenAttribute";
 const DND5E_ACTOR_REVERT_ORIGINAL_FORM_TARGET = "dnd5e.documents.Actor5e.prototype.revertOriginalForm";
+const DND5E_TRANSFORM_ACTIVITY = "dnd5e.documents.activity.TransformActivity.prototype";
 const DND5E_ATTACK_ROLL_TARGET = "dnd5e.documents.activity.AttackActivity.prototype.rollAttack";
 const DND5E_ATTACK_CHAT_ACTION_TARGET = "dnd5e.documents.activity.AttackActivity.prototype._onChatAction";
 const DND5E_DAMAGE_TARGET_OPTIONS_TARGET = "dnd5e.applications.components.DamageApplicationElement.prototype.getTargetOptions";
@@ -122,6 +124,34 @@ export class LibWrapperService {
         },
         "WRAPPER"
       );
+      if (globalThis.dnd5e?.documents?.activity?.TransformActivity?.prototype?.queryActor) {
+        api.register(MODULE_ID, `${DND5E_TRANSFORM_ACTIVITY}.use`,
+          async function (wrapped, ...args) {
+            if (LevelUpFeatureService.isTrackedWildShapeActivity(this) && this.item.isOwner && this.canUse
+              && !(await LevelUpFeatureService.availableWildShapeForms(this)).length) {
+              ui.notifications.warn("Choose Known Wild Shape Forms in Level Up or Validate Character first.");
+              return;
+            }
+            return wrapped(...args);
+          }, "MIXED");
+        api.register(MODULE_ID, `${DND5E_TRANSFORM_ACTIVITY}.queryActor`,
+          function (wrapped, ...args) {
+            if (!LevelUpFeatureService.isTrackedWildShapeActivity(this)) return wrapped(...args);
+            return LevelUpFeatureService.availableWildShapeForms(this)
+              .then(forms => LevelUpFeatureService.chooseWildShapeForm(forms));
+          }, "MIXED");
+        api.register(MODULE_ID, `${DND5E_TRANSFORM_ACTIVITY}.onChatAction`,
+          async function (wrapped, event, target, message, ...args) {
+            const action = target.dataset.action ?? message.system?.getButton?.(target)?.action;
+            const selected = message.getFlag("dnd5e", "transform.uuid");
+            if (action === "transformActor" && selected && LevelUpFeatureService.isTrackedWildShapeActivity(this)
+              && !(await LevelUpFeatureService.availableWildShapeForms(this)).some(row => row.uuid === selected)) {
+              ui.notifications.warn("This form is no longer a known Wild Shape form. Use Wild Shape again to choose a known form.");
+              return;
+            }
+            return wrapped(event, target, message, ...args);
+          }, "MIXED");
+      }
       api.register(
         MODULE_ID,
         DND5E_ATTACK_ROLL_TARGET,

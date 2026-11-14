@@ -1,3 +1,4 @@
+import { RuntimeFeatureService } from "./runtime-feature-service.mjs";
 import { MODULE_ID } from "../constants.mjs";
 import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
@@ -140,7 +141,11 @@ export class CharacterValidationProgressionService {
   static async #buildEntitlementGraph(actor, registry) {
     const owners = [];
     const nodes = [];
+    const land = RuntimeFeatureService.landState(actor);
+    const staleLands = new Set(land.needsRepair ? land.landItems
+      .filter(item => item.system.identifier !== `${land.land}-land`).map(item => item.id) : []);
     for (const owner of actor.items ?? []) {
+      if (staleLands.has(owner.id)) continue;
       if (!CANONICAL_OWNER_TYPES.has(owner.type)) continue;
       if (!this.#isModernOwner(owner)) continue;
       const source = await this.#resolveSource(owner, registry);

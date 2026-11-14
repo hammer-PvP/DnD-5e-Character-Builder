@@ -1,3 +1,4 @@
+import { ManagedAdvancementRegistry } from "./managed-advancement-registry.mjs";
 import { AdditionalNativeSpellProgressionService } from "./additional-native-spell-progression-service.mjs";
 import { MODULE_ID, SPELL_ACCESS_MODELS } from "../constants.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
@@ -588,6 +589,17 @@ export class CharacterValidationBuildProjectionService {
         const exactOrigin = actor.items.filter(item => item.type === "spell"
           && String(item.getFlag?.("dnd5e", "advancementOrigin") ?? "") === expectedOrigin
           && this.#sameSpellIdentity(item, sourceSpell));
+        const validHighElfReplacement = mappedRows.some(row => {
+          if (row.uuid !== expected.uuid) return false;
+          const spell = actor.items.get(row.itemId);
+          const replacement = spell?.getFlag?.(MODULE_ID, "highElfLineageCantrip");
+          const grant = spell?.getFlag?.(MODULE_ID, "itemGrantInstance");
+          return Number(spell?.system?.level ?? -1) === 0 && replacement?.lineageItemId === owner.id
+            && grant?.ownerItemId === owner.id && grant.advancementId === advancementId
+            && grant.configuredUuid === expected.uuid && grant.sourceUuid === replacement.sourceUuid
+            && spell.getFlag("dnd5e", "sourceId") === replacement.sourceUuid;
+        });
+        if (validHighElfReplacement) continue;
         const candidates = [...new Map([...exactMapped, ...exactOrigin]
           .filter(item => item?.type === "spell" && this.#sameSpellIdentity(item, sourceSpell))
           .map(item => [item.id, item])).values()];
@@ -647,7 +659,13 @@ export class CharacterValidationBuildProjectionService {
         const advancementOrigin = String(spell.getFlag?.("dnd5e", "advancementOrigin") ?? "");
         const advancementRoot = String(spell.getFlag?.("dnd5e", "advancementRoot") ?? "");
         const owners = spell.getFlag?.(MODULE_ID, "featureSpellOwners") ?? [];
-        const hasOwner = owners.some(row => String(row.ownerItemId ?? "") === String(owner.id)
+        const managedChoice = sourceAdvancement.type === "ItemChoice"
+          && advancementOrigin === expectedOrigin
+          && expected.mappedItemId === spell.id
+          && owners.some(row => row.featureItemId === owner.id && ManagedAdvancementRegistry.isManaged(sourceAdvancement, {
+            owner, classIdentifier: row.classIdentifier
+          }));
+        const hasOwner = managedChoice || owners.some(row => String(row.ownerItemId ?? "") === String(owner.id)
           && String(row.advancementId ?? "") === String(advancementId));
         const mergedReceipt = this.#mergedGrantReceipt(spell, {
           ownerId: owner.id,
@@ -657,7 +675,7 @@ export class CharacterValidationBuildProjectionService {
         const expectedAlways = Number(sourceAdvancement.configuration?.spell?.prepared) === ALWAYS_PREPARED
           || Number(spell.system?.level ?? 0) === 0;
         const missing = [];
-        if (expectedSourceItem && currentSourceItem !== expectedSourceItem) missing.push("sourceItem");
+        if (expectedSourceItem && currentSourceItem !== expectedSourceItem && !mergedReceipt && !managedChoice) missing.push("sourceItem");
         // A canonical spell that also satisfies a native grant intentionally
         // keeps its normal class-access provenance. The merge receipt is the
         // authoritative Advancement link, so requiring the canonical spell to

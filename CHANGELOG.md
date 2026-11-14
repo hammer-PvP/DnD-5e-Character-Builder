@@ -1,3 +1,10 @@
+## 0.9.929 — Druid progression and High Elf rests
+
+- Wild Shape reads Known Forms and CR from the Wild Shape Feature on PHB 3.0 and from the Druid class scales on earlier PHB data. Level Up tracks the four, six, and eight known-form totals at Druid levels 2, 4, and 8. The native Wild Shape Automation picker offers the known forms.
+- The Circle of the Land terrain picker appears once in Character Builder. Its choice drives the native Advancement record, Circle Spells, and Nature's Ward through Level Up and Long Rest.
+- High Elf cantrip replacement is available during Long Rest for both PHB lineage identifiers. Swapping the lineage spell retains its casting ability and native grant slot.
+- Validate Character can fill missing known forms and reconcile mismatched terrain records on the validation copy. It recognizes proven merged and managed spell acquisitions.
+
 ## 0.9.928 — PHB 3.0 spell choices and Level Up completion
 
 - Record Mystic Arcanum, Magical Discoveries, Arcane Trickster cantrips, and Primal Order: Magician in their source ItemChoices using the embedded Item IDs and source UUIDs. Reuse the Pact of the Tome ledger service.

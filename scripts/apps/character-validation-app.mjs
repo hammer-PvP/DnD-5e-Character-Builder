@@ -195,6 +195,7 @@ export class CharacterValidationApp extends HandlebarsApplicationMixin(Applicati
     await this.render({ force: true });
     try {
       const result = await CharacterValidationService.applyRepair(this.actor, issue);
+      if (result.status === "cancelled") return;
       this.results.set(issue.id, result);
       ui.notifications.info(result.message ?? `${issue.title} repaired.`);
       const fresh = await CharacterValidationService.scan(this.actor);

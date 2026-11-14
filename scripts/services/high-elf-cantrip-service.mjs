@@ -1,6 +1,6 @@
 import { MODULE_ID } from "../constants.mjs";
 
-const LINEAGE_IDENTIFIER = "elven-lineage-high-elf";
+const LINEAGE_IDENTIFIERS = new Set(["elven-lineage-high-elf", "high-elf"]);
 const ACTION_ID = "replace-high-elf-cantrip";
 
 /**
@@ -18,7 +18,7 @@ export class HighElfCantripService {
 
   static lineage(actor) {
     return actor?.items?.find(item => item.type === "feat"
-      && String(item.system?.identifier ?? "") === LINEAGE_IDENTIFIER) ?? null;
+      && LINEAGE_IDENTIFIERS.has(item.system?.identifier)) ?? null;
   }
 
   static action(actor, restType, session = null) {
@@ -52,6 +52,14 @@ export class HighElfCantripService {
     });
     if (explicit.length === 1) return explicit[0];
     if (explicit.length > 1) return null;
+
+    const advancements = lineage.toObject?.().system?.advancement ?? lineage.system?.advancement ?? {};
+    const slots = Object.entries(advancements).filter(([, row]) => row.type === "ItemGrant");
+    const exact = candidates.filter(item => slots.some(([id, row]) =>
+      Object.hasOwn(row.value?.added ?? {}, item.id)
+      || item.getFlag?.("dnd5e", "advancementOrigin") === `${lineage.id}.${id}`));
+    if (exact.length === 1) return exact[0];
+    if (exact.length > 1) return null;
 
     const lineageRoots = this.#lineageRootIds(lineage);
 
@@ -174,6 +182,11 @@ export class HighElfCantripService {
 
     const oldModuleFlags = foundry.utils.deepClone(oldSpell.flags?.[MODULE_ID] ?? {});
     const nativeGrant = this.#grantDescriptor(actor, lineage, oldSpell);
+    if (nativeGrant) {
+      data.flags.dnd5e.advancementOrigin ??= `${nativeGrant.ownerItemId}.${nativeGrant.advancementId}`;
+      data.flags.dnd5e.advancementRoot ??= lineage.getFlag("dnd5e", "advancementRoot")
+        ?? data.flags.dnd5e.advancementOrigin;
+    }
     const oldGrant = nativeGrant
       ? {
         ...foundry.utils.deepClone(nativeGrant),
@@ -285,6 +298,15 @@ export class HighElfCantripService {
     // Older/native-only High Elves may predate Character Builder's ItemGrant
     // receipt flags. Recover the same immutable slot identity from D&D5e's own
     // Advancement ledger before replacing the embedded spell.
+    const lineageSlots = Object.entries(lineage.toObject().system?.advancement ?? {}).filter(([, row]) =>
+      row.type === "ItemGrant" && Object.hasOwn(row.value?.added ?? {}, spell.id));
+    if (lineageSlots.length === 1) {
+      const [[advancementId, row]] = lineageSlots;
+      return {
+        ownerItemId: lineage.id, advancementId, configuredUuid: row.value.added[spell.id],
+        sourceUuid: this.#referenceUuid(spell), transactionId: null, reconciled: true
+      };
+    }
     const references = [
       spell.getFlag?.("dnd5e", "advancementOrigin"),
       spell.getFlag?.("dnd5e", "advancementRoot"),
@@ -321,7 +343,11 @@ export class HighElfCantripService {
     value.added ??= {};
     delete value.added[oldItemId];
     value.added[newItemId] = grant.configuredUuid;
-    await owner.update({ [`system.advancement.${grant.advancementId}.value`]: value }, {
+    const replace = foundry.data?.operators?.ForcedReplacement;
+    const update = replace?.create
+      ? { [`system.advancement.${grant.advancementId}.value.added`]: replace.create(value.added) }
+      : { [`system.advancement.${grant.advancementId}.value`]: value };
+    await owner.update(update, {
       characterBuilderRuntimeManagement: true,
       characterBuilderHighElfCantripReplacement: true
     });

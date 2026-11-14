@@ -1,3 +1,4 @@
+import { ManagedAdvancementRegistry } from "./managed-advancement-registry.mjs";
 import { AdditionalNativeSpellProgressionService } from "./additional-native-spell-progression-service.mjs";
 import { CURRENCY_CP, MODULE_ID } from "../constants.mjs";
 import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.mjs";
@@ -9,7 +10,7 @@ import { LongRestSpellPreparationService } from "./long-rest-spell-preparation-s
 import { MemorizeSpellService } from "./memorize-spell-service.mjs";
 import { HighElfCantripService } from "./high-elf-cantrip-service.mjs";
 import { WarBondManagementService } from "./war-bond-management-service.mjs";
-import { advancementName } from "../utils/advancement-utils.mjs";
+import { wildShapeScales } from "../utils/advancement-utils.mjs";
 
 const LAND_LABELS = Object.freeze({ arid: "Arid", polar: "Polar", temperate: "Temperate", tropical: "Tropical" });
 const LAND_RESISTANCES = Object.freeze({ arid: "fire", polar: "cold", temperate: "lightning", tropical: "poison" });
@@ -653,17 +654,24 @@ export class RuntimeFeatureService {
   }
 
   static async #landContext(actor, registry, operation) {
-    const feature = this.#feature(actor, "circle-of-the-land-spells");
-    const current = feature?.getFlag(MODULE_ID, "circleLand")?.id ?? feature?.getFlag(MODULE_ID, "circleLand")?.land ?? "";
+    const landState = this.landState(actor);
+    const { feature, land: current } = landState;
     const selected = operation?.land ?? current;
     const druidLevel = Number(this.#class(actor, "druid")?.system?.levels ?? 0);
     const lands = [];
     for (const [id, label] of Object.entries(LAND_LABELS)) {
       const spellGroups = [];
-      for (const [level, identifiers] of Object.entries(LAND_SPELLS[id])) {
-        const spells = identifiers.map(identifier => registry.preferredOption("spell", identifier)).filter(Boolean)
-          .map(option => ({ ...option, level: Number(option.system?.level ?? 0), levelLabel: Number(option.system?.level ?? 0) ? `Level ${option.system.level}` : "Cantrip" }))
-          .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name, game.i18n.lang));
+      const levels = landState.choiceId
+        ? await this.nativeLandSpellGroups(registry, landState, id)
+        : Object.entries(LAND_SPELLS[id]).map(([level, identifiers]) => ({
+          level: Number(level), spells: identifiers.map(identifier => registry.preferredOption("spell", identifier))
+            .filter(Boolean).map(option => {
+              const level = Number(option.system?.level ?? 0);
+              return { ...option, level, levelLabel: level ? `Level ${level}` : "Cantrip" };
+            })
+        }));
+      for (const { level, spells } of levels) {
+        spells.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name, game.i18n.lang));
         const bySpellLevel = new Map();
         for (const spell of spells) {
           const rows = bySpellLevel.get(spell.level) ?? [];
@@ -707,7 +715,7 @@ export class RuntimeFeatureService {
     const current = foundry.utils.deepClone(feature?.getFlag(MODULE_ID, "knownWildShapeForms") ?? []);
     const druidLevel = Number(this.#class(actor, "druid")?.system?.levels ?? 0);
     const { maxCr, flyAllowed } = this.#wildShapeLimits(actor, druidLevel);
-    const beasts = await this.#beastOptions({ maxCr, flyAllowed });
+    const beasts = await this.wildShapeBeastOptions({ maxCr, flyAllowed });
     const replacingId = operation?.oldUuid ?? "";
     const otherForms = current.filter(row => row.uuid !== replacingId);
     const existingUuids = new Set(otherForms.map(row => row.uuid).filter(Boolean));
@@ -979,6 +987,78 @@ export class RuntimeFeatureService {
     return { changed: true, selected: selected.value, label: selected.label };
   }
 
+  static landState(actor) {
+    const feature = this.#feature(actor, "circle-of-the-land-spells");
+    const saved = feature?.getFlag(MODULE_ID, "circleLand");
+    const choice = Object.entries(feature?.toObject().system.advancement ?? {}).find(([, row]) =>
+      ManagedAdvancementRegistry.descriptor(row, {
+        owner: feature, classIdentifier: "druid", workflow: "levelUp"
+      })?.handler === "circle-land");
+    const choiceId = choice?.[0];
+    const row = choice?.[1];
+    const ids = Object.keys(row?.value?.added?.["3"] ?? {});
+    const origin = `${feature?.id}.${choiceId}`;
+    const landItems = choice ? actor.items.filter(item => item.type === "feat"
+      && (ids.includes(item.id) || item.getFlag("dnd5e", "advancementOrigin") === origin)) : [];
+    const nativeLand = landItems.length === 1 ? landItems[0].system.identifier?.replace(/-land$/, "") : "";
+    const land = saved?.id || saved?.land || nativeLand;
+    const needsRepair = Boolean(choice && LAND_LABELS[land]
+      && (nativeLand !== land || ids.length !== 1 || ids[0] !== landItems[0]?.id
+        || landItems[0]?.getFlag("dnd5e", "advancementOrigin") !== origin));
+    return { feature, choiceId, row, ids, origin, landItems, nativeLand, land, needsRepair };
+  }
+
+  static async #nativeLandPlan(registry, state, land, level) {
+    if (!state.choiceId) return null;
+    const sources = await Promise.all(state.row.configuration.pool.map(entry => fromUuid(entry.uuid)));
+    const candidates = sources.filter(item => item?.type === "feat" && item.system?.identifier === `${land}-land`);
+    if (candidates.length !== 1 || !registry.isUuidAllowed(candidates[0].uuid)) {
+      throw new Error("The selected terrain does not resolve to a unique enabled Land in the native ItemChoice.");
+    }
+    const [source] = candidates;
+    const data = source.toObject();
+    const preserve = state.landItems.find(item => item.system.identifier === source.system.identifier
+      && (item.getFlag("dnd5e", "sourceId") ?? item._stats?.compendiumSource) === source.uuid);
+    const advancement = foundry.utils.deepClone(data.system.advancement);
+    const desired = [];
+    for (const [grantId, grant] of Object.entries(advancement ?? {})) {
+      if (grant.type !== "ItemGrant" || Number(grant.level ?? 0) > level) continue;
+      for (const entry of grant.configuration?.items ?? []) {
+        if (entry.optional) continue;
+        const document = await fromUuid(entry.uuid);
+        const option = registry.isUuidAllowed(entry.uuid)
+          ? (registry.findOption(entry.uuid) ?? (document ? { uuid: document.uuid, name: document.name } : null))
+          : registry.preferredOption("spell", document?.system?.identifier);
+        if (document?.type !== "spell" || !option) throw new Error("A required Circle Spell could not be resolved.");
+        desired.push({
+          identifier: document.system.identifier, option, grantId, configuredUuid: entry.uuid,
+          level: Number(grant.level ?? 0), document
+        });
+      }
+    }
+    return { data, source, preserve, advancement, desired };
+  }
+
+  static async nativeLandSpellGroups(registry, state, land) {
+    const plan = await this.#nativeLandPlan(registry, state, land, Infinity);
+    const levels = new Map();
+    for (const { document, option, level } of plan.desired) {
+      const spells = levels.get(level) ?? [];
+      const spellLevel = Number(document.system.level ?? 0);
+      spells.push({
+        uuid: option.uuid, name: option.name, img: option.img ?? document.img,
+        level: spellLevel, levelLabel: spellLevel ? `Level ${spellLevel}` : "Cantrip",
+        sourceLabel: option.sourceLabel ?? option.source?.label ?? "Enabled Source"
+      });
+      levels.set(level, spells);
+    }
+    return [...levels.entries()].sort(([a], [b]) => a - b).map(([level, spells]) => ({ level, spells }));
+  }
+
+  static async reconcileLand(actor, registry, land, transactionId, { force = false, context = "restManagement" } = {}) {
+    return this.#applyLand(actor, registry, { land, force, context }, transactionId);
+  }
+
   static async #applyLand(actor, registry, payload, transactionId) {
     const land = String(payload?.land ?? "");
     if (!LAND_LABELS[land]) throw new Error("Choose a valid Circle of the Land environment.");
@@ -986,33 +1066,83 @@ export class RuntimeFeatureService {
     const subclass = actor.items.find(item => item.type === "subclass" && (item.system?.identifier === "land" || item.system?.classIdentifier === "druid" && /land/i.test(item.name)));
     const feature = this.#feature(actor, "circle-of-the-land-spells");
     if (!cls || !feature) throw new Error("Circle of the Land ownership could not be resolved.");
-    const currentLand = feature.getFlag(MODULE_ID, "circleLand")?.id ?? feature.getFlag(MODULE_ID, "circleLand")?.land ?? "";
-    if (currentLand === land) return { changed: false, land, reason: "unchanged" };
+    const landState = this.landState(actor);
+    if (landState.land === land && !payload.force && !landState.needsRepair) {
+      await this.syncLandResistance(actor, land, landState.landItems[0]);
+      return { changed: false, land, reason: "unchanged" };
+    }
 
     const level = Number(cls.system?.levels ?? 0);
+    const native = await this.#nativeLandPlan(registry, landState, land, level);
     const identifiers = Object.entries(LAND_SPELLS[land])
-      .filter(([minimum]) => level >= Number(minimum))
-      .flatMap(([, rows]) => rows);
-    const desired = identifiers.map(identifier => ({ identifier, option: registry.preferredOption("spell", identifier) }));
+      .filter(([minimum]) => level >= Number(minimum)).flatMap(([, rows]) => rows);
+    const desired = native?.desired ?? identifiers.map(identifier => ({
+      identifier, option: registry.preferredOption("spell", identifier)
+    }));
     if (desired.some(row => !row.option)) throw new Error("One or more Circle Spells could not be resolved from the enabled sources.");
-
-    const old = actor.items.filter(item => item.type === "spell"
-      && (item.getFlag(MODULE_ID, "featureSpellOwners") ?? []).some(owner =>
-        owner.category === "circle-of-the-land-spells" && owner.featureItemId === feature.id
-      ));
+    const resolved = await Promise.all(desired.map(async row => ({ ...row, source: await fromUuid(row.option.uuid) })));
+    if (resolved.some(row => row.source?.type !== "spell")) throw new Error("A required Circle Spell could not be loaded.");
+    const landIds = new Set(landState.landItems.map(item => item.id));
+    const isLandOwner = owner => landIds.has(owner.ownerItemId)
+      || (owner.category === "circle-of-the-land-spells"
+        && (owner.featureItemId === feature.id || landIds.has(owner.featureItemId)));
+    const old = actor.items.filter(item => item.type === "spell" && (
+      (item.getFlag(MODULE_ID, "featureSpellOwners") ?? []).some(isLandOwner)
+      || landIds.has(item.getFlag("dnd5e", "advancementOrigin")?.split(".")[0])
+      || (item.getFlag(MODULE_ID, "mergedItemGrants") ?? []).some(receipt => landIds.has(receipt.ownerItemId))
+      || landState.landItems.some(landItem => Object.values(landItem.toObject().system.advancement ?? {})
+        .some(grant => Object.hasOwn(grant.value?.added ?? {}, item.id)))));
+    let activeLand = native?.preserve ?? null;
+    if (native && !activeLand) {
+      const data = native.data;
+      delete data._id;
+      data.flags ??= {};
+      data.flags.dnd5e = { ...data.flags.dnd5e, sourceId: native.source.uuid,
+        advancementOrigin: landState.origin,
+        advancementRoot: feature.getFlag("dnd5e", "advancementRoot") ?? landState.origin };
+      [activeLand] = await actor.createEmbeddedDocuments("Item", [data], { characterBuilderRuntimeManagement: true });
+      if (!activeLand) throw new Error("The selected Land could not be created.");
+    }
     const oldRecords = [];
     for (const spell of old) {
-      const removedOwners = foundry.utils.deepClone((spell.getFlag(MODULE_ID, "featureSpellOwners") ?? []).filter(owner =>
-        owner.category === "circle-of-the-land-spells" && owner.featureItemId === feature.id
-      ));
+      const removedOwners = foundry.utils.deepClone((spell.getFlag(MODULE_ID, "featureSpellOwners") ?? []).filter(isLandOwner));
       const runtime = spell.getFlag(MODULE_ID, "runtimeManagementSpell");
       const dedicated = runtime?.category === "circle-of-the-land-spells"
-        || String(spell.system?.sourceItem ?? "") === "subclass:land";
+        || String(spell.system?.sourceItem ?? "") === "subclass:land"
+        || (Boolean(native) && landIds.has(spell.getFlag("dnd5e", "advancementOrigin")?.split(".")[0])
+          && !this.#isNormalDruidSpellAcquisition(spell, cls));
+      const origin = spell.getFlag("dnd5e", "advancementOrigin");
+      const normal = this.#isNormalDruidSpellAcquisition(spell, cls);
+      const updates = {};
+      const dataPath = `flags.${MODULE_ID}`;
+      const del = foundry.data.operators.ForcedDeletion;
+      const replace = foundry.data.operators.ForcedReplacement;
+      if (landIds.has(origin?.split(".")[0]) && (normal || !dedicated)) {
+        updates["flags.dnd5e.advancementOrigin"] = new del();
+        updates["flags.dnd5e.advancementRoot"] = new del();
+        if (normal) updates["system.sourceItem"] = "class:druid";
+      }
+      if (landIds.has(spell.getFlag(MODULE_ID, "itemGrantInstance")?.ownerItemId)) {
+        updates[`${dataPath}.itemGrantInstance`] = new del();
+      }
+      const receipts = spell.getFlag(MODULE_ID, "mergedItemGrants") ?? [];
+      const activeReceipts = receipts.filter(receipt => !landIds.has(receipt.ownerItemId));
+      if (activeReceipts.length !== receipts.length) {
+        updates[`${dataPath}.mergedItemGrants`] = replace.create(activeReceipts);
+      }
+      const preparation = spell.getFlag(MODULE_ID, "alwaysPreparedReconciliation");
+      if (preparation?.grants?.some(grant => landIds.has(grant.ownerItemId))) {
+        const grants = preparation.grants.filter(grant => !landIds.has(grant.ownerItemId));
+        updates[`${dataPath}.alwaysPreparedReconciliation`] = replace.create({
+          ...preparation, grants, alwaysPrepared: grants.length > 0
+        });
+      }
+      if (Object.keys(updates).length) await spell.update(updates, { characterBuilderRuntimeManagement: true });
       oldRecords.push({ spellId: spell.id, identifier: spell.system?.identifier, dedicated, removedOwners });
 
       const remaining = await FeatureSpellOwnershipService.removeOwner(
         spell,
-        owner => owner.category === "circle-of-the-land-spells" && owner.featureItemId === feature.id
+        isLandOwner
       );
 
       // v0.9.9b and earlier could overwrite the original previousPrepared value
@@ -1022,6 +1152,7 @@ export class RuntimeFeatureService {
       // recorded reconciliation snapshot; otherwise use the neutral full-list
       // state (Not Prepared) because the historical prior state is unknowable.
       if (!remaining.some(owner => owner.alwaysPrepared)
+        && Number(spell.system?.level ?? 0) > 0
         && Number(spell.system?.prepared ?? 0) === 2
         && this.#isNormalDruidSpellAcquisition(spell, cls)) {
         const recordedPrevious = spell.getFlag(MODULE_ID, "alwaysPreparedReconciliation")
@@ -1044,9 +1175,29 @@ export class RuntimeFeatureService {
     const createdItemIds = [];
     const reusedItemIds = [];
 
-    for (const { identifier, option } of desired) {
-      const source = await fromUuid(option.uuid);
-      if (!source) throw new Error(`Unable to load Circle Spell: ${option.name ?? identifier}.`);
+    const grants = {};
+    const attach = async (spell, grantId, configuredUuid, source) => {
+      if (!grantId || !activeLand) return;
+      (grants[grantId] ??= {})[spell.id] = configuredUuid;
+      const receipt = {
+        ownerItemId: activeLand.id, advancementId: grantId,
+        advancementOrigin: `${activeLand.id}.${grantId}`,
+        configuredUuid, sourceUuid: source.uuid, transactionId
+      };
+      if (this.#isNormalDruidSpellAcquisition(spell, cls)) {
+        const receipts = spell.getFlag(MODULE_ID, "mergedItemGrants") ?? [];
+        await spell.setFlag(MODULE_ID, "mergedItemGrants", [...receipts
+          .filter(row => row.advancementOrigin !== receipt.advancementOrigin), receipt]);
+        return;
+      }
+      await spell.update({
+        "system.sourceItem": `feat:${activeLand.system.identifier}`,
+        "flags.dnd5e.advancementOrigin": receipt.advancementOrigin,
+        "flags.dnd5e.advancementRoot": feature.getFlag("dnd5e", "advancementRoot") ?? landState.origin,
+        [`flags.${MODULE_ID}.itemGrantInstance`]: { ...receipt, reconciled: true }
+      });
+    };
+    for (const { identifier, source, grantId, configuredUuid } of resolved) {
 
       let spell = actor.items.find(item => item.type === "spell"
         && item.system?.identifier === identifier
@@ -1057,7 +1208,8 @@ export class RuntimeFeatureService {
       // document identity stable without treating independent species/feat casts
       // as normal Druid acquisitions.
       if (!spell) {
-        const reusable = oldRecords.find(row => row.identifier === identifier && row.dedicated && actor.items.get(row.spellId));
+        const reusable = oldRecords.find(row => row.identifier === identifier && row.dedicated
+          && actor.items.get(row.spellId)?.getFlag(MODULE_ID, "featureSpellOwners")?.length === 0);
         if (reusable) spell = actor.items.get(reusable.spellId);
       }
 
@@ -1068,7 +1220,8 @@ export class RuntimeFeatureService {
         classItemId: cls.id,
         subclassItemId: subclass?.id ?? null,
         featureItemId: feature.id,
-        ownerItemId: feature.id,
+        ownerItemId: activeLand?.id ?? feature.id,
+        ...(grantId ? { advancementId: grantId, nativeGrant: true } : {}),
         transactionId,
         acquiredAtCharacterLevel: this.#actorLevel(actor),
         acquiredAtClassLevel: level,
@@ -1096,6 +1249,7 @@ export class RuntimeFeatureService {
             }
           }, { characterBuilderRuntimeManagement: true });
         }
+        await attach(spell, grantId, configuredUuid, source);
         activeLandSpellIds.add(spell.id);
         reusedItemIds.push(spell.id);
         continue;
@@ -1125,6 +1279,7 @@ export class RuntimeFeatureService {
         }
       };
       const [created] = await actor.createEmbeddedDocuments("Item", [data], { characterBuilderRuntimeManagement: true });
+      await attach(created, grantId, configuredUuid, source);
       activeLandSpellIds.add(created.id);
       createdItemIds.push(created.id);
     }
@@ -1142,6 +1297,23 @@ export class RuntimeFeatureService {
       });
     }
 
+    if (native) {
+      const replace = foundry.data.operators.ForcedReplacement;
+      for (const [id, added] of Object.entries(grants)) {
+        native.advancement[id].value = { ...native.advancement[id].value, added };
+      }
+      await activeLand.update({
+        "system.advancement": replace.create(native.advancement),
+        "flags.dnd5e.advancementOrigin": landState.origin,
+        "flags.dnd5e.advancementRoot": feature.getFlag("dnd5e", "advancementRoot") ?? landState.origin
+      });
+      await feature.update({
+        [`system.advancement.${landState.choiceId}.value.added`]: replace.create({ "3": { [activeLand.id]: native.source.uuid } })
+      });
+      const obsolete = landState.landItems.filter(item => item.id !== activeLand.id).map(item => item.id);
+      if (obsolete.length) await actor.deleteEmbeddedDocuments("Item", obsolete, { deleteContents: false, characterBuilderRuntimeManagement: true });
+    }
+
     await feature.setFlag(MODULE_ID, "circleLand", {
       id: land,
       land,
@@ -1153,51 +1325,55 @@ export class RuntimeFeatureService {
       configuredAtDruidLevel: level,
       changedAt: Date.now(),
       changedBy: game.user.id,
-      context: "restManagement"
+      context: payload.context ?? "restManagement"
     });
 
-    const ward = this.#feature(actor, "natures-ward");
-    if (ward) {
-      const resistance = LAND_RESISTANCES[land];
-      const effects = ward.effects?.contents ?? [...(ward.effects ?? [])];
-      const landEffects = effects.filter(effect => /^Nature's Ward:/i.test(effect.name ?? ""));
-      const matching = landEffects.find(effect => {
-        const namedLand = String(effect.name ?? "").split(":").at(-1)?.trim().toLowerCase();
-        const changes = effect.system?.changes?.values
-          ? [...effect.system.changes.values()]
-          : (effect.system?.changes ?? []);
-        return namedLand === land || changes.some(change =>
-          change.key === "system.traits.dr.value"
-          && String(change.value).toLowerCase() === resistance
-        );
-      });
-      if (!matching) {
-        throw new Error(`Nature's Ward does not contain the official ${this.#humanize(land)} (${this.#humanize(resistance)}) resistance effect.`);
-      }
-      const updates = landEffects.map(effect => ({
-        _id: effect.id,
-        disabled: effect.id !== matching.id
-      }));
-      if (updates.length) {
-        await ward.updateEmbeddedDocuments("ActiveEffect", updates, { characterBuilderRuntimeManagement: true });
-      }
-      const active = (ward.effects?.contents ?? [...(ward.effects ?? [])]).filter(effect =>
-        /^Nature's Ward:/i.test(effect.name ?? "") && !effect.disabled
-      );
-      if (active.length !== 1 || active[0].id !== matching.id) {
-        throw new Error("Nature's Ward could not activate exactly one official land-resistance effect.");
-      }
-    }
+    await this.syncLandResistance(actor, land, activeLand);
 
     await this.#reconcileLandSpellBadges(actor, feature, cls, land, transactionId);
     await this.#setRuntimeBadge(feature, "circle-land", "Land", [LAND_LABELS[land]], "fa-solid fa-leaf", transactionId);
     return {
       changed: true,
       land,
-      createdItemIds,
+      createdItemIds: native && !native.preserve ? [activeLand.id, ...createdItemIds] : createdItemIds,
       reusedItemIds: [...new Set(reusedItemIds)],
       deletedItemIds: [...new Set(deleteIds)]
     };
+  }
+
+  static async syncLandResistance(actor, land, nativeLand = null) {
+    const ward = this.#feature(actor, "natures-ward");
+    if (!ward) return false;
+    const resistance = LAND_RESISTANCES[land];
+    const effects = item => item?.effects?.contents ?? [...(item?.effects ?? [])];
+    const landEffects = effects(ward).filter(effect => /^Nature's Ward:/i.test(effect.name ?? ""));
+    const changesResistance = effect => {
+      const changes = effect.system?.changes ?? effect.changes ?? [];
+      return Array.from(changes.values?.() ?? Object.values(changes)).some(change =>
+        change.key === "system.traits.dr.value" && String(change.value).toLowerCase() === resistance
+      );
+    };
+
+    // PHB 3.0 places the level-gated resistance on each Land Item.
+    // Earlier PHB data placed all four toggleable effects on Nature's Ward.
+    const nativeEffect = effects(nativeLand).find(effect => effect.transfer && changesResistance(effect));
+    const legacyEffect = landEffects.find(effect => changesResistance(effect)
+      || String(effect.name ?? "").split(":").at(-1)?.trim().toLowerCase() === land);
+    if (!nativeEffect && !legacyEffect) {
+      throw new Error(`Nature's Ward does not contain the official ${this.#humanize(land)} resistance effect.`);
+    }
+    if (nativeEffect?.disabled) {
+      await nativeLand.updateEmbeddedDocuments("ActiveEffect", [{ _id: nativeEffect.id, disabled: false }], {
+        characterBuilderNatureWard: true
+      });
+    }
+
+    const updates = landEffects.flatMap(effect => {
+      const disabled = Boolean(nativeEffect || effect.id !== legacyEffect?.id);
+      return effect.disabled === disabled ? [] : [{ _id: effect.id, disabled }];
+    });
+    if (updates.length) await ward.updateEmbeddedDocuments("ActiveEffect", updates, { characterBuilderNatureWard: true });
+    return Boolean(nativeEffect?.disabled || updates.length);
   }
 
   static #isNormalDruidSpellAcquisition(spell, cls) {
@@ -1207,6 +1383,8 @@ export class RuntimeFeatureService {
     if (itemCreator) return false;
 
     if (moduleFlags.classSpellAccess === true
+      && !["additional-cantrip", "class-feature-cantrip"].includes(moduleFlags.accessModel)
+      && !(moduleFlags.featureSpellOwners ?? []).some(owner => owner.category === "primal-order-magician")
       && (moduleFlags.classIdentifier === "druid" || moduleFlags.classItemId === cls.id)) return true;
 
     const levelUp = moduleFlags.levelUpSpell;
@@ -1263,14 +1441,14 @@ export class RuntimeFeatureService {
     if (index < 0) throw new Error("Choose a known form to replace.");
     const druidLevel = Number(this.#class(actor, "druid")?.system?.levels ?? 0);
     const { maxCr, flyAllowed } = this.#wildShapeLimits(actor, druidLevel);
-    const eligible = await this.#beastOptions({ maxCr, flyAllowed });
+    const eligible = await this.wildShapeBeastOptions({ maxCr, flyAllowed });
     const option = eligible.find(row => row.uuid === payload?.newUuid);
     if (!option) throw new Error("The selected Beast is not an eligible enabled-source form for this Druid level.");
     const source = await fromUuid(option.uuid);
     if (!source || source.type !== "npc") throw new Error("Choose a valid Beast form.");
     const type = source.system?.details?.type?.value ?? source.system?.details?.type;
     const cr = this.#crNumber(source.system?.details?.cr);
-    const fly = Number(source.system?.attributes?.movement?.fly ?? 0) > 0;
+    const fly = Number(source.system?.attributes?.movement?.speeds?.fly ?? source.system?.attributes?.movement?.fly ?? 0) > 0;
     if (String(type).toLowerCase() !== "beast" || cr === null || cr > maxCr || (fly && !flyAllowed)) {
       throw new Error("The selected Beast is not eligible for this Druid level.");
     }
@@ -1929,7 +2107,7 @@ export class RuntimeFeatureService {
     return Boolean(list?.indexes?.some(index => index.system?.identifier === identifier));
   }
 
-  static async #beastOptions({ maxCr, flyAllowed }) {
+  static async wildShapeBeastOptions({ maxCr, flyAllowed }) {
     const options = [];
     const sources = (await import("./source-registry.mjs")).SourceRegistry.orderedSources();
     for (let rank = 0; rank < sources.length; rank++) {
@@ -1946,7 +2124,7 @@ export class RuntimeFeatureService {
         let index;
         try {
           index = await pack.getIndex({ fields: [
-            "name", "img", "type", "system.details.type.value", "system.details.cr", "system.attributes.movement.speeds.fly"
+            "name", "img", "type", "system.details.type.value", "system.details.cr", "system.attributes.movement.speeds.fly", "system.attributes.movement.fly"
           ] });
         } catch (_error) { continue; }
         for (const entry of index) {
@@ -1955,7 +2133,8 @@ export class RuntimeFeatureService {
           if (String(creatureType).toLowerCase() !== "beast") continue;
           const cr = this.#crNumber(foundry.utils.getProperty(entry, "system.details.cr"));
           if (cr === null || cr > maxCr) continue;
-          const fly = Number(foundry.utils.getProperty(entry, "system.attributes.movement.speeds.fly") ?? 0) > 0;
+          const fly = Number(foundry.utils.getProperty(entry, "system.attributes.movement.speeds.fly")
+            ?? foundry.utils.getProperty(entry, "system.attributes.movement.fly") ?? 0) > 0;
           if (fly && !flyAllowed) continue;
           options.push({
             uuid: `Compendium.${pack.collection}.Actor.${entry._id}`,
@@ -1985,23 +2164,12 @@ export class RuntimeFeatureService {
   static #wildShapeLimits(actor, druidLevel) {
     const cls = this.#class(actor, "druid");
     if (!cls) throw new Error("Wild Shape Known Forms requires a Druid class Item.");
-    const raw = this.#scaleRawValue(cls, druidLevel, "wild shape cr");
+    const raw = wildShapeScales(this.#feature(actor, "wild-shape"), cls, druidLevel).cr;
     const maxCr = this.#crNumber(raw);
     if (maxCr === null) {
       throw new Error("Wild Shape Known Forms cannot be offered because the class Wild Shape CR scale is missing or non-numeric.");
     }
     return { maxCr, flyAllowed: Number(druidLevel) >= 8 };
-  }
-
-  static #scaleRawValue(cls, level, title) {
-    const advancements = cls?.toObject?.().system?.advancement ?? cls?.system?.advancement ?? {};
-    const advancement = Object.values(advancements).find(entry => entry.type === "ScaleValue"
-      && advancementName(entry).toLowerCase().includes(String(title).toLowerCase()));
-    const rows = Object.entries(advancement?.configuration?.scale ?? {})
-      .map(([minimum, row]) => [Number(minimum), row?.value])
-      .filter(([minimum]) => Number.isFinite(minimum) && minimum <= Number(level))
-      .sort((a, b) => a[0] - b[0]);
-    return rows.at(-1)?.[1] ?? null;
   }
 
   static #maximumSpellLevel(progression, level) {

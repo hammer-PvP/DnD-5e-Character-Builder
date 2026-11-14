@@ -1,10 +1,11 @@
+import { RuntimeFeatureService } from "./runtime-feature-service.mjs";
 import { MODULE_ID, SOURCE_DEFINITIONS } from "../constants.mjs";
 import { LevelUpDraftManager } from "./level-up-draft-manager.mjs";
 import { SourceRegistry } from "./source-registry.mjs";
 import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
 import { AdditionalCantripEntitlementService } from "./additional-cantrip-entitlement-service.mjs";
-import { advancementName } from "../utils/advancement-utils.mjs";
+import { wildShapeScales } from "../utils/advancement-utils.mjs";
 import { SubclassSpellcastingService } from "./subclass-spellcasting-service.mjs";
 import { ManagedItemChoiceLedgerService } from "./managed-item-choice-ledger-service.mjs";
 
@@ -35,12 +36,6 @@ const LAND_SPELLS = Object.freeze({
   }
 });
 
-const LAND_RESISTANCES = Object.freeze({
-  arid: "fire",
-  polar: "cold",
-  temperate: "lightning",
-  tropical: "poison"
-});
 
 /**
  * Module-managed Level Up handlers for source features whose complete choice is
@@ -272,8 +267,8 @@ export class LevelUpFeatureService {
     }
 
     if (identifier === "druid") {
-      wildShape = await this.#wildShapeContext(draft, cls, registry, {
-        oldClassLevel, newClassLevel,
+      wildShape = await this.#wildShapeContext(draft, cls, {
+        newClassLevel,
         selected: saved.wildShapeForms ?? []
       });
       land = await this.#landContext(draft, cls, registry, {
@@ -282,7 +277,7 @@ export class LevelUpFeatureService {
       });
       // Focused existing-Actor reconciliation is applied only to the Level Up
       // Draft. The live Actor remains untouched until the protected commit.
-      if (land.current) await this.#activateNaturesWard(draft, land.current);
+      if (land.current && !land.native) await RuntimeFeatureService.syncLandResistance(draft, land.current);
     }
 
     if (identifier === "ranger") {
@@ -462,17 +457,9 @@ export class LevelUpFeatureService {
 
     if (context.wildShape.count > 0) {
       const values = [...new Set(formData.getAll("levelUp.wildShapeForms").map(String))];
-      this.#validateExact(values, context.wildShape.count, context.wildShape.options, "Known Wild Shape Forms", "uuid");
       const feature = draft.items.get(context.wildShape.featureItemId);
       if (!feature) throw new Error("Wild Shape feature Item is missing.");
-      const invalidUuids = new Set(context.wildShape.invalidUuids ?? []);
-      const existing = (feature.getFlag(MODULE_ID, "knownWildShapeForms") ?? [])
-        .filter(row => !invalidUuids.has(row.uuid));
-      const additions = values.map(uuid => context.wildShape.options.find(option => option.uuid === uuid));
-      await feature.setFlag(MODULE_ID, "knownWildShapeForms", [...existing, ...additions].map(row => ({
-        uuid: row.uuid, name: row.name, img: row.img, cr: row.cr, fly: row.fly,
-        sourceLabel: row.sourceLabel
-      })));
+      const additions = await this.saveKnownWildShapeForms(feature, context.wildShape, values);
       featureChoices.wildShapeForms = values;
       if (context.wildShape.repairCount) {
         featureChoices.wildShapeRepair = {
@@ -488,7 +475,14 @@ export class LevelUpFeatureService {
     if (context.land.required && !Object.keys(LAND_SPELLS).includes(selectedLand)) {
       throw new Error("Choose a Circle of the Land environment.");
     }
-    if (context.land.featureItemId && selectedLand) {
+    if (context.land.native && selectedLand) {
+      const result = await RuntimeFeatureService.reconcileLand(draft, registry, selectedLand, state.transactionId, {
+        force: context.land.required || context.land.newSpells.length > 0,
+        context: "levelUp"
+      });
+      createdItemIds.push(...(result.createdItemIds ?? []));
+      featureChoices.land = selectedLand;
+    } else if (context.land.featureItemId && selectedLand) {
       const feature = draft.items.get(context.land.featureItemId);
       const shouldConfigureLand = Boolean(context.land.required)
         || !context.land.current
@@ -509,7 +503,7 @@ export class LevelUpFeatureService {
       }
       const landCreated = await this.#applyLandSpells(draft, cls, registry, feature, selectedLand, state);
       createdItemIds.push(...landCreated);
-      await this.#activateNaturesWard(draft, selectedLand);
+      await RuntimeFeatureService.syncLandResistance(draft, selectedLand);
       featureChoices.land = selectedLand;
     }
 
@@ -609,36 +603,76 @@ export class LevelUpFeatureService {
     return config;
   }
 
-  static async #wildShapeContext(draft, cls, _registry, { oldClassLevel, newClassLevel, selected }) {
+  static isTrackedWildShapeActivity(activity) {
+    if (activity.item?.system?.identifier !== "wild-shape" || activity.transform?.preset !== "wildshape") return false;
+    const cls = activity.actor?.items.find(item => item.type === "class" && item.system.identifier === "druid");
+    return Boolean(cls && wildShapeScales(activity.item, cls, Number(cls.system.levels)).tracked);
+  }
+
+  static async availableWildShapeForms(activity) {
+    const actor = activity.actor;
+    const cls = actor.items.find(item => item.type === "class" && item.system.identifier === "druid");
+    const level = Number(cls.system.levels);
+    const feature = actor.items.get(activity.item.id) ?? activity.item;
+    const { forms } = await this.#knownWildShapeForms(feature, wildShapeScales(feature, cls, level).cr, level >= 8);
+    return forms;
+  }
+
+  static async chooseWildShapeForm(forms) {
+    if (!forms.length) return null;
+    const escape = foundry.utils.escapeHTML;
+    const options = forms.map(row => `<option value="${escape(row.uuid)}">${escape(row.name)} · CR ${escape(this.#crLabel(row.cr))}</option>`).join("");
+    return foundry.applications.api.DialogV2.wait({
+      window: { title: "Wild Shape — Known Forms", modal: true },
+      content: `<select name="form" aria-label="Known Wild Shape Form">${options}</select>`,
+      buttons: [
+        { action: "select", label: "Select Form", default: true, callback: (_event, button) => new FormData(button.form).get("form") },
+        { action: "cancel", label: "Cancel", callback: () => null }
+      ],
+      close: () => null
+    });
+  }
+
+  static async knownWildShapeContext(actor) {
+    const cls = actor.items.find(item => item.type === "class" && item.system.identifier === "druid");
+    const level = Number(cls?.system.levels ?? 0);
+    return cls ? this.#wildShapeContext(actor, cls, {
+      newClassLevel: level, selected: []
+    }) : this.#emptyWildShape();
+  }
+
+  static async saveKnownWildShapeForms(feature, context, values) {
+    this.#validateExact(values, context.count, context.options, "Known Wild Shape Forms", "uuid");
+    const valid = new Set(context.validUuids);
+    const seen = new Set();
+    const existing = (feature.getFlag(MODULE_ID, "knownWildShapeForms") ?? []).filter(row => {
+      if (!valid.has(row.uuid) || seen.has(row.uuid)) return false;
+      seen.add(row.uuid);
+      return true;
+    });
+    const additions = values.map(uuid => context.options.find(option => option.uuid === uuid));
+    await feature.setFlag(MODULE_ID, "knownWildShapeForms", [...existing, ...additions].map(row => ({
+      uuid: row.uuid, name: row.name, img: row.img, cr: row.cr, fly: row.fly, sourceLabel: row.sourceLabel
+    })));
+    return additions;
+  }
+
+  static async #wildShapeContext(draft, cls, { newClassLevel, selected }) {
     const feature = this.#feature(draft, "wild-shape");
     if (!feature || newClassLevel < 2) return this.#emptyWildShape();
-    const oldKnown = this.#scaleValue(cls, oldClassLevel, "known forms");
-    const newKnown = this.#scaleValue(cls, newClassLevel, "known forms");
-    const growthCount = Math.max(0, newKnown - oldKnown);
-    const knownRows = foundry.utils.deepClone(feature.getFlag(MODULE_ID, "knownWildShapeForms") ?? []);
-    const invalidForms = [];
-    const validExisting = new Set();
-    for (const row of knownRows) {
-      const document = row?.uuid ? await fromUuid(row.uuid) : null;
-      const sourceCr = document ? this.#crNumber(foundry.utils.getProperty(document, "system.details.cr")) : null;
-      if (sourceCr === null) {
-        invalidForms.push({
-          uuid: row?.uuid ?? "",
-          name: row?.name ?? document?.name ?? "Unknown form",
-          reason: document ? "The source document has no explicit numeric CR." : "The source document can no longer be resolved."
-        });
-      } else if (row?.uuid) {
-        validExisting.add(row.uuid);
-      }
-    }
-    const repairCount = invalidForms.length;
-    const count = growthCount + repairCount;
+    const scales = wildShapeScales(feature, cls, newClassLevel);
+    if (!scales.tracked) return this.#emptyWildShape();
+    const maxCr = this.#crNumber(scales.cr);
+    if (maxCr === null) throw new Error("Wild Shape CR is missing or invalid.");
+    const flyAllowed = newClassLevel >= 8;
+    const { forms, invalidForms, identities } = await this.#knownWildShapeForms(feature, maxCr, flyAllowed);
+    const validExisting = new Set(forms.map(row => row.uuid));
+    const count = Math.max(0, scales.count - validExisting.size);
+    const repairCount = Math.min(count, invalidForms.length);
+    const growthCount = count - repairCount;
     if (!count) return { ...this.#emptyWildShape(), featureItemId: feature.id };
-    const maxCr = this.#crNumber(this.#scaleRawValue(cls, newClassLevel, "wild shape cr"));
-    if (maxCr === null) throw new Error("Wild Shape Known Forms cannot be offered because the class Wild Shape CR scale is missing or non-numeric.");
-    const options = (await this.#beastOptions()).filter(option =>
-      option.cr <= maxCr && (newClassLevel >= 8 || !option.fly) && !validExisting.has(option.uuid)
-    ).map(option => ({ ...option, checked: selected.includes(option.uuid) }));
+    const options = (await RuntimeFeatureService.wildShapeBeastOptions({ maxCr, flyAllowed }))
+      .filter(option => !identities.has(`${option.name.toLowerCase()}:${option.cr}`)).map(option => ({ ...option, checked: selected.includes(option.uuid) }));
     const repairText = repairCount
       ? ` Replace ${repairCount} incompatible stored form${repairCount === 1 ? "" : "s"}: ${invalidForms.map(row => row.name).join(", ")}.`
       : "";
@@ -651,7 +685,7 @@ export class LevelUpFeatureService {
       growthCount,
       repairCount,
       invalidForms,
-      invalidUuids: invalidForms.map(row => row.uuid).filter(Boolean),
+      validUuids: [...validExisting],
       selectedCount: selected.length,
       maxCrLabel: this.#crLabel(maxCr),
       flyAllowed: newClassLevel >= 8,
@@ -661,11 +695,39 @@ export class LevelUpFeatureService {
     };
   }
 
+  static async #knownWildShapeForms(feature, maximum, flyAllowed) {
+    const maxCr = this.#crNumber(maximum);
+    const identities = new Set();
+    const forms = [];
+    const invalidForms = [];
+    const rows = feature.getFlag(MODULE_ID, "knownWildShapeForms") ?? [];
+    for (const row of rows) {
+      const document = row?.uuid ? await fromUuid(row.uuid) : null;
+      const cr = this.#crNumber(document?.system?.details?.cr);
+      const type = document?.system?.details?.type?.value ?? document?.system?.details?.type;
+      const movement = document?.system?.attributes?.movement;
+      const fly = Number(movement?.speeds?.fly ?? movement?.fly ?? 0) > 0;
+      const identity = `${document?.name?.toLowerCase()}:${cr}`;
+      if (maxCr === null || cr === null || cr > maxCr || (fly && !flyAllowed)
+        || type !== "beast" || identities.has(identity)) {
+        invalidForms.push({
+          uuid: row?.uuid ?? "", name: row?.name ?? document?.name ?? "Unknown form",
+          reason: document ? "This form is ineligible or already known." : "The source document can no longer be resolved."
+        });
+      } else {
+        forms.push({ uuid: row.uuid, name: document.name, cr, fly });
+        identities.add(identity);
+      }
+    }
+    return { forms, invalidForms, identities };
+  }
+
   static async #landContext(draft, _cls, registry, { oldClassLevel, newClassLevel, selected }) {
     const feature = this.#feature(draft, "circle-of-the-land-spells");
     if (!feature) return this.#emptyLand();
-    const current = feature.getFlag(MODULE_ID, "circleLand")?.land ?? "";
-    const required = oldClassLevel < 3 && newClassLevel >= 3 || !current;
+    const landState = RuntimeFeatureService.landState(draft);
+    const current = landState.land;
+    const required = !current || (!landState.choiceId && oldClassLevel < 3 && newClassLevel >= 3);
     const resolved = selected || current;
     const previews = [];
     for (const value of Object.keys(LAND_SPELLS)) {
@@ -673,15 +735,18 @@ export class LevelUpFeatureService {
         value,
         label: this.#humanize(value),
         selected: resolved === value,
-        levels: await this.#landProgressionCards(value, registry)
+        levels: landState.choiceId
+          ? (await RuntimeFeatureService.nativeLandSpellGroups(registry, landState, value))
+            .map(({ level, spells }) => ({ level, label: `Druid Level ${level}`, spells }))
+          : await this.#landProgressionCards(value, registry)
       });
     }
-    const unlockedLevels = [3, 5, 7, 9].filter(level => oldClassLevel < level && newClassLevel >= level);
     const newSpells = resolved
-      ? previews.find(row => row.value === resolved)?.levels.filter(row => unlockedLevels.includes(row.level)) ?? []
+      ? previews.find(row => row.value === resolved)?.levels.filter(row => oldClassLevel < row.level && newClassLevel >= row.level) ?? []
       : [];
     return {
       featureItemId: feature.id,
+      native: Boolean(landState.choiceId),
       required,
       current,
       currentLabel: this.#humanize(current),
@@ -775,41 +840,6 @@ export class LevelUpFeatureService {
       }
     }
     return created;
-  }
-
-  static async #activateNaturesWard(draft, land) {
-    const expectedResistance = LAND_RESISTANCES[land];
-    if (!expectedResistance) throw new Error("Nature's Ward cannot be configured because the Circle of the Land selection is invalid.");
-    const feature = this.#feature(draft, "natures-ward");
-    if (!feature) return false;
-
-    const effects = feature.effects?.contents ?? [...(feature.effects ?? [])];
-    const landEffects = effects.filter(effect => /^Nature's Ward:/i.test(effect.name ?? ""));
-    const matching = landEffects.find(effect => {
-      const namedLand = String(effect.name ?? "").split(":").at(-1)?.trim().toLowerCase();
-      const changes = effect.system?.changes?.values ? [...effect.system.changes.values()] : (effect.system?.changes ?? []);
-      return namedLand === land || changes.some(change =>
-        change.key === "system.traits.dr.value" && String(change.value).toLowerCase() === expectedResistance
-      );
-    });
-    if (!matching) {
-      throw new Error(`Nature's Ward does not contain the official ${this.#humanize(land)} (${this.#humanize(expectedResistance)}) resistance effect.`);
-    }
-
-    const updates = landEffects.map(effect => ({
-      _id: effect.id,
-      disabled: effect.id !== matching.id
-    }));
-    if (updates.length) await feature.updateEmbeddedDocuments("ActiveEffect", updates, {
-      characterBuilderNatureWard: true
-    });
-    const active = (feature.effects?.contents ?? [...(feature.effects ?? [])]).filter(effect =>
-      /^Nature's Ward:/i.test(effect.name ?? "") && !effect.disabled
-    );
-    if (active.length !== 1 || active[0].id !== matching.id) {
-      throw new Error("Nature's Ward could not activate exactly one official land-resistance effect.");
-    }
-    return true;
   }
 
   static async #recordSpellChoice(draft, cls, owner, items, state, {
@@ -1114,57 +1144,6 @@ export class LevelUpFeatureService {
       ));
   }
 
-  static async #beastOptions() {
-    const options = [];
-    const sources = SourceRegistry.orderedSources();
-    for (let rank = 0; rank < sources.length; rank++) {
-      const source = sources[rank];
-      if (source.packageId !== "dnd5e" && !game.modules.get(source.packageId)?.active) continue;
-      const packs = [...game.packs].filter(pack => {
-        if (pack.documentName !== "Actor") return false;
-        const packageId = pack.metadata.packageName ?? pack.metadata.package ?? pack.collection.split(".")[0];
-        if (packageId !== source.packageId) return false;
-        if (!source.sourceBook) return true;
-        return foundry.utils.getProperty(pack.metadata, "flags.dnd5e.sourceBook") === source.sourceBook;
-      });
-      for (const pack of packs) {
-        let index;
-        try {
-          index = await pack.getIndex({ fields: [
-            "name", "img", "type", "system.details.type.value", "system.details.cr", "system.attributes.movement.speeds.fly"
-          ] });
-        } catch (_error) { continue; }
-        for (const entry of index) {
-          const creatureType = foundry.utils.getProperty(entry, "system.details.type.value")
-            ?? foundry.utils.getProperty(entry, "system.details.type") ?? "";
-          if (String(creatureType).toLowerCase() !== "beast") continue;
-          const cr = this.#crNumber(foundry.utils.getProperty(entry, "system.details.cr"));
-          if (cr === null) continue;
-          const fly = Number(foundry.utils.getProperty(entry, "system.attributes.movement.speeds.fly") ?? 0) > 0;
-          options.push({
-            uuid: `Compendium.${pack.collection}.Actor.${entry._id}`,
-            name: entry.name,
-            img: entry.img || "icons/svg/mystery-man.svg",
-            cr,
-            crLabel: this.#crLabel(cr),
-            fly,
-            sourceId: source.id,
-            sourceLabel: source.label,
-            sourceRank: rank
-          });
-        }
-      }
-    }
-    const claimed = new Set();
-    return options.sort((a, b) => a.sourceRank - b.sourceRank || a.cr - b.cr || a.name.localeCompare(b.name, game.i18n.lang))
-      .filter(option => {
-        const key = `${option.name.toLowerCase()}:${option.cr}`;
-        if (claimed.has(key)) return false;
-        claimed.add(key);
-        return true;
-      });
-  }
-
   static #groupBySource(options) {
     const groups = new Map();
     for (const option of options) {
@@ -1200,21 +1179,6 @@ export class LevelUpFeatureService {
   static #mysticArcanumLevel(newLevel, oldLevel) {
     const levels = { 11: 6, 13: 7, 15: 8, 17: 9 };
     return oldLevel < newLevel ? levels[newLevel] ?? 0 : 0;
-  }
-
-  static #scaleValue(cls, level, title) {
-    return Number(this.#scaleRawValue(cls, level, title) ?? 0);
-  }
-
-  static #scaleRawValue(cls, level, title) {
-    const advancements = cls.toObject().system?.advancement ?? {};
-    const advancement = Object.values(advancements).find(entry => entry.type === "ScaleValue"
-      && advancementName(entry).toLowerCase().includes(title));
-    const rows = Object.entries(advancement?.configuration?.scale ?? {})
-      .map(([minimum, row]) => [Number(minimum), row?.value])
-      .filter(([minimum]) => minimum <= level)
-      .sort((a, b) => a[0] - b[0]);
-    return rows.at(-1)?.[1] ?? 0;
   }
 
   static #crNumber(value) {
