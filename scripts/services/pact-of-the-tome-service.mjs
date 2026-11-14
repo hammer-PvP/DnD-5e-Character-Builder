@@ -525,15 +525,31 @@ export class PactOfTheTomeService {
   }
 
   static #advancementIdForInvocation(actor, invocationItemId) {
-    const cls = actor.items.find(item => item.type === "class" && item.system?.identifier === "warlock");
-    if (!cls) return null;
-    const advancements = cls.toObject().system?.advancement ?? {};
-    for (const [id, advancement] of Object.entries(advancements)) {
-      const added = advancement?.value?.added ?? {};
-      const values = Object.values(added).flatMap(row => Object.keys(row ?? {}));
-      if (values.includes(invocationItemId)) return id;
+    const invocation = actor.items.get(invocationItemId);
+    const origin = String(invocation?.getFlag("dnd5e", "advancementOrigin") ?? "");
+    const [ownerId, originAdvancementId] = origin.split(".");
+    const originOwner = ownerId ? actor.items.get(ownerId) : null;
+    if (originOwner?.toObject().system?.advancement?.[originAdvancementId]) return originAdvancementId;
+
+    // Both class-embedded legacy and granted-Feature ItemChoices are valid.
+    const candidates = actor.items.filter(item =>
+      (item.type === "class" && item.system?.identifier === "warlock")
+      || (item.type === "feat" && item.system?.identifier === "eldritch-invocations")
+    );
+    for (const owner of candidates) {
+      const advancements = owner.toObject().system?.advancement ?? {};
+      for (const [id, advancement] of Object.entries(advancements)) {
+        const added = advancement?.value?.added ?? {};
+        const values = Object.values(added).flatMap(row => Object.keys(row ?? {}));
+        if (values.includes(invocationItemId)) return id;
+      }
     }
-    return Object.entries(advancements).find(([, advancement]) => normalizedAdvancementName(advancement) === "eldritch invocations")?.[0] ?? null;
+    for (const owner of candidates) {
+      const fallback = Object.entries(owner.toObject().system?.advancement ?? {})
+        .find(([, advancement]) => normalizedAdvancementName(advancement).includes("eldritch invocation"));
+      if (fallback) return fallback[0];
+    }
+    return null;
   }
 
 

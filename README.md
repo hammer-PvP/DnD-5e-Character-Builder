@@ -1,6 +1,6 @@
 # Character Builder
 
-**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14. **v0.9.921 adds data-driven spellcasting for third-party subclasses that gain Spellcasting on otherwise noncasting classes, preserving the v0.9.920 structured Cutting Words registry.**
+**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14. **v0.9.924 adds a scoped bridge for CB-managed Feature Advancements in D&D5e 6.1.0, preserving the v0.9.923 safe Artificer spellcasting path and all validated legacy caster progressions.**
 
 > **Post-migration status:** the `v0.9.x1–x4` series was the D&D5e 6.x migration branch. v0.9.921 preserves the stabilized D&D5e 6.x runtime baseline on the normal `v0.9.9xx` line and continues the evidence-driven compatibility-fix policy.
 
@@ -13,7 +13,7 @@ It uses the official D&D5e documents and native Advancement system as its rules 
 ## Compatibility
 
 - Foundry VTT 14.367 or newer within v14 (verified target: 14.368)
-- D&D5e 6.0.0–6.0.999 (verified target: 6.0.6)
+- D&D5e 6.0.0–6.1.999 (declared target: 6.1.0; live QA pending)
 - Player's Handbook 2024 content package
 - SRD 5.2 Modern
 - SRD 5.1 Legacy and compatible 2014 compendiums through the Legacy progression mode

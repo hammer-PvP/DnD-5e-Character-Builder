@@ -22,7 +22,9 @@ export class MetamagicService {
 
     const targetLevel = Number(newClassLevel ?? cls.system?.levels ?? 0);
     const previousLevel = Number(oldClassLevel ?? Math.max(0, targetLevel - 1));
-    const advancement = this.#findAdvancement(cls);
+    const source = this.#findAdvancementOwner(draft, cls);
+    const advancement = source?.advancement ?? null;
+    const owner = source?.owner ?? cls;
     if (!advancement) {
       if (targetLevel >= 2) {
         throw new Error("The Sorcerer source does not contain the Metamagic ItemChoice Advancement required for this Level Up.");
@@ -40,7 +42,7 @@ export class MetamagicService {
     const poolUuids = new Set(pool.map(option => option.uuid));
     const poolIdentifiers = new Set(pool.map(option => option.identifier));
     const advancementItemIds = this.#advancementItemIds(advancement);
-    const advancementOrigin = `${cls.id}.${advancement._id}`;
+    const advancementOrigin = `${owner.id}.${advancement._id}`;
 
     const existingItems = draft.items.filter(item => {
       if (advancementItemIds.has(item.id)) return true;
@@ -100,6 +102,7 @@ export class MetamagicService {
     return {
       active: count > 0 || (allowReplacement && existing.length > 0),
       advancementId: advancement._id,
+      advancementOwnerId: owner.id,
       count,
       selectedCount,
       options,
@@ -182,7 +185,7 @@ export class MetamagicService {
     let replacementRecord = null;
     if (original && replacementOption) {
       const originalLevel = Number(original.acquiredLevel ?? this.#findAdvancementItemLevel(
-        this.#findAdvancement(cls), original.id, state.targetClassLevel
+        this.#findAdvancementOwner(draft, cls)?.advancement, original.id, state.targetClassLevel
       ));
       await draft.deleteEmbeddedDocuments("Item", [original.id], {
         deleteContents: true,
@@ -199,7 +202,7 @@ export class MetamagicService {
     }
 
     await this.#writeAdvancementValue(
-      cls,
+      draft.items.get(context.advancementOwnerId) ?? cls,
       context.advancementId,
       state.targetClassLevel,
       createdItemIds,
@@ -246,17 +249,38 @@ export class MetamagicService {
     };
   }
 
-  static #findAdvancement(cls) {
-    return this.#advancementData(cls).find(entry => {
-      if (String(entry.type ?? "") !== "ItemChoice") return false;
-      const title = normalizedAdvancementName(entry);
-      return title === "metamagic" || title === "metamagic options";
-    }) ?? null;
+  static #findAdvancementOwner(draft, cls) {
+    // A class-embedded ItemChoice (older sources) is still a valid fallback.
+    // D&D5e 6.1 PHB places it on the granted Metamagic Feature instead.
+    const candidates = [
+      ...draft.items.filter(item => item.type === "feat"
+        && String(item.system?.identifier ?? "").toLowerCase() === "metamagic"),
+      cls
+    ];
+    for (const owner of candidates) {
+      const advancement = this.#advancementData(owner).find(entry => {
+        if (String(entry.type ?? "") !== "ItemChoice") return false;
+        const title = normalizedAdvancementName(entry);
+        return title === "metamagic" || title === "metamagic options"
+          || (owner !== cls
+            && String(entry.configuration?.type ?? "") === "feat"
+            && String(entry.configuration?.restriction?.subtype ?? "").toLowerCase() === "metamagic");
+      });
+      if (advancement) return { owner, advancement };
+    }
+    return null;
   }
 
   static async #loadPool(advancement, registry) {
     const options = new Map();
-    for (const poolEntry of advancement.configuration?.pool ?? []) {
+    const explicitPool = advancement.configuration?.pool ?? [];
+    const restriction = advancement.configuration?.restriction ?? {};
+    const entries = explicitPool.length ? explicitPool : registry.optionsByType("feat")
+      .flatMap(group => group.items)
+      .filter(option => String(option.system?.type?.value ?? "").toLowerCase() === String(restriction.type ?? "").toLowerCase()
+        && String(option.system?.type?.subtype ?? "").toLowerCase() === String(restriction.subtype ?? "").toLowerCase())
+      .map(option => ({ uuid: option.uuid }));
+    for (const poolEntry of entries) {
       const sourceUuid = typeof poolEntry === "string" ? poolEntry : poolEntry?.uuid;
       if (!sourceUuid || !registry.isUuidAllowed(sourceUuid)) continue;
       const document = await fromUuid(sourceUuid);
@@ -330,10 +354,12 @@ export class MetamagicService {
       && String(candidate.system?.identifier ?? this.#slug(candidate.name)) === option.identifier);
     if (!item) throw new Error(`${option.name} was not created on the Level Up draft.`);
 
+    const advancementOwner = draft.items.get(context.advancementOwnerId) ?? cls;
     await item.update({
       "flags.dnd5e.sourceId": document.uuid,
-      "flags.dnd5e.advancementOrigin": `${cls.id}.${context.advancementId}`,
-      "flags.dnd5e.advancementRoot": `${cls.id}.${context.advancementId}`,
+      "flags.dnd5e.advancementOrigin": `${advancementOwner.id}.${context.advancementId}`,
+      "flags.dnd5e.advancementRoot": advancementOwner.getFlag?.("dnd5e", "advancementRoot")
+        ?? `${cls.id}.${context.advancementId}`,
       [`flags.${MODULE_ID}.metamagicAcquisition`]: {
         transactionId: state.transactionId,
         classIdentifier: "sorcerer",

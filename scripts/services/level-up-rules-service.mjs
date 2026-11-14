@@ -11,6 +11,7 @@ import { NativeAdvancementValidationService, StructuralLevelUpError } from "./na
 import { PactOfTheTomeService } from "./pact-of-the-tome-service.mjs";
 import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
 import { MetamagicService } from "./metamagic-service.mjs";
+import { ManagedFeatureAdvancementBridge } from "./managed-feature-advancement-bridge.mjs";
 import { WarlockProjectedCantripService } from "./warlock-projected-cantrip-service.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
 import { AgonizingBlastBindingService } from "./agonizing-blast-binding-service.mjs";
@@ -619,7 +620,10 @@ export class LevelUpRulesService {
     let invocationReplacementRecord = null;
     if (replaceInvocationId) {
       const original = draft.items.get(replaceInvocationId);
-      const originalLevel = this.#findAdvancementItemLevel(cls, context.invocations.advancementId, replaceInvocationId);
+      const originalLevel = this.#findAdvancementItemLevel(
+        draft.items.get(context.invocations.advancementOwnerId) ?? cls,
+        context.invocations.advancementId, replaceInvocationId
+      );
       const cascadeDeleted = await this.#deleteInvocationCascade(draft, replaceInvocationId);
       deleted += cascadeDeleted.length;
       const item = await this.#createInvocation(draft, cls, context.invocations, {
@@ -640,7 +644,7 @@ export class LevelUpRulesService {
     }
 
     await this.#writeInvocationAdvancementValue(
-      cls,
+      draft.items.get(context.invocations.advancementOwnerId) ?? cls,
       context.invocations.advancementId,
       state.targetClassLevel,
       createdInvocationIds,
@@ -886,8 +890,14 @@ export class LevelUpRulesService {
   }
 
   static async #invocationContext(draft, cls, registry, stateChoices, pendingCantripOptions = [], selectedPendingCantrips = null) {
-    const advancement = this.#advancementData(cls).find(entry =>
-      entry.type === "ItemChoice" && advancementName(entry).toLowerCase() === "eldritch invocations"
+    const feature = draft.items.find(item => item.type === "feat"
+      && String(item.system?.identifier ?? "").toLowerCase() === "eldritch-invocations");
+    const owner = feature ?? cls;
+    const advancement = this.#advancementData(owner).find(entry =>
+      entry.type === "ItemChoice" && (
+        String(entry.configuration?.restriction?.subtype ?? "").toLowerCase() === "eldritchinvocation"
+        || advancementName(entry).toLowerCase() === "eldritch invocations"
+      )
     );
     if (!advancement) return this.#emptyInvocationContext();
     const state = LevelUpDraftManager.getState(draft);
@@ -900,7 +910,7 @@ export class LevelUpRulesService {
       await PactOfTheTomeService.ensureInvocationMetadata(draft, item, {
         transactionId: item.getFlag(MODULE_ID, "creationTransactionId") ?? `creation:${draft.id}`,
         characterLevel: Number(draft.system?.details?.level ?? state.targetCharacterLevel ?? 1),
-        classLevel: this.#findAdvancementItemLevel(cls, advancement._id, item.id),
+        classLevel: this.#findAdvancementItemLevel(owner, advancement._id, item.id),
         classItem: cls
       });
     }
@@ -913,10 +923,23 @@ export class LevelUpRulesService {
       if (item.name) existingIdentifiers.add(this.#slug(item.name));
     }
 
+    const poolEntries = advancement.configuration?.pool ?? [];
+    const restriction = advancement.configuration?.restriction ?? {};
+    // D&D5e 6.1 PHB ItemChoice may be source-indexed with an empty explicit
+    // pool and a structured Feat subtype restriction. Derive available choices
+    // from enabled source indexes instead of treating an empty pool as no rules.
+    const candidates = poolEntries.length ? poolEntries.map(entry => ({
+      uuid: typeof entry === "string" ? entry : entry?.uuid
+    })) : registry.optionsByType("feat").flatMap(group => group.items)
+      .filter(entry => String(entry.system?.type?.value ?? "").toLowerCase() === String(restriction.type ?? "").toLowerCase()
+        && String(entry.system?.type?.subtype ?? "").toLowerCase() === String(restriction.subtype ?? "").toLowerCase())
+      .map(entry => ({ uuid: entry.uuid }));
     const documents = [];
-    for (const poolEntry of advancement.configuration?.pool ?? []) {
-      const uuid = typeof poolEntry === "string" ? poolEntry : poolEntry?.uuid;
-      if (!uuid || !registry.isUuidAllowed(uuid)) continue;
+    const unique = new Set();
+    for (const candidate of candidates) {
+      const uuid = candidate.uuid;
+      if (!uuid || unique.has(uuid) || !registry.isUuidAllowed(uuid)) continue;
+      unique.add(uuid);
       const document = await fromUuid(uuid);
       if (document) documents.push({ uuid, document });
     }
@@ -1012,6 +1035,7 @@ export class LevelUpRulesService {
 
     return {
       advancementId: advancement._id,
+      advancementOwnerId: owner.id,
       count,
       allowReplacement,
       options,
@@ -1774,6 +1798,12 @@ export class LevelUpRulesService {
     delete data._id;
     const Manager = globalThis.dnd5e?.applications?.advancement?.AdvancementManager;
     if (!Manager) throw new Error("D&D5e AdvancementManager is unavailable.");
+    // Existing CB handler owns some nested Feature ItemChoices (notably the
+    // Pact of the Tome spells). Preserve the source Advancements on the final
+    // Item, but keep them out of this native acquisition queue.
+    const { removed } = ManagedFeatureAdvancementBridge.suppressData(data, {
+      workflow: "levelUp", classIdentifier: String(cls.system?.identifier ?? "")
+    });
     const manager = Manager.forNewItem(draft, data, { automaticApplication: true, showVisualizer: false });
     if (manager.steps.length) {
       const result = await this.#runManager(manager);
@@ -1783,6 +1813,7 @@ export class LevelUpRulesService {
       && candidate.type === document.type
       && candidate.system?.identifier === document.system?.identifier);
     if (!item) throw new Error(`${option.name} was not created on the Level Up draft.`);
+    await ManagedFeatureAdvancementBridge.restoreItem(item, removed);
 
     const target = option.targetCantrip
       ? draft.items.find(candidate => candidate.type === "spell" && candidate.system?.identifier === selection.targetIdentifier)
@@ -1791,10 +1822,12 @@ export class LevelUpRulesService {
       throw new Error(`The target cantrip for ${option.name} was not found after spell selections were applied.`);
     }
 
+    const advancementOwner = draft.items.get(context.advancementOwnerId) ?? cls;
     await item.update({
       [`flags.dnd5e.sourceId`]: document.uuid,
-      [`flags.dnd5e.advancementOrigin`]: `${cls.id}.${context.advancementId}`,
-      [`flags.dnd5e.advancementRoot`]: `${cls.id}.${context.advancementId}`,
+      [`flags.dnd5e.advancementOrigin`]: `${advancementOwner.id}.${context.advancementId}`,
+      [`flags.dnd5e.advancementRoot`]: advancementOwner.getFlag?.("dnd5e", "advancementRoot")
+        ?? `${cls.id}.${context.advancementId}`,
       [`flags.${MODULE_ID}.invocationInstance`]: {
         instanceId: foundry.utils.randomID(),
         transactionId: state.transactionId,

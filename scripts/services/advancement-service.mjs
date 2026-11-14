@@ -5,6 +5,7 @@ import { ItemGrantIntegrityService } from "./item-grant-integrity-service.mjs";
 import { NativeAdvancementBusyError, NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
 import { RulesCompatibilityService } from "./rules-compatibility-service.mjs";
+import { ManagedFeatureAdvancementBridge } from "./managed-feature-advancement-bridge.mjs";
 
 export class AdvancementService {
   static async replacePrimaryDocument(draft, document, type, onComplete, options = {}) {
@@ -105,10 +106,24 @@ export class AdvancementService {
     }
 
     recoveryActor = manager.clone;
-    const result = await NativeAdvancementModalGuard.run(manager, {
-      onComplete: finish,
-      reservationToken
-    });
+    const managed = type === "class"
+      ? ManagedFeatureAdvancementBridge.begin(manager, {
+        workflow: "creation",
+        classIdentifier: String(data.system?.identifier ?? "")
+      })
+      : null;
+    let result;
+    try {
+      result = await NativeAdvancementModalGuard.run(manager, {
+        onComplete: async () => {
+          if (managed) await ManagedFeatureAdvancementBridge.restore(draft, managed);
+          await finish();
+        },
+        reservationToken
+      });
+    } finally {
+      ManagedFeatureAdvancementBridge.end(managed);
+    }
     if (!result.completed) return null;
 
     // Backgrounds are resolved from the Item actually created by this native

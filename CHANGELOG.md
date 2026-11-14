@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.924 — D&D5e 6.1 / PHB 3.0 Feature Advancement compatibility (QA candidate)
+
+- Declared D&D5e relationship support through **6.1.999**, with 6.1.0 as the compatibility target. This is a version declaration, not a guarantee that future patch releases cannot change behavior. Foundry Player/GM QA remains required.
+- Added a manager-scoped bridge for the public `dnd5e.advancementCreateItemData` hook. It prevents newly-granted Features from opening native ItemChoice steps for benefits already handled by CB, then restores those source Advancement definitions to the committed Draft; unrelated native steps are untouched.
+- CB-owned Feature choices addressed: Warlock Pact of the Tome, Eldritch Invocations on Level Up, Mystic Arcanum, Sorcerer Metamagic, Bard Magical Discoveries, Druid Primal Order: Magician, and Rogue subclass Spellcasting cantrip choices. Native choices without an established CB handler remain native (including Background, Species, Magic Initiate, Ritual Caster, fighting-style selections and ASI).
+- Warlock Invocations now read the granted Eldritch Invocations Feature's ItemChoice, with fallback to older class-embedded Advancements. When the source specifies a structured Feat subtype restriction but no explicit pool, CB resolves choices from enabled source indexes.
+- Sorcerer Metamagic reads/writes the Advancement from its granted Feature, including its source ItemChoice pool and recorded acquisition values. Legacy class-embedded choices remain a fallback.
+- The existing CB-owned Invocation acquisition suppresses only overlapping native choices on the acquired Feature (not its other Advancements) and restores source data afterwards.
+- No modifications to spellcaster progression formulas, Actor Commit/rollback, HIM integration, Background/Species UX or Player Sheet Integrity. In particular, no code was reused from the discarded v0.9.922.
+- Static source fixtures and mocked bridge regression tests included in the separate QA report; live Foundry tests are pending.
+
+
 ## 0.9.923 — Safe Native Additional Spell Progressions (rebased on 0.9.921)
 
 - **Base is the user-supplied stable 0.9.921, NOT 0.9.922.** Only supplemental native progression support was added.

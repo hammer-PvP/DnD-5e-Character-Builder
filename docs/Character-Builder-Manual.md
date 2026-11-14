@@ -23,7 +23,7 @@ It uses the official D&D5e documents and native Advancement system as its rules 
 ## Compatibility
 
 - Foundry VTT 14.367 or newer within v14 (verified target 14.368)
-- D&D5e 6.0.0–6.0.999 (verified target 6.0.6)
+- D&D5e 6.0.0–6.1.999 (declared target 6.1.0; live QA pending)
 - Player's Handbook 2024 content package
 - SRD 5.2 Modern
 - SRD 5.1 Legacy and compatible 2014 compendiums through the Legacy progression mode

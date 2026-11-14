@@ -8,6 +8,7 @@ import { AdvancementChoiceAnnotationService } from "./advancement-choice-annotat
 import { NativeAdvancementValidationService, StructuralLevelUpError } from "./native-advancement-validation-service.mjs";
 import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.mjs";
 import { ManagedAdvancementRegistry } from "./managed-advancement-registry.mjs";
+import { ManagedFeatureAdvancementBridge } from "./managed-feature-advancement-bridge.mjs";
 import { ItemChoiceReplacementIntegrityService } from "./item-choice-replacement-integrity-service.mjs";
 import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
 import { RulesCompatibilityService } from "./rules-compatibility-service.mjs";
@@ -68,7 +69,14 @@ export class LevelUpAdvancementService {
       manager.steps = manager.steps.filter(step => !this.#isManagedStep(step, classIdentifier));
       await LevelUpDraftManager.setState(draft, { nativeRunning: true });
 
-      const result = await this.#runManager(manager);
+      const managed = ManagedFeatureAdvancementBridge.begin(manager, { workflow: "levelUp", classIdentifier });
+      let result;
+      try {
+        result = await this.#runManager(manager);
+        if (result.completed) await ManagedFeatureAdvancementBridge.restore(draft, managed);
+      } finally {
+        ManagedFeatureAdvancementBridge.end(managed);
+      }
       if (!result.completed) {
         await LevelUpDraftManager.setState(draft, { nativeRunning: false });
         return result;
@@ -168,7 +176,11 @@ export class LevelUpAdvancementService {
       ?? "";
     const title = normalizedAdvancementName(advancement);
     if (String(type).toLowerCase().includes("hitpoints") || title === "hit points") return true;
-    return ManagedAdvancementRegistry.isManaged(advancement, { classIdentifier });
+    return ManagedAdvancementRegistry.isManaged(advancement, {
+      classIdentifier,
+      owner: step?.flow?.item ?? advancement?.item ?? null,
+      workflow: "levelUp"
+    });
   }
 
   static #runManager(manager) {
