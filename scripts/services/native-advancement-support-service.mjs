@@ -129,9 +129,16 @@ export class NativeAdvancementSupportService {
   }
 
   static invalidSpellChoices(actor) {
-    return actor.items.flatMap(owner => Object.entries(readAdvancementRecords(owner))
-      .flatMap(([advancementId, advancement]) => Object.keys(advancement.value?.added ?? {})
-        .flatMap(level => this.#invalidSpellsAt(actor, owner, advancementId, advancement, level))));
+    const invalid = [];
+    for (const owner of actor.items) {
+      for (const [advancementId, advancement] of Object.entries(readAdvancementRecords(owner))) {
+        if (advancement?.type !== "ItemChoice") continue;
+        for (const level of Object.keys(advancement.value?.added ?? {})) {
+          invalid.push(...this.#invalidSpellsAt(actor, owner, advancementId, advancement, level));
+        }
+      }
+    }
+    return invalid;
   }
 
   static #invalidSpellsAt(actor, owner, advancementId, advancement, level) {
@@ -502,7 +509,7 @@ export class NativeAdvancementSupportService {
       .sort((a, b) => a.name.localeCompare(b.name, game.i18n.lang));
   }
 
-  static canReplaceSpell(actor, { owner, advancementId, spell }) {
+  static canReplaceSpell(actor, { owner, advancementId, level, spell }) {
     const flags = spell.flags?.[MODULE_ID] ?? {};
     const grant = flags.itemGrantInstance;
     const ownsSpell = row => row.ownerItemId === owner.id && row.advancementId === advancementId;
@@ -511,11 +518,12 @@ export class NativeAdvancementSupportService {
     // A separate acquisition may reference this same embedded Item even when
     // only one native origin is recorded on the spell itself.
     return !actor.items.some(item => Object.entries(readAdvancementRecords(item)).some(([id, record]) => {
-      if (item.id === owner.id && id === advancementId) return false;
-      const added = record.value?.added ?? {};
-      if (record.type === "ItemGrant") return Object.hasOwn(added, spell.id);
-      return record.type === "ItemChoice" && Object.values(added).some(level =>
-        level && typeof level === "object" && Object.hasOwn(level, spell.id));
+      const added = record?.value?.added ?? {};
+      if (record?.type === "ItemGrant") return Object.hasOwn(added, spell.id);
+      return record?.type === "ItemChoice" && Object.entries(added).some(([key, bucket]) => {
+        if (item.id === owner.id && id === advancementId && key === level) return false;
+        return bucket && typeof bucket === "object" && Object.hasOwn(bucket, spell.id);
+      });
     }));
   }
 

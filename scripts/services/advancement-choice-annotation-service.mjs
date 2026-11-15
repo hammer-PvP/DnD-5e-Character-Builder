@@ -23,11 +23,12 @@ export class AdvancementChoiceAnnotationService {
 
   static async refreshWeaponMastery(actor) {
     const byItem = this.sheetBadges(actor);
-    const updates = actor.items.flatMap(item => {
+    const updates = [];
+    for (const item of actor.items) {
       const next = byItem.get(item.id);
-      return this.#stableString(this.getBadges(item)) === this.#stableString(next) ? []
-        : [{ _id: item.id, [`flags.${MODULE_ID}.${this.FLAG}`]: next }];
-    });
+      if (this.#stableString(this.getBadges(item)) === this.#stableString(next)) continue;
+      updates.push({ _id: item.id, [`flags.${MODULE_ID}.${this.FLAG}`]: next });
+    }
     if (updates.length) await actor.updateEmbeddedDocuments("Item", updates, { characterBuilderAdvancementAnnotations: true });
     return updates;
   }

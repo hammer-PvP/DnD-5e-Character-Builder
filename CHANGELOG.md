@@ -1,9 +1,9 @@
-## 0.9.932 — Weapon Mastery, College of Dance, and native spell choices
+## 0.9.933 — Advancement and Weapon Mastery compatibility
 
-- Show all current weapon choices on the Weapon Mastery feature badge, including choices stored on a feature-owned Advancement and legacy records stored on a class.
-- Restore Long Rest Weapon Mastery swaps through Character Keeper. Update the owning Advancement and refresh the badge after a swap.
-- Resolve exact same-pack ItemGrant references and skip a redundant unqualified reference when a linked mandatory feature already grants the canonical Item. College of Dance receives a single Unarmed Strike through Dazzling Footwork.
-- Validate school-restricted spell choices in the shared Native Advancement Support and Character Validation paths. An invalid Fey-Touched choice is cleared when the player tries to proceed, keeping the native selection window open.
+- Rebuilt from the supplied 0.9.931 installer. Iterate Foundry embedded Item collections directly in Level Up, Validate Character, and Long Rest badge updates.
+- Resolve unqualified grants within their source compendium. College of Dance receives one Unarmed Strike from the canonical Dazzling Footwork grant.
+- List selected weapons on the Weapon Mastery feature. Character Keeper updates the owning Advancement and the badge after a Long Rest swap, with support for legacy class-owned choices.
+- Validate Fey-Touched on the native Advancement action. Clear the invalid choice while keeping the selection window open. Guided repair respects other acquisitions of the same embedded spell, including other levels of the same Advancement.
 
 ## 0.9.931 — Fey-Touched spell choice
 
