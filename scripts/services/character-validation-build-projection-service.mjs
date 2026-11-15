@@ -1,3 +1,4 @@
+import { FeyTouchedChoiceService } from "./fey-touched-choice-service.mjs";
 import { ManagedAdvancementRegistry } from "./managed-advancement-registry.mjs";
 import { AdditionalNativeSpellProgressionService } from "./additional-native-spell-progression-service.mjs";
 import { MODULE_ID, SPELL_ACCESS_MODELS } from "../constants.mjs";
@@ -582,6 +583,8 @@ export class CharacterValidationBuildProjectionService {
         let sourceSpell;
         try { sourceSpell = await fromUuid(expected.uuid); } catch (_error) { sourceSpell = null; }
         if (!sourceSpell || sourceSpell.type !== "spell" || !registry.isUuidAllowed(expected.uuid)) continue;
+        if (FeyTouchedChoiceService.isChoice(owner, local?.advancement ?? sourceAdvancement)
+          && !FeyTouchedChoiceService.isEligible(actor.items.get(expected.mappedItemId) ?? sourceSpell)) continue;
 
         const exactMapped = expected.mappedItemId
           ? [actor.items.get(expected.mappedItemId)].filter(Boolean)

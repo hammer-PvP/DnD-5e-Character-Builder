@@ -1,3 +1,4 @@
+import { FeyTouchedChoiceService } from "./fey-touched-choice-service.mjs";
 import { MODULE_ID } from "../constants.mjs";
 import { ManagedAdvancementRegistry } from "./managed-advancement-registry.mjs";
 import { NativeFeatChoiceGuard } from "./native-feat-choice-guard.mjs";
@@ -52,6 +53,7 @@ export class NativeAdvancementValidationService {
     });
     const added = draft.items.filter(item => !beforeItemIds.has(item.id));
     this.#validateGenericAbilityScoreImprovementItem(added, draft, workflow);
+    this.#validateFeyTouchedChoice(draft, beforeItemIds);
     this.#validateNonRepeatableDuplicates(draft, added, workflow);
     this.#validateProgressionChoicePolicy(draft, added, state, workflow);
     this.#validateEpicBoonEligibility(draft, added, state, workflow);
@@ -75,6 +77,19 @@ export class NativeAdvancementValidationService {
         actionLabel: "Choose Ability Score Improvement Feat"
       }
     );
+  }
+
+  static #validateFeyTouchedChoice(draft, beforeItemIds) {
+    const invalid = FeyTouchedChoiceService.invalidChoices(draft).find(({ owner, spell }) =>
+      !beforeItemIds.has(owner.id) || !beforeItemIds.has(spell.id));
+    if (!invalid) return;
+    throw new StructuralLevelUpError("Invalid Fey-Touched spell choice.", {
+      title: "Invalid Fey-Touched Spell",
+      choiceName: invalid.spell.name,
+      reason: FeyTouchedChoiceService.rejectionMessage(invalid.spell),
+      actionLabel: "Choose Another Spell",
+      concise: true
+    });
   }
 
   static #validateNonRepeatableDuplicates(draft, added, workflow) {

@@ -1,3 +1,4 @@
+import { FeyTouchedChoiceService } from "./fey-touched-choice-service.mjs";
 import { AdvancementService } from "./advancement-service.mjs";
 import { AdvancementChoiceAnnotationService } from "./advancement-choice-annotation-service.mjs";
 import { LevelUpFeatureService } from "./level-up-feature-service.mjs";
@@ -89,7 +90,7 @@ export class CharacterValidationService {
     const registry = new SourceRegistry();
     await registry.load();
 
-    const issues = [];
+    const issues = this.#scanFeyTouchedChoices(actor, registry);
     issues.push(...await this.#scanBrokenActivityEffects(actor, registry));
     for (const owner of actor.items) {
       for (const row of planAdvancementRecordRepairs(actor, owner).issues) {
@@ -161,6 +162,8 @@ export class CharacterValidationService {
     if (!issue?.repairable) throw new Error("This validation issue has no safe automatic repair.");
 
     switch (issue.kind) {
+      case "invalid-fey-touched-spell":
+        return this.#repairFeyTouchedChoice(actor, issue);
       case "serialized-advancement-record": {
         const owner = actor.items.get(issue.data.ownerId);
         const current = owner && planAdvancementRecordRepairs(actor, owner).issues
@@ -185,6 +188,55 @@ export class CharacterValidationService {
         throw new Error(`Unsupported validation repair: ${issue.kind}.`);
       }
     }
+  }
+
+  static #scanFeyTouchedChoices(actor, registry) {
+    const invalid = FeyTouchedChoiceService.invalidChoices(actor);
+    if (!invalid.length) return [];
+    const hasOptions = FeyTouchedChoiceService.replacementOptions(registry).length > 0;
+    return invalid.map(row => {
+      const { owner, advancementId, spell } = row;
+      const canReplace = FeyTouchedChoiceService.canReplace(actor, row);
+      return {
+        id: `fey-touched-spell:${owner.id}:${advancementId}:${spell.id}`,
+        kind: "invalid-fey-touched-spell",
+        severity: "error",
+        repairable: canReplace && hasOptions,
+        repairMode: "guided",
+        repairLabel: "Choose Replacement Spell",
+        title: `Fey-Touched — ${spell.name}`,
+        summary: FeyTouchedChoiceService.rejectionMessage(spell),
+        details: !canReplace
+          ? "This spell also has another recorded acquisition. Review its ownership before replacing it."
+          : hasOptions
+            ? "Choose an eligible spell from the enabled sources. The repair replaces only the Fey Magic choice."
+            : "No eligible replacement spell is available from the enabled sources.",
+        data: { ownerId: owner.id, advancementId, spellId: spell.id }
+      };
+    });
+  }
+
+  static async #repairFeyTouchedChoice(actor, issue) {
+    const registry = new SourceRegistry();
+    await registry.load();
+    const options = FeyTouchedChoiceService.replacementOptions(registry);
+    if (!options.length) throw new Error("No eligible Fey-Touched spells are available from enabled sources.");
+    const escape = foundry.utils.escapeHTML;
+    const entries = options.map(spell => `<option value="${escape(spell.uuid)}">${escape(spell.name)}</option>`).join("");
+    const sourceUuid = await foundry.applications.api.DialogV2.wait({
+      window: { title: "Replace Fey-Touched Spell", modal: true },
+      content: `<p>${escape(issue.summary)}</p><label>Replacement spell <select name="spell" required>
+        <option value="" selected disabled>Choose a spell</option>${entries}</select></label>`,
+      buttons: [
+        { action: "apply", label: "Replace Spell", default: true,
+          callback: (_event, button) => new foundry.applications.ux.FormDataExtended(button.form).object.spell },
+        { action: "cancel", label: "Cancel", callback: () => null }
+      ],
+      close: () => null
+    });
+    if (!sourceUuid) return { status: "cancelled", issueId: issue.id };
+    const replacement = await FeyTouchedChoiceService.replaceInvalidChoice(actor, registry, { ...issue.data, sourceUuid });
+    return { status: "repaired", issueId: issue.id, message: `Fey-Touched now grants ${replacement.name}.` };
   }
 
   static async #repairLand(actor, issue) {

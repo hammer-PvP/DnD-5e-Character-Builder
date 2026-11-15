@@ -1,3 +1,8 @@
+## 0.9.931 — Fey-Touched spell choice
+
+- Level Up rejects a Fey-Touched spell choice outside level 1 Divination or Enchantment and returns the player to the native Advancement.
+- Validate Character can replace an invalid Fey-Touched spell with an eligible option. It preserves Misty Step, the casting ability, the existing free-use state, and independently acquired spells.
+
 ## 0.9.930 — Native Advancement record integrity
 
 - Save and verify ItemGrant and ItemChoice records with a whole-collection update. This covers High Elf cantrip swaps, Circle of the Land terrain swaps, managed spell choices, Eldritch Invocation and Metamagic choices, and native spell grant reconciliation.
