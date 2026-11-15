@@ -1,6 +1,6 @@
 # Character Builder
 
-**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14. **v0.9.931 checks the spell chosen for Fey-Touched during Level Up and offers a guided repair for invalid choices.**
+**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14. **v0.9.932 restores Weapon Mastery badges and Long Rest choices, reconciles the College of Dance grant, and validates Fey-Touched inside the native Advancement.**
 
 > **Post-migration status:** the `v0.9.x1–x4` series was the D&D5e 6.x migration branch. v0.9.921 preserves the stabilized D&D5e 6.x runtime baseline on the normal `v0.9.9xx` line and continues the evidence-driven compatibility-fix policy.
 

@@ -44,7 +44,7 @@ export class CharacterValidationProgressionService {
     // Global completion comes first: a parent Item being present is not enough
     // when one of its own Advancements still has unresolved dependent choices.
     issues.push(...await this.#scanAdvancementCompletion(actor, registry, graph));
-    issues.push(...await this.#scanWeaponMastery(actor, registry, sourceOwners));
+    issues.push(...await this.#scanWeaponMastery(actor, sourceOwners));
     issues.push(...await this.#scanFightingStyles(actor, registry, sourceOwners));
     issues.push(...await this.#scanCanonicalItemGrants(actor, registry, sourceOwners));
     issues.push(...this.#scanChoiceStateReconciliation(actor, graph));
@@ -79,7 +79,7 @@ export class CharacterValidationProgressionService {
     const issues = [];
 
     issues.push(...await this.#scanAdvancementCompletion(actor, registry, graph));
-    issues.push(...await this.#scanWeaponMastery(actor, registry, sourceOwners));
+    issues.push(...await this.#scanWeaponMastery(actor, sourceOwners));
     issues.push(...await this.#scanFightingStyles(actor, registry, sourceOwners));
     issues.push(...this.#scanWarlockInvocationCount(actor, sourceOwners));
 
@@ -307,15 +307,15 @@ export class CharacterValidationProgressionService {
         classLevel: this.#classItem(owner, actor)?.system?.levels ?? ownerLevel
       });
       if (!expected) continue;
-      const key = `${expected.targetItemId}:${local.id}:${owner.id}`;
+      const key = `${expected.targetItemId}:${expected.badge.advancementId}:${expected.badge.sourceItemId}`;
       if (emitted.has(key)) continue;
       emitted.add(key);
       const target = actor.items.get(expected.targetItemId);
       if (!target) continue;
       const badges = AdvancementChoiceAnnotationService.getBadges(target);
       const current = badges.find(badge =>
-        String(badge?.sourceItemId ?? "") === String(owner.id)
-        && String(badge?.advancementId ?? "") === String(local.id)
+        String(badge?.sourceItemId ?? "") === String(expected.badge.sourceItemId)
+        && String(badge?.advancementId ?? "") === String(expected.badge.advancementId)
         && String(badge?.targetItemId ?? target.id) === String(target.id)
       );
       if (current && this.#badgeEquivalent(current, expected.badge)) continue;
@@ -385,9 +385,9 @@ export class CharacterValidationProgressionService {
     return issues;
   }
 
-  static async #scanWeaponMastery(actor, registry, sourceOwners) {
+  static #scanWeaponMastery(actor, sourceOwners) {
     const rows = [];
-    const masteryClasses = sourceOwners.filter(({ owner }) => owner.type === "class")
+    const masteryOwners = sourceOwners.filter(({ owner }) => this.#classItem(owner, actor))
       .map(({ owner, source }) => {
         const advancements = this.#advancementEntries(source.document)
           .filter(([, advancement]) => advancement?.type === "Trait"
@@ -400,7 +400,7 @@ export class CharacterValidationProgressionService {
     const globalValues = this.#collectionValues(actor.system?.traits?.weaponProf?.mastery?.value)
       .map(value => String(value ?? "").trim()).filter(Boolean);
 
-    for (const { owner, source, advancements } of masteryClasses) {
+    for (const { owner, source, advancements } of masteryOwners) {
       for (const [sourceAdvancementId, sourceAdvancement] of advancements) {
         const expected = this.#traitChoiceCapacity(sourceAdvancement);
         if (!expected) continue;
@@ -409,7 +409,9 @@ export class CharacterValidationProgressionService {
 
         let actual = localChosen.length;
         let ambiguous = false;
-        if (!local && masteryClasses.length === 1) actual = Math.min(expected, globalValues.length);
+        if (!local && owner.type === "class" && masteryOwners.length === 1 && advancements.length === 1) {
+          actual = Math.min(expected, globalValues.length);
+        }
         else if (!local && globalValues.length) ambiguous = true;
 
         if (actual >= expected) continue;
@@ -436,7 +438,7 @@ export class CharacterValidationProgressionService {
           repairMode: "guided",
           repairLabel: "Resolve Weapon Mastery",
           title: `${owner.name} — Weapon Mastery Incomplete`,
-          summary: `${owner.name} level ${Number(owner.system?.levels ?? 0)} grants ${expected} Weapon Mastery choice${expected === 1 ? "" : "s"}, but ${actual} ${actual === 1 ? "is" : "are"} recorded for this class.`,
+          summary: `${owner.name} level ${this.#ownerLevel(owner, actor)} grants ${expected} Weapon Mastery choice${expected === 1 ? "" : "s"}, but ${actual} ${actual === 1 ? "is" : "are"} recorded for this class.`,
           details: `The Validator can reopen the native Advancement choice at level ${this.#firstAdvancementLevel(sourceAdvancement)}. You choose only the missing legal mastery selections; the original Actor remains untouched.`,
           data: {
             ownerId: owner.id,

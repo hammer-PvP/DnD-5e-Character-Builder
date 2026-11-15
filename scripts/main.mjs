@@ -724,13 +724,14 @@ function injectInvocationTargetAnnotations(actor, root) {
 }
 
 function injectAdvancementChoiceAnnotations(actor, root) {
+  const byItem = AdvancementChoiceAnnotationService.sheetBadges(actor);
   for (const item of actor.items) {
     const escapedId = globalThis.CSS?.escape ? CSS.escape(item.id) : item.id;
     const row = root.querySelector?.(`[data-item-id="${escapedId}"]`);
     if (!row) continue;
     row.querySelector(".cb-advancement-choice-badges")?.remove();
 
-    const badges = AdvancementChoiceAnnotationService.getBadges(item);
+    const badges = byItem.get(item.id);
     if (!badges.length) continue;
     const group = document.createElement("span");
     group.className = "cb-advancement-choice-badges";

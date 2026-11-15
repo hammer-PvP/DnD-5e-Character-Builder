@@ -197,3 +197,54 @@ function recoverAdvancementLinks(actor, owner, id, record) {
   if (directIds.some(itemId => actor.items.get(itemId) && !intendedIds.has(itemId))) return null;
   return intended;
 }
+
+/** The embedded Item owning each native Weapon Mastery Trait is also its write target. */
+export function weaponMasteryChoices(actor) {
+  const items = [...(actor?.items ?? [])];
+  const owners = new Map(items.map(item => [item.id, item]));
+  const classFor = item => {
+    const seen = new Set();
+    while (item && !seen.has(item.id)) {
+      if (item.type === "class") return item;
+      if (item.type === "subclass") {
+        return items.find(cls => cls.type === "class" && cls.system?.identifier === item.system?.classIdentifier);
+      }
+      seen.add(item.id);
+      const origin = item.getFlag?.("dnd5e", "advancementOrigin") ?? item.getFlag?.("dnd5e", "advancementRoot");
+      item = owners.get(String(origin ?? "").split(".")[0]);
+    }
+    return null;
+  };
+  const groups = new Map();
+  for (const owner of items) {
+    const rows = Object.entries(readAdvancementRecords(owner))
+      .filter(([, row]) => row.type === "Trait" && row.configuration?.mode === "mastery")
+      .map(([id, row]) => ({ ...row, id, owner }));
+    if (!rows.length) continue;
+    const cls = classFor(owner);
+    if (!cls) continue;
+    const group = groups.get(cls.id) ?? { cls, feature: null, rows: [] };
+    if (owner.type === "feat" && (!group.feature || owner.system?.identifier === "weapon-mastery")) {
+      group.feature = owner;
+    }
+    group.rows.push(...rows);
+    groups.set(cls.id, group);
+  }
+  for (const { cls, feature } of groups.values()) {
+    if (feature) continue;
+    const candidates = items.filter(item => item.type === "feat" && item.system?.identifier === "weapon-mastery"
+      && classFor(item)?.id === cls.id);
+    if (candidates.length === 1) groups.get(cls.id).feature = candidates[0];
+  }
+  return [...groups.values()].map(({ cls, feature, rows }) => {
+    // Some migrated sheets retain an identical record on the former owner.
+    // Use the feature-owned choice and keep distinct choices from all sources.
+    const ownedSelections = new Set(rows.filter(row => row.owner.type !== "class")
+      .flatMap(row => [...(row.value?.chosen ?? [])].map(key => String(key).split(":").at(-1))));
+    const active = rows.map(row => row.owner.type === "class" ? {
+      ...row, value: { ...row.value, chosen: [...(row.value?.chosen ?? [])]
+        .filter(key => !ownedSelections.has(String(key).split(":").at(-1))) }
+    } : row).filter(row => row.value?.chosen?.length);
+    return { cls, feature, owners: [...new Set(rows.map(row => row.owner))], rows: active };
+  }).filter(group => group.rows.length);
+}

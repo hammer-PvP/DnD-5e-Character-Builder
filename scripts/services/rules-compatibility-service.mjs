@@ -1,5 +1,5 @@
 import { MODULE_ID, defaultSettings } from "../constants.mjs";
-import { advancementName } from "../utils/advancement-utils.mjs";
+import { advancementName, weaponMasteryChoices } from "../utils/advancement-utils.mjs";
 
 /**
  * Applies the selected rules-generation policy to native D&D5e class
@@ -102,7 +102,8 @@ export class RulesCompatibilityService {
 
     const classItems = this.#collectionValues(actor.items).filter(item => item?.type === "class");
     const classState = new Map();
-    const represented = new Set();
+    const represented = new Set(weaponMasteryChoices(actor).flatMap(group => group.rows
+      .flatMap(row => [...row.value.chosen].map(key => String(key).split(":").at(-1)))));
     for (const cls of classItems) {
       const advancement = foundry.utils.deepClone(cls.toObject().system?.advancement ?? {});
       const rows = this.#advancementEntries(advancement)

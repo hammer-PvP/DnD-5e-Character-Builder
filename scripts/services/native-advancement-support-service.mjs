@@ -1,0 +1,596 @@
+import { SPELL_CHOICE_SCHOOLS } from "../utils/native-advancement-source-rules.mjs";
+import { NativeSpellGrantProjectionService } from "./native-spell-grant-projection-service.mjs";
+import { MODULE_ID } from "../constants.mjs";
+import { ManagedAdvancementRegistry } from "./managed-advancement-registry.mjs";
+import { NativeFeatChoiceGuard } from "./native-feat-choice-guard.mjs";
+import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
+import { advancementName, readAdvancementRecords, writeAdvancementValue } from "../utils/advancement-utils.mjs";
+
+const REPAIR_OPTIONS = { characterBuilderValidationRepair: true };
+
+/**
+ * Error raised when a source-native Advancement completed in a state that the
+ * module cannot safely continue from. The Advancement attempt is rolled back
+ * to its pre-choice Draft snapshot so the user can reopen the native choice
+ * without discarding the selected Class or locked Hit Die result.
+ */
+export class StructuralLevelUpError extends Error {
+  constructor(message, {
+    title = "Native Choice Must Be Reopened",
+    choiceName = null,
+    reason = null,
+    diagnostic = null,
+    returnStep = "advancements",
+    concise = false,
+    actionLabel = null
+  } = {}) {
+    super(message);
+    this.name = "StructuralLevelUpError";
+    this.structuralLevelUp = true;
+    this.title = title;
+    this.choiceName = choiceName;
+    this.reason = reason;
+    this.diagnostic = diagnostic ?? message;
+    this.returnStep = returnStep;
+    this.concise = concise;
+    this.actionLabel = actionLabel;
+  }
+}
+
+/**
+ * Defensive validation around the native D&D5e AdvancementManager. Native
+ * Advancements remain authoritative for their own UI, while this service
+ * verifies that the resulting temporary Actor is structurally safe before the
+ * transaction may continue.
+ */
+export class NativeAdvancementSupportService {
+  static async validate(draft, {
+    state,
+    beforeItemIds = new Set(),
+    workflow = "Class Progression",
+    validateManagedCounts = workflow !== "Class Progression"
+  } = {}) {
+    await SpellPreparationPolicyService.normalizeNewCantrips(draft, {
+      beforeItemIds,
+      updateOptions: { characterBuilderNativeAdvancementValidation: true }
+    });
+    const added = draft.items.filter(item => !beforeItemIds.has(item.id));
+    this.#validateGenericAbilityScoreImprovementItem(added, draft, workflow);
+    this.#validateSpellChoices(draft, beforeItemIds);
+    this.#validateNonRepeatableDuplicates(draft, added, workflow);
+    this.#validateProgressionChoicePolicy(draft, added, state, workflow);
+    this.#validateEpicBoonEligibility(draft, added, state, workflow);
+    this.#validateExplicitRequirements(draft, added, state, workflow);
+    await this.#validateNativePrerequisites(draft, added, state, workflow);
+    this.#validateRequiredAdvancementCounts(draft, state, workflow, new Set(added.map(item => item.id)), { validateManagedCounts });
+    return { addedItemIds: added.map(item => item.id) };
+  }
+
+  static #validateGenericAbilityScoreImprovementItem(added, draft, workflow) {
+    const invalid = added.find(item => NativeFeatChoiceGuard.isAbilityScoreImprovement(item));
+    if (!invalid) return;
+
+    throw new StructuralLevelUpError(
+      `${invalid.name} cannot be selected from the Feat Browser.`,
+      {
+        title: "Invalid Ability Score Improvement Selection",
+        choiceName: invalid.name,
+        reason: "The Ability Score Improvement item from the Feat Browser is not a valid choice here. Use Ability Score Improvement Feat in the Advancement window to assign your two Ability Score points.",
+        diagnostic: `[Character Builder Level Up] ${draft.name} selected the generic Ability Score Improvement Item from the native Feat Browser during ${workflow}. The attempt was rejected so the native ASI assignment route can be chosen instead.`,
+        actionLabel: "Choose Ability Score Improvement Feat"
+      }
+    );
+  }
+
+  static #validateSpellChoices(draft, beforeItemIds) {
+    const invalid = this.invalidSpellChoices(draft).find(({ owner, spell }) =>
+      !beforeItemIds.has(owner.id) || !beforeItemIds.has(spell.id));
+    if (!invalid) return;
+    throw new StructuralLevelUpError("Invalid native spell choice.", {
+      title: `Invalid Spell for ${invalid.owner.name}`,
+      choiceName: invalid.spell.name,
+      reason: this.spellRejectionMessage(invalid),
+      actionLabel: "Choose Another Spell",
+      concise: true
+    });
+  }
+
+  static spellChoiceRule(owner, advancement, level) {
+    const { configuration, type } = advancement ?? {};
+    if (type !== "ItemChoice" || configuration?.type !== "spell") return null;
+    const slot = configuration.choices?.[level];
+    const restriction = configuration.restriction;
+    const spellLevel = String(restriction?.level ?? "");
+    if (!/^[0-9]$/.test(spellLevel) || !Number(slot?.count) || slot.replacement
+      || !configuration.allowDrops || configuration.pool?.length || [...(restriction.list ?? [])].length
+      || restriction.type || restriction.subtype) return null;
+    const native = [...(restriction.school ?? [])];
+    const source = NativeFeatChoiceGuard.sourceUuid(owner) ?? owner?.uuid;
+    const schools = native.length ? native : SPELL_CHOICE_SCHOOLS[source]?.[advancement._id];
+    return schools?.length ? { spellLevel: Number(spellLevel), schools } : null;
+  }
+
+  static isEligibleSpell(spell, rule) {
+    return spell?.type === "spell" && Number(spell.system?.level) === rule.spellLevel
+      && rule.schools.includes(spell.system?.school);
+  }
+
+  static spellRejectionMessage({ owner, spell, rule }) {
+    const list = new Intl.ListFormat(game.i18n.lang, { type: "disjunction" });
+    const school = key => {
+      const label = globalThis.CONFIG?.DND5E?.spellSchools?.[key]?.label;
+      return label ? game.i18n.localize(label) : ({ div: "Divination", enc: "Enchantment" }[key] ?? key);
+    };
+    const actual = spell.system?.school;
+    const description = actual && !rule.schools.includes(actual)
+      ? `${spell.name} belongs to the ${school(actual)} school.`
+      : `${spell.name} is not eligible.`;
+    return `${description} ${owner.name} requires a level ${rule.spellLevel} ${list.format(rule.schools.map(school))} spell. Choose another spell.`;
+  }
+
+  static invalidSpellChoices(actor) {
+    return actor.items.flatMap(owner => Object.entries(readAdvancementRecords(owner))
+      .flatMap(([advancementId, advancement]) => Object.keys(advancement.value?.added ?? {})
+        .flatMap(level => this.#invalidSpellsAt(actor, owner, advancementId, advancement, level))));
+  }
+
+  static #invalidSpellsAt(actor, owner, advancementId, advancement, level) {
+    const rule = this.spellChoiceRule(owner, advancement, level);
+    if (!rule) return [];
+    const origin = `${owner.id}.${advancementId}`;
+    return Object.entries(advancement.value?.added?.[level] ?? {}).flatMap(([id, uuid]) => {
+      const spell = actor.items.get(id);
+      return spell?.type === "spell" && typeof uuid === "string"
+        && spell.getFlag("dnd5e", "advancementOrigin") === origin && !this.isEligibleSpell(spell, rule)
+        ? [{ owner, advancementId, advancement, level, spell, uuid, rule }] : [];
+    });
+  }
+
+  static rejectCurrentSpellChoice(manager) {
+    const flow = manager?.step?.flow;
+    const native = flow?.advancement;
+    if (native?.actor !== manager?.clone || !native?.item || typeof native.reverse !== "function") return null;
+    const level = String(flow.level);
+    const record = readAdvancementRecords(native.item)[native.id];
+    const invalid = this.#invalidSpellsAt(manager.clone, native.item, native.id, record, level);
+    if (!invalid.length) return null;
+    return (async () => {
+      for (const choice of invalid) {
+        ui.notifications.warn(this.spellRejectionMessage(choice));
+        // Same reversal the native ItemChoice uses for its Remove button.
+        await native.reverse(flow.level, { uuid: choice.uuid });
+      }
+      if (manager.step?.flow === flow && manager.rendered) await flow.render();
+    })();
+  }
+
+  static #validateNonRepeatableDuplicates(draft, added, workflow) {
+    for (const item of added) {
+      // Spell documents are acquisition records, not non-repeatable feature
+      // options. Independent native grants must remain able to coexist.
+      if (item.type === "spell" || NativeFeatChoiceGuard.isRepeatable(item)) continue;
+
+      const sourceUuid = NativeFeatChoiceGuard.sourceUuid(item);
+      const identifier = String(item.system?.identifier ?? "").trim();
+      const subtype = String(item.system?.type?.subtype ?? "").trim();
+      if (!sourceUuid && !identifier) continue;
+
+      const duplicate = draft.items.find(other => {
+        if (other.id === item.id || other.type !== item.type) return false;
+        if (this.#isIndependentMulticlassFeature(draft, item, other)) return false;
+        const otherSource = NativeFeatChoiceGuard.sourceUuid(other);
+        if (sourceUuid && otherSource && sourceUuid === otherSource) return true;
+        if (!identifier || identifier !== String(other.system?.identifier ?? "").trim()) return false;
+        // Feats use identifier + subtype so mirrored PHB/SRD documents resolve
+        // as the same option without relying on display name alone.
+        if (item.type === "feat") {
+          return subtype === String(other.system?.type?.subtype ?? "").trim();
+        }
+        return true;
+      });
+      if (!duplicate) continue;
+
+      throw new StructuralLevelUpError(
+        `${item.name} cannot be selected again.`,
+        {
+          choiceName: item.name,
+          reason: "Already owned — this option cannot be selected more than once.",
+          diagnostic: `[Character Builder Level Up] ${draft.name} already owns the non-repeatable ${item.name} during ${workflow}.`
+        }
+      );
+    }
+  }
+
+
+  static #isIndependentMulticlassFeature(draft, item, other) {
+    if (item.type !== "feat" || other.type !== "feat") return false;
+    const itemCategory = String(item.system?.type?.value ?? "").trim();
+    const otherCategory = String(other.system?.type?.value ?? "").trim();
+    // Player-selectable Feats (including every +1 half-feat and Epic Boon)
+    // remain globally non-repeatable. This exception is only for class-owned
+    // progression resources such as each class's legitimate Spellcasting Item.
+    if (itemCategory === "feat" || otherCategory === "feat") return false;
+    const itemClass = this.#acquisitionClassIdentifier(draft, item);
+    const otherClass = this.#acquisitionClassIdentifier(draft, other);
+    return Boolean(itemClass && otherClass && itemClass !== otherClass);
+  }
+
+  static #acquisitionClassIdentifier(draft, item) {
+    let current = item;
+    const visited = new Set();
+    while (current && !visited.has(current.id)) {
+      visited.add(current.id);
+      if (current.type === "class") return String(current.system?.identifier ?? "") || null;
+      if (current.type === "subclass") {
+        const parent = current.system?.classIdentifier ?? current.system?.class?.identifier ?? current.system?.class;
+        return parent ? String(parent) : null;
+      }
+      const grantOwnerId = current.getFlag(MODULE_ID, "itemGrantInstance")?.ownerItemId;
+      const root = current.getFlag("dnd5e", "advancementRoot") ?? current.getFlag("dnd5e", "advancementOrigin");
+      const [rootId] = String(root ?? "").split(".");
+      const nextId = grantOwnerId || rootId;
+      if (!nextId || nextId === current.id) break;
+      current = draft.items.get(nextId);
+    }
+    const sourceItem = String(item.system?.sourceItem ?? "");
+    const match = /^class:([^:]+)$/i.exec(sourceItem);
+    return match?.[1] ?? null;
+  }
+
+  static #validateProgressionChoicePolicy(draft, added, state, workflow) {
+    const settings = NativeFeatChoiceGuard.settings();
+    if (settings.enableFeats && settings.enableAbilityScoreImprovement && settings.enableEpicBoons) return;
+
+    const classIdentifier = String(state?.selectedClassIdentifier ?? "");
+    const targetClassLevel = Number(state?.targetClassLevel ?? 0);
+    if (!classIdentifier || !targetClassLevel) return;
+
+    const addedById = new Map(added.map(item => [item.id, item]));
+    for (const owner of draft.items) {
+      if (!["class", "subclass"].includes(owner.type)) continue;
+      if (owner.type === "class" && String(owner.system?.identifier ?? "") !== classIdentifier) continue;
+      if (owner.type === "subclass") {
+        const parent = owner.system?.classIdentifier ?? owner.system?.class?.identifier ?? owner.system?.class;
+        if (parent && String(parent) !== classIdentifier) continue;
+      }
+
+      const advancements = owner.toObject().system?.advancement ?? {};
+      for (const [advancementId, advancement] of Object.entries(advancements)) {
+        if (advancement?.type !== "AbilityScoreImprovement") continue;
+        if (Number(advancement.level ?? 0) !== targetClassLevel) continue;
+
+        const choiceType = String(advancement.value?.type ?? "");
+        if (choiceType === "asi" && !settings.enableAbilityScoreImprovement) {
+          throw new StructuralLevelUpError(
+            "ASI +2 is not allowed for this advancement.",
+            {
+              title: "ASI +2 Not Allowed",
+              choiceName: "ASI +2",
+              reason: settings.enableFeats
+                ? "The GM does not allow ASI +2 for this advancement. Select a different Feat."
+                : "The GM does not allow ASI +2 or Feats for this advancement. Select another permitted option.",
+              diagnostic: `[Character Builder Level Up] ${draft.name} selected the generic two-point ASI while it was disabled during ${workflow} (${owner.name}.${advancementId}).`,
+              concise: true,
+              actionLabel: settings.enableFeats ? "Select Another Feat" : "Select Another Option"
+            }
+          );
+        }
+
+        if (choiceType !== "feat") continue;
+        const selectedIds = this.#embeddedItemIds(advancement.value?.feat ?? advancement.value?.added ?? {}, draft);
+        const selectedItems = [...selectedIds].map(id => addedById.get(id) ?? draft.items.get(id)).filter(Boolean);
+        for (const feat of selectedItems) {
+          if (feat.type !== "feat" || feat.system?.type?.value !== "feat") continue;
+          const epicBoon = NativeFeatChoiceGuard.isEpicBoon(feat);
+          if (epicBoon && !settings.enableEpicBoons) {
+            throw new StructuralLevelUpError(
+              `${feat.name} cannot be selected.`,
+              {
+                title: "Epic Boon Not Allowed",
+                choiceName: feat.name,
+                reason: "The GM does not allow Epic Boons for this advancement. Select another permitted option.",
+                diagnostic: `[Character Builder Level Up] ${draft.name} selected Epic Boon ${feat.name} while Epic Boons were disabled during ${workflow}.`,
+                concise: true,
+                actionLabel: "Select Another Option"
+              }
+            );
+          }
+          if (!epicBoon && !settings.enableFeats) {
+            throw new StructuralLevelUpError(
+              `${feat.name} cannot be selected.`,
+              {
+                title: "Feat Not Allowed",
+                choiceName: feat.name,
+                reason: settings.enableAbilityScoreImprovement
+                  ? "The GM only allows ASI +2 for this advancement. Choose +2 to one Ability Score or +1 to two different Ability Scores."
+                  : "The GM does not allow Feats or ASI +2 for this advancement. Select another permitted option.",
+                diagnostic: `[Character Builder Level Up] ${draft.name} selected Feat ${feat.name} while Feats were disabled during ${workflow}.`,
+                concise: true,
+                actionLabel: settings.enableAbilityScoreImprovement ? "Choose ASI +2" : "Select Another Option"
+              }
+            );
+          }
+        }
+      }
+    }
+  }
+
+  static #embeddedItemIds(value, draft) {
+    const ids = new Set();
+    const walk = node => {
+      if (!node || typeof node !== "object") return;
+      if (Array.isArray(node)) return node.forEach(walk);
+      for (const [key, nested] of Object.entries(node)) {
+        if (draft.items.get(key)) ids.add(key);
+        walk(nested);
+      }
+    };
+    walk(value);
+    return ids;
+  }
+
+  static #validateEpicBoonEligibility(draft, added, state, workflow) {
+    const projectedCharacterLevel = Number(state?.targetCharacterLevel ?? draft.system?.details?.level ?? 0);
+    if (projectedCharacterLevel >= 19) return;
+
+    const invalid = added.find(item => NativeFeatChoiceGuard.isEpicBoon(item));
+    if (!invalid) return;
+    throw new StructuralLevelUpError(
+      `${invalid.name} cannot be selected.`,
+      {
+        choiceName: invalid.name,
+        reason: `Epic Boon feats require character level 19 or higher. The projected character level is ${projectedCharacterLevel}.`,
+        diagnostic: `[Character Builder Level Up] ${draft.name} selected Epic Boon ${invalid.name} below character level 19 during ${workflow}.`
+      }
+    );
+  }
+
+  static #validateExplicitRequirements(draft, added, state, workflow) {
+    for (const item of added) {
+      const requirement = String(item.system?.requirements ?? "").trim();
+      if (!requirement) continue;
+      const missing = this.#missingRequirement(draft, requirement, state);
+      if (!missing) continue;
+      throw new StructuralLevelUpError(
+        `${item.name} cannot be selected.`,
+        {
+          choiceName: item.name,
+          reason: `Missing prerequisite: ${missing}.`,
+          diagnostic: `[Character Builder Level Up] ${draft.name} failed ${item.name} requirement during ${workflow}: ${missing}.`
+        }
+      );
+    }
+  }
+
+  static async #validateNativePrerequisites(draft, added, state, workflow) {
+    for (const item of added) {
+      const validator = item.system?.assertPrerequisites;
+      if (typeof validator !== "function") continue;
+      try {
+        await validator.call(item.system, draft, {
+          level: Number(state?.targetCharacterLevel ?? draft.system?.details?.level ?? 0),
+          showMessage: false,
+          throwError: true
+        });
+      } catch (error) {
+        throw new StructuralLevelUpError(
+          `${item.name} cannot be selected.`,
+          {
+            choiceName: item.name,
+            reason: this.#cleanNativeMessage(error?.message) || "One or more prerequisites are not satisfied.",
+            diagnostic: `[Character Builder Level Up] Native prerequisite validation failed for ${item.name} during ${workflow}: ${error?.message ?? error}`
+          }
+        );
+      }
+    }
+  }
+
+  static #validateRequiredAdvancementCounts(draft, state, workflow, addedItemIds = new Set(), { validateManagedCounts = true } = {}) {
+    const classIdentifier = String(state?.selectedClassIdentifier ?? "");
+    const targetClassLevel = Number(state?.targetClassLevel ?? 0);
+    if (!classIdentifier || !targetClassLevel) return;
+
+    for (const owner of draft.items) {
+      if (!["class", "subclass", "feat"].includes(owner.type)) continue;
+      // A nested ItemChoice at level 0 is part of the creation of that feature
+      // (for example Lessons of the First Ones or Blessed Warrior). Existing
+      // features are not revalidated as if they had just been acquired on every
+      // later class level; their later maintenance is handled by explicit
+      // Level Up replacement flows.
+      if (owner.type === "feat" && !addedItemIds.has(owner.id)) continue;
+      if (owner.type === "class" && owner.system?.identifier !== classIdentifier) continue;
+      if (owner.type === "subclass") {
+        const parent = owner.system?.classIdentifier ?? owner.system?.class?.identifier ?? owner.system?.class;
+        if (parent && parent !== classIdentifier) continue;
+      }
+
+      const advancements = owner.toObject().system?.advancement ?? {};
+      for (const [advancementId, advancement] of Object.entries(advancements)) {
+        if (advancement?.type !== "ItemChoice") continue;
+        if (!validateManagedCounts && ManagedAdvancementRegistry.isManagedRaw(owner, advancement, { classIdentifier })) continue;
+        const choices = advancement.configuration?.choices ?? {};
+        // Nested feature choices use their own level-0 bucket. Class and
+        // subclass choices must use only the current target-level bucket;
+        // never substitute a historical or level-0 row for a missing current
+        // choice.
+        const row = owner.type === "feat"
+          ? choices["0"] ?? null
+          : choices[String(targetClassLevel)] ?? null;
+        const expected = Number(row?.count ?? 0);
+        if (!expected) continue;
+
+        // ItemChoices nested inside a newly-created feature use level 0. Class
+        // and subclass ItemChoices use the actual class level as their key.
+        const addedNode = advancement.value?.added ?? {};
+        const selected = owner.type === "feat"
+          ? this.#countEmbeddedIds(addedNode, draft)
+          : this.#countEmbeddedIds(addedNode[String(targetClassLevel)] ?? addedNode, draft);
+        if (selected >= expected) continue;
+
+        const title = advancementName(advancement, owner.name || "Required Advancement choice");
+        throw new StructuralLevelUpError(
+          `${title} was not completed safely.`,
+          {
+            choiceName: title,
+            reason: `Expected ${expected} selection${expected === 1 ? "" : "s"}, but only ${selected} valid selection${selected === 1 ? " was" : "s were"} recorded.`,
+            diagnostic: `[Character Builder Level Up] ${owner.name}.${advancementId} is incomplete during ${workflow}: expected ${expected}, found ${selected}.`
+          }
+        );
+      }
+    }
+  }
+
+  static #countEmbeddedIds(value, draft) {
+    const ids = new Set();
+    const walk = node => {
+      if (!node || typeof node !== "object") return;
+      if (Array.isArray(node)) return node.forEach(walk);
+      for (const [key, nested] of Object.entries(node)) {
+        if (draft.items.get(key)) ids.add(key);
+        walk(nested);
+      }
+    };
+    walk(value);
+    return ids.size;
+  }
+
+  static #missingRequirement(draft, requirement, state) {
+    const normalized = requirement.toLowerCase();
+    const armor = new Set(Array.from(draft.system?.traits?.armorProf?.value ?? []));
+    const weapons = new Set(Array.from(draft.system?.traits?.weaponProf?.value ?? []));
+    const identifiers = new Set(draft.items.map(item => String(item.system?.identifier ?? "")).filter(Boolean));
+
+    const armorChecks = [
+      [/medium armor training/i, "med", "Medium Armor Training"],
+      [/heavy armor training/i, "hvy", "Heavy Armor Training"],
+      [/light armor training/i, "lgt", "Light Armor Training"],
+      [/shield training/i, "shl", "Shield Training"]
+    ];
+    for (const [pattern, key, label] of armorChecks) {
+      if (pattern.test(requirement) && !armor.has(key)) return label;
+    }
+
+    if (/martial weapon training/i.test(requirement) && !weapons.has("mar")) return "Martial Weapon Training";
+    if (/simple weapon training/i.test(requirement) && !weapons.has("sim")) return "Simple Weapon Training";
+
+    if (/spellcasting or pact magic/i.test(requirement)
+      && !identifiers.has("spellcasting") && !identifiers.has("pact-magic")) {
+      return "Spellcasting or Pact Magic feature";
+    }
+    if (/\bspellcasting\b/i.test(requirement) && !/or pact magic/i.test(requirement)
+      && !identifiers.has("spellcasting")) return "Spellcasting feature";
+    if (/\bpact magic\b/i.test(requirement) && !/spellcasting or/i.test(requirement)
+      && !identifiers.has("pact-magic")) return "Pact Magic feature";
+
+    const levelMatch = normalized.match(/level\s+(\d+)\+?/i);
+    if (levelMatch && Number(state?.targetCharacterLevel ?? 0) < Number(levelMatch[1])) {
+      return `Character Level ${levelMatch[1]}`;
+    }
+    return null;
+  }
+
+  static #cleanNativeMessage(message) {
+    return String(message ?? "")
+      .replace(/^\[[^\]]+\]\s*/, "")
+      .replace(/^.*? must /i, "The character must ")
+      .trim();
+  }
+
+  static spellReplacementOptions(registry, choice) {
+    return registry.optionsByType("spell").flatMap(group => group.items)
+      .filter(spell => this.isEligibleSpell(spell, choice.rule) && registry.isUuidAllowed(spell.uuid))
+      .sort((a, b) => a.name.localeCompare(b.name, game.i18n.lang));
+  }
+
+  static canReplaceSpell(actor, { owner, advancementId, spell }) {
+    const flags = spell.flags?.[MODULE_ID] ?? {};
+    const grant = flags.itemGrantInstance;
+    const ownsSpell = row => row.ownerItemId === owner.id && row.advancementId === advancementId;
+    if (flags.classSpellAccess || flags.levelUpSpell || flags.mergedItemGrants?.length
+      || (grant && !ownsSpell(grant)) || !(flags.featureSpellOwners ?? []).every(ownsSpell)) return false;
+    // A separate acquisition may reference this same embedded Item even when
+    // only one native origin is recorded on the spell itself.
+    return !actor.items.some(item => Object.entries(readAdvancementRecords(item)).some(([id, record]) => {
+      if (item.id === owner.id && id === advancementId) return false;
+      const added = record.value?.added ?? {};
+      if (record.type === "ItemGrant") return Object.hasOwn(added, spell.id);
+      return record.type === "ItemChoice" && Object.values(added).some(level =>
+        level && typeof level === "object" && Object.hasOwn(level, spell.id));
+    }));
+  }
+
+  static async replaceInvalidSpell(actor, registry, { ownerId, advancementId, spellId, level, sourceUuid }) {
+    const choice = this.invalidSpellChoices(actor).find(row => row.owner.id === ownerId
+      && row.advancementId === advancementId && row.spell.id === spellId && row.level === level);
+    if (!choice || !this.canReplaceSpell(actor, choice)) throw new Error("The invalid spell choice could no longer be safely replaced.");
+
+    const option = registry.sourceForUuid(sourceUuid);
+    const sourceSpell = this.isEligibleSpell(option, choice.rule) && registry.isUuidAllowed(sourceUuid) ? await fromUuid(sourceUuid) : null;
+    if (!this.isEligibleSpell(sourceSpell, choice.rule)) throw new Error("Choose an eligible spell from an enabled source.");
+
+    const { owner, advancement, spell } = choice;
+    const native = owner.advancement?.byId?.[advancementId] ?? owner.system?.advancement?.get?.(advancementId);
+    if (!native?.configuration?.spell?.applySpellChanges) {
+      throw new Error("The native Advancement spell configuration is unavailable.");
+    }
+
+    const originalValue = advancement.value;
+    const ability = originalValue.ability || spell.system?.ability;
+    const data = await NativeSpellGrantProjectionService.materialize({
+      sourceAdvancement: native,
+      sourceUuid: sourceSpell.uuid,
+      sourceItem: sourceSpell,
+      owner,
+      localAdvancement: { value: { ability } }
+    });
+    if (!data) throw new Error(`D&D5e could not prepare ${sourceSpell.name} for ${owner.name}.`);
+    const origin = `${owner.id}.${advancementId}`;
+    const root = spell.getFlag("dnd5e", "advancementRoot")
+      ?? owner.getFlag("dnd5e", "advancementRoot") ?? origin;
+    delete data._id;
+    data.flags ??= {};
+    data.flags.dnd5e = { ...data.flags.dnd5e, sourceId: sourceSpell.uuid, advancementOrigin: origin, advancementRoot: root };
+    if (owner.system?.identifier) data.system.sourceItem = `${owner.type}:${owner.system.identifier}`;
+    if (data.system.uses?.max) data.system.uses.spent = Number(spell.system?.uses?.spent ?? 0);
+    data.flags[MODULE_ID] = {
+      ...data.flags[MODULE_ID],
+      featureGrantedSpell: true,
+      featureSpellOwners: [{
+        ...(spell.getFlag(MODULE_ID, "featureSpellOwners")?.[0] ?? {}),
+        category: dnd5e.utils.formatIdentifier(advancementName(advancement, owner.name)),
+        label: advancementName(advancement, owner.name),
+        featureItemId: owner.id,
+        ownerItemId: owner.id,
+        advancementId,
+        sourceUuid: sourceSpell.uuid,
+        spellLevel: choice.rule.spellLevel,
+        alwaysPrepared: Number(data.system.prepared) === 2,
+        nativeGrant: true,
+        validationReconciled: true
+      }]
+    };
+
+    // Creating the replacement first lets failures leave the original spell intact.
+    const [replacement] = await actor.createEmbeddedDocuments("Item", [data], REPAIR_OPTIONS);
+    if (!replacement) throw new Error(`D&D5e did not create ${sourceSpell.name}.`);
+    const added = { ...originalValue.added, [level]: { ...originalValue.added[level] } };
+    delete added[level][spellId];
+    added[level][replacement.id] = sourceSpell.uuid;
+    let linked = false;
+    try {
+      await writeAdvancementValue(owner, advancementId, { ...originalValue, added }, REPAIR_OPTIONS);
+      linked = true;
+      await actor.deleteEmbeddedDocuments("Item", [spellId], { ...REPAIR_OPTIONS, deleteContents: false });
+      if (actor.items.get(spellId)) throw new Error(`D&D5e did not remove the invalid ${spell.name} grant.`);
+    } catch (error) {
+      if (!actor.items.get(spellId)) {
+        if (linked) return replacement;
+        throw error;
+      }
+      await writeAdvancementValue(owner, advancementId, originalValue, REPAIR_OPTIONS);
+      await actor.deleteEmbeddedDocuments("Item", [replacement.id], { ...REPAIR_OPTIONS, deleteContents: false });
+      throw error;
+    }
+    return replacement;
+  }
+}

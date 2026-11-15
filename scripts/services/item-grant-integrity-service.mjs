@@ -39,8 +39,10 @@ export class ItemGrantIntegrityService {
         const advancementLevel = Number(raw.level ?? 0);
         if (advancementLevel > currentLevel) continue;
 
+        const linked = this.#linkedGrantOwners(draft, owner, raw, advancementId);
+        const linkedSources = await Promise.all(linked.uuids.map(uuid => fromUuid(uuid)));
         const expected = this.#mandatoryEntries(raw.configuration ?? {}, {
-          owner, raw, advancementId
+          owner, raw, advancementId, linkedOwners: [...linked.items, ...linkedSources.filter(Boolean)]
         });
         if (!expected.length) continue;
         const advancement = owner.advancement?.byId?.[advancementId] ?? null;
@@ -50,19 +52,25 @@ export class ItemGrantIntegrityService {
         let valueChanged = false;
 
         const expectedCounts = this.#countByUuid(expected);
+        const matchesByReference = new Map();
         for (const [configuredUuid, expectedCount] of expectedCounts) {
+          const siblingUuid = this.#samePackReference(configuredUuid, owner, registry);
+          const enabledSibling = siblingUuid && (!registry || registry.isUuidAllowed(siblingUuid)) ? siblingUuid : null;
+          const matches = item => this.#sourceMatches(item, configuredUuid)
+            || (enabledSibling && this.#sourceMatches(item, enabledSibling));
+          matchesByReference.set(configuredUuid, matches);
           const tracked = Object.entries(value.added)
-            .filter(([, uuid]) => uuid === configuredUuid)
+            .filter(([, uuid]) => uuid === configuredUuid || uuid === enabledSibling)
             .map(([id]) => id);
           const valid = tracked.filter(id => {
             const item = draft.items.get(id);
-            return this.#isGrantInstance(item, origin) && this.#sourceMatches(item, configuredUuid);
+            return this.#isGrantInstance(item, origin) && matches(item);
           });
 
           // Recover an existing correctly-originated Item whose value.added link was lost.
           const untracked = draft.items.filter(item =>
             this.#isGrantInstance(item, origin)
-            && this.#sourceMatches(item, configuredUuid)
+            && matches(item)
             && !valid.includes(item.id)
           );
           for (const item of untracked) {
@@ -76,7 +84,7 @@ export class ItemGrantIntegrityService {
           const reusableIds = tracked.filter(id => !draft.items.get(id));
           for (let occurrence = 0; occurrence < missingCount; occurrence++) {
             const itemId = reusableIds.shift() ?? foundry.utils.randomID();
-            const resolvedUuid = await this.#resolveUuid(configuredUuid, registry);
+            const resolvedUuid = await this.#resolveUuid(siblingUuid ?? configuredUuid, registry);
             const recovered = this.#nativeCloneItemData({
               recoveryActor,
               itemId,
@@ -130,7 +138,7 @@ export class ItemGrantIntegrityService {
           // same Advancement, and same configured grant. Equal names or source
           // UUIDs from another acquisition origin are never considered here.
           const matching = draft.items.filter(item =>
-            this.#isGrantInstance(item, origin) && this.#sourceMatches(item, configuredUuid)
+            this.#isGrantInstance(item, origin) && matches(item)
           );
           const keepIds = [];
           for (const id of valid) {
@@ -186,11 +194,11 @@ export class ItemGrantIntegrityService {
         }
 
         // Remove only dead technical references for UUIDs audited above.
-        const auditedUuids = new Set(expected.map(entry => entry.uuid));
         for (const [id, uuid] of Object.entries(value.added)) {
-          if (!auditedUuids.has(uuid)) continue;
+          const matches = matchesByReference.get(uuid);
+          if (!matches) continue;
           const item = draft.items.get(id);
-          if (this.#isGrantInstance(item, origin) && this.#sourceMatches(item, uuid)) continue;
+          if (this.#isGrantInstance(item, origin) && matches(item)) continue;
           delete value.added[id];
           valueChanged = true;
         }
@@ -228,8 +236,9 @@ export class ItemGrantIntegrityService {
       const rawAdvancements = readAdvancementRecords(owner);
       for (const [advancementId, raw] of Object.entries(rawAdvancements)) {
         if (raw?.type !== "ItemGrant" || Number(raw.level ?? 0) > currentLevel) continue;
+        const linked = this.#linkedGrantOwners(draft, owner, raw, advancementId);
         const expectedCounts = this.#countByUuid(this.#mandatoryEntries(raw.configuration ?? {}, {
-          owner, raw, advancementId
+          owner, raw, advancementId, linkedOwners: linked.items
         }));
         if (!expectedCounts.size) continue;
         if (hasSerializedAdvancementReplacement(raw)) {
@@ -278,40 +287,54 @@ export class ItemGrantIntegrityService {
     return context === "creation" ? `creation:${draft.id}` : `level-up:${draft.id}`;
   }
 
-  static #mandatoryEntries(configuration, { owner = null, raw = null, advancementId = null } = {}) {
-    const optionalGroup = Boolean(configuration.optional);
-    return (configuration.items ?? [])
+  static #configuredMandatoryEntries(configuration) {
+    return Object.values(configuration?.items ?? {})
       .map(entry => typeof entry === "string" ? { uuid: entry, optional: false } : entry)
-      .filter(entry => entry?.uuid && (!optionalGroup || !entry.optional))
-      .filter(entry => !this.#isRedundantMalformedLocalGrant(entry.uuid, {
-        owner, raw, advancementId
-      }));
+      .filter(entry => entry?.uuid && (!configuration.optional || !entry.optional));
   }
 
-  /**
-   * Some PHB 2024 documents contain a malformed local Item UUID and a second,
-   * canonical Compendium UUID for the exact same mandatory grant at the exact
-   * same level. Ignore only that provably redundant malformed entry. Global
-   * mandatory ItemGrant validation remains strict for every other case.
-   */
-  static #isRedundantMalformedLocalGrant(uuid, { owner, raw, advancementId } = {}) {
+  static #linkedGrantOwners(draft, owner, raw, advancementId) {
+    const entries = this.#configuredMandatoryEntries(raw.configuration);
+    if (!entries.some(({ uuid }) => /^Item\.[A-Za-z0-9]{16}$/.test(uuid))) return { items: [], uuids: [] };
+    const source = owner.getFlag("dnd5e", "sourceId") ?? owner._stats?.compendiumSource;
+    const pack = /^Compendium\.(.+)\.Item\.[A-Za-z0-9]{16}$/.exec(source ?? "")?.[1];
+    if (!pack) return { items: [], uuids: [] };
+    const prefix = `Compendium.${pack}.Item.`;
+    const uuids = new Set(entries.map(({ uuid }) => uuid).filter(uuid => uuid.startsWith(prefix)));
+    const origin = `${owner.id}.${advancementId}`;
+    const items = draft.items.filter(item => this.#isGrantInstance(item, origin)
+      && uuids.has(item.getFlag("dnd5e", "sourceId") ?? item._stats?.compendiumSource));
+    for (const item of items) uuids.delete(item.getFlag("dnd5e", "sourceId") ?? item._stats?.compendiumSource);
+    return { items, uuids: [...uuids] };
+  }
+
+  static #mandatoryEntries(configuration, { owner, raw, advancementId, linkedOwners }) {
+    return this.#configuredMandatoryEntries(configuration)
+      .filter(({ uuid }) => !this.#isRedundantMalformedLocalGrant(uuid, { owner, raw, advancementId, linkedOwners }));
+  }
+
+  /** Keep the canonical grant when the same acquisition graph already declares it. */
+  static #isRedundantMalformedLocalGrant(uuid, { owner, raw, advancementId, linkedOwners }) {
     const match = /^Item\.([A-Za-z0-9]{16})$/.exec(String(uuid ?? ""));
     if (!match || !owner || !raw) return false;
     const itemId = match[1];
     const level = Number(raw.level ?? 0);
-    const advancements = readAdvancementRecords(owner);
-    for (const [otherId, other] of Object.entries(advancements)) {
-      if (otherId === advancementId || other?.type !== "ItemGrant" || Number(other.level ?? 0) !== level) continue;
-      const optionalGroup = Boolean(other.configuration?.optional);
-      for (const configured of other.configuration?.items ?? []) {
-        const row = typeof configured === "string" ? { uuid: configured, optional: false } : configured;
-        if (!row?.uuid || (optionalGroup && row.optional)) continue;
-        const canonical = String(row.uuid);
-        if (!canonical.startsWith("Compendium.") || !canonical.endsWith(`.Item.${itemId}`)) continue;
-        if (this.#canonicalUuidResolvable(canonical)) return true;
-      }
-    }
-    return false;
+    const siblingGrants = Object.entries(readAdvancementRecords(owner))
+      .filter(([id]) => id !== advancementId).map(([, row]) => row);
+    const isCanonicalAtLevel = (row, matches) => row?.type === "ItemGrant" && Number(row.level ?? 0) === level
+      && this.#configuredMandatoryEntries(row.configuration).some(({ uuid: canonical }) =>
+        matches(canonical) && this.#canonicalUuidResolvable(canonical));
+    if (siblingGrants.some(row => isCanonicalAtLevel(row, canonical =>
+      canonical.startsWith("Compendium.") && canonical.endsWith(`.Item.${itemId}`)
+    ))) return true;
+
+    const target = this.#samePackReference(uuid, owner);
+    return Boolean(target && (
+      isCanonicalAtLevel(raw, canonical => canonical === target)
+      || linkedOwners.some(linked => Object.values(readAdvancementRecords(linked)).some(row =>
+        isCanonicalAtLevel(row, canonical => canonical === target)
+      ))
+    ));
   }
 
   static #canonicalUuidResolvable(uuid) {
@@ -419,6 +442,19 @@ export class ItemGrantIntegrityService {
     return Boolean(configured?.system?.identifier
       && item.type === configured.type
       && item.system?.identifier === configured.system.identifier);
+  }
+
+  static #samePackReference(configuredUuid, owner, registry) {
+    // An unqualified Item reference can name a sibling of the source document.
+    // Resolve against that exact pack before consulting world Items.
+    const local = /^Item\.([A-Za-z0-9]{16})$/.exec(configuredUuid);
+    const ownerSource = owner.getFlag("dnd5e", "sourceId") ?? owner._stats?.compendiumSource;
+    const pack = /^Compendium\.(.+)\.Item\.[A-Za-z0-9]{16}$/.exec(ownerSource ?? "")?.[1];
+    if (local && pack) {
+      const sibling = `Compendium.${pack}.Item.${local[1]}`;
+      if (registry?.sourceForUuid?.(sibling) || this.#canonicalUuidResolvable(sibling)) return sibling;
+    }
+    return null;
   }
 
   static async #resolveUuid(configuredUuid, registry) {

@@ -1,3 +1,4 @@
+import { AdvancementChoiceAnnotationService } from "./advancement-choice-annotation-service.mjs";
 import { ManagedAdvancementRegistry } from "./managed-advancement-registry.mjs";
 import { AdditionalNativeSpellProgressionService } from "./additional-native-spell-progression-service.mjs";
 import { CURRENCY_CP, MODULE_ID } from "../constants.mjs";
@@ -10,7 +11,7 @@ import { LongRestSpellPreparationService } from "./long-rest-spell-preparation-s
 import { MemorizeSpellService } from "./memorize-spell-service.mjs";
 import { HighElfCantripService } from "./high-elf-cantrip-service.mjs";
 import { WarBondManagementService } from "./war-bond-management-service.mjs";
-import { wildShapeScales, writeAdvancementRecords, writeAdvancementValue, readAdvancementRecords } from "../utils/advancement-utils.mjs";
+import { wildShapeScales, writeAdvancementRecords, writeAdvancementValue, readAdvancementRecords, weaponMasteryChoices } from "../utils/advancement-utils.mjs";
 
 const LAND_LABELS = Object.freeze({ arid: "Arid", polar: "Polar", temperate: "Temperate", tropical: "Tropical" });
 const LAND_RESISTANCES = Object.freeze({ arid: "fire", polar: "cold", temperate: "lightning", tropical: "poison" });
@@ -56,9 +57,9 @@ export class RuntimeFeatureService {
     const highElfCantrip = HighElfCantripService.action(actor, type, session);
     if (highElfCantrip) rows.push(highElfCantrip);
 
-    const weaponMastery = this.#feature(actor, "weapon-mastery");
-    if (type === "long" && weaponMastery && this.#masteryClasses(actor).length) {
-      add("weapon-mastery", "Weapon Mastery", weaponMastery, "weapon-mastery",
+    const mastery = type === "long" ? this.#masteryClasses(actor)[0] : null;
+    if (mastery) {
+      add("weapon-mastery", "Weapon Mastery", mastery.feature ?? mastery.cls, "weapon-mastery",
         "Practice weapon drills and replace one mastery choice for each eligible class.", { order: 10 });
     }
 
@@ -356,7 +357,7 @@ export class RuntimeFeatureService {
       return LongRestSpellPreparationService.applyOperation(actor, actionId, payload, transactionId);
     }
     switch (actionId) {
-      case "weapon-mastery": return this.#applyMastery(actor, registry, payload, transactionId);
+      case "weapon-mastery": return this.#applyMastery(actor, registry, payload);
       case "aspect-of-the-wilds":
       case "fiendish-resilience": return this.#applyEffectChoice(actor, actionId, payload, transactionId);
       case "memorize-spell": return MemorizeSpellService.apply(actor, payload, transactionId);
@@ -421,21 +422,12 @@ export class RuntimeFeatureService {
     return actor.items.filter(item => item.type === "class").reduce((sum, item) => sum + Number(item.system?.levels ?? 0), 0);
   }
 
-  static #advancements(item) {
-    const source = item?.toObject?.().system?.advancement ?? item?.system?.advancement ?? {};
-    return Object.entries(source).map(([id, data]) => ({ id, ...foundry.utils.deepClone(data) }));
-  }
-
   static #masteryClasses(actor) {
-    return actor.items.filter(item => item.type === "class").map(cls => {
-      const rows = this.#advancements(cls).filter(advancement => advancement.type === "Trait"
-        && advancement.configuration?.mode === "mastery"
-        && (advancement.value?.chosen ?? []).length);
-      if (!rows.length) return null;
-      const currentCount = rows.reduce((sum, row) => sum + (row.value?.chosen ?? []).length, 0);
-      const rule = this.#weaponMasteryRule(cls, currentCount);
-      return rule ? { cls, rows, rule } : null;
-    }).filter(Boolean);
+    return weaponMasteryChoices(actor).flatMap(group => {
+      const currentCount = new Set(group.rows.flatMap(row => [...row.value.chosen])).size;
+      const rule = this.#weaponMasteryRule(group.cls, currentCount);
+      return rule ? [{ ...group, rule }] : [];
+    });
   }
 
   static #weaponMasteryRule(cls, currentCount) {
@@ -859,7 +851,7 @@ export class RuntimeFeatureService {
     };
   }
 
-  static async #applyMastery(actor, registry, payload, transactionId) {
+  static async #applyMastery(actor, registry, payload) {
     const requested = (payload?.changes ?? []).filter(change => change.oldKey && change.newKey && change.oldKey !== change.newKey);
     if (!requested.length) return { changed: false };
 
@@ -896,62 +888,53 @@ export class RuntimeFeatureService {
       }
     }
 
-    const updateByClass = new Map();
-    for (const [classItemId, changes] of grouped) {
-      const { cls } = classRows.get(classItemId);
-      const advancements = cls.toObject().system?.advancement ?? {};
-      const replacementByOld = new Map(changes.map(change => [change.oldKey, change.newKey]));
-      const foundOld = new Set();
-      const update = { _id: cls.id };
-      for (const [advancementId, advancement] of Object.entries(advancements)) {
-        if (advancement.type !== "Trait" || advancement.configuration?.mode !== "mastery") continue;
-        const chosen = (advancement.value?.chosen ?? []).map(value => {
-          const replacement = replacementByOld.get(value);
-          if (replacement) foundOld.add(value);
-          return replacement ?? value;
-        });
-        if (new Set(chosen).size !== chosen.length) throw new Error(`${cls.name} cannot select the same Weapon Mastery more than once.`);
-        if (chosen.some((value, index) => value !== (advancement.value?.chosen ?? [])[index])) {
-          update[`system.advancement.${advancementId}.value.chosen`] = chosen;
-        }
+    const updates = new Map();
+    const projected = [];
+    for (const { cls, rows, owners } of classRows.values()) {
+      const changes = grouped.get(cls.id) ?? [];
+      const replacements = new Map(changes.map(change => [change.oldKey, change.newKey]));
+      const found = new Set();
+      for (const row of rows) {
+        const active = [...row.value.chosen];
+        projected.push(...active.map(key => {
+          if (replacements.has(key)) found.add(key);
+          return String(replacements.get(key) ?? key).split(":").at(-1);
+        }));
       }
       for (const change of changes) {
-        if (!foundOld.has(change.oldKey)) throw new Error(`${cls.name} no longer owns ${this.#weaponLabel(change.oldKey)} mastery.`);
+        if (!found.has(change.oldKey)) throw new Error(`${cls.name} no longer owns ${this.#weaponLabel(change.oldKey)} mastery.`);
       }
-      updateByClass.set(cls.id, update);
-    }
 
-    const projected = [];
-    for (const { cls, rows } of this.#masteryClasses(actor)) {
-      const replacements = new Map((grouped.get(cls.id) ?? []).map(change => [change.oldKey, change.newKey]));
-      for (const row of rows) {
-        projected.push(...(row.value?.chosen ?? []).map(value => String(replacements.get(value) ?? value).split(":").at(-1)));
+      // Also update a stale mirrored choice, so replacing the active choice
+      // cannot cause a legacy copy of the old selection to reappear.
+      if (!found.size) continue;
+      const replacementsByWeapon = new Map(changes.map(change => [String(change.oldKey).split(":").at(-1), change.newKey]));
+      for (const owner of owners) {
+        const records = readAdvancementRecords(owner);
+        let changed = false;
+        for (const [id, record] of Object.entries(records)) {
+          if (record.type !== "Trait" || record.configuration?.mode !== "mastery") continue;
+          const chosen = [...(record.value?.chosen ?? [])]
+            .map(key => replacementsByWeapon.get(String(key).split(":").at(-1)) ?? key);
+          if (!chosen.some((key, index) => key !== record.value.chosen[index])) continue;
+          records[id] = { ...record, value: { ...record.value, chosen } };
+          changed = true;
+        }
+        if (changed) updates.set(owner, records);
       }
     }
     if (new Set(projected).size !== projected.length) {
       throw new Error("The same weapon cannot be selected more than once across the current Weapon Mastery choices.");
     }
-
-    const updates = [...updateByClass.values()].filter(update => Object.keys(update).length > 1);
-    if (updates.length) await actor.updateEmbeddedDocuments("Item", updates, { characterBuilderRuntimeManagement: true });
-    const currentRepresented = new Set(
-      this.#masteryClasses(actor).flatMap(({ rows }) =>
-        rows.flatMap(row => (row.value?.chosen ?? []).map(key => String(key).split(":").at(-1)))
-      )
-    );
+    for (const [owner, records] of updates) {
+      await writeAdvancementRecords(owner, records, { characterBuilderRuntimeManagement: true });
+    }
+    const currentRepresented = new Set(projected);
     const existing = new Set(actor.system?.traits?.weaponProf?.mastery?.value ?? []);
     for (const change of requested) existing.delete(String(change.oldKey).split(":").at(-1));
     for (const value of currentRepresented) existing.add(value);
     await actor.update({ "system.traits.weaponProf.mastery.value": [...existing] }, { characterBuilderRuntimeManagement: true });
-    for (const { cls, rows } of this.#masteryClasses(actor)) {
-      const feature = this.#classFeature(actor, "weapon-mastery", cls.system?.identifier);
-      if (!feature) continue;
-      const values = rows.flatMap(row => (row.value?.chosen ?? []).map(value => {
-        const baseItem = String(value).split(":").at(-1);
-        return candidateByBase.get(baseItem)?.displayLabel ?? this.#weaponLabel(value);
-      }));
-      await this.#reconcileWeaponMasteryBadge(actor, cls, feature, values, transactionId);
-    }
+    await AdvancementChoiceAnnotationService.refreshWeaponMastery(actor);
     return { changed: true, changes: requested };
   }
 
@@ -1927,33 +1910,6 @@ export class RuntimeFeatureService {
 
   static #escapeHtml(value) {
     return foundry.utils.escapeHTML(String(value ?? ""));
-  }
-
-  static async #reconcileWeaponMasteryBadge(actor, cls, feature, values, transactionId) {
-    const classIdentifier = String(cls.system?.identifier ?? "");
-    const badge = RuntimeBadgeReconciliationService.runtimeBadge({
-      targetItem: feature,
-      category: "Weapon Mastery",
-      values,
-      kind: "runtime-weapon-mastery",
-      icon: "fa-solid fa-list-check",
-      transactionId,
-      classIdentifier,
-      classLevel: Number(cls.system?.levels ?? 0),
-      sourceItemId: cls.id,
-      advancementId: feature.id
-    });
-    await RuntimeBadgeReconciliationService.reconcile(actor, {
-      matches: (item, existing) => {
-        const category = this.#normalizeName(existing?.category ?? existing?.advancementTitle);
-        if (category !== "weapon mastery") return false;
-        return item.id === feature.id
-          || existing?.targetItemId === feature.id
-          || existing?.sourceItemId === cls.id
-          || existing?.classIdentifier === classIdentifier;
-      },
-      additions: badge ? [{ itemId: feature.id, badge }] : []
-    });
   }
 
   static async #reconcileSpellMasteryBadges(actor, feature, cls, transactionId) {

@@ -1,4 +1,4 @@
-import { FeyTouchedChoiceService } from "./fey-touched-choice-service.mjs";
+import { NativeAdvancementSupportService } from "./native-advancement-support-service.mjs";
 import { AdvancementService } from "./advancement-service.mjs";
 import { AdvancementChoiceAnnotationService } from "./advancement-choice-annotation-service.mjs";
 import { LevelUpFeatureService } from "./level-up-feature-service.mjs";
@@ -90,7 +90,7 @@ export class CharacterValidationService {
     const registry = new SourceRegistry();
     await registry.load();
 
-    const issues = this.#scanFeyTouchedChoices(actor, registry);
+    const issues = this.#scanInvalidNativeSpells(actor, registry);
     issues.push(...await this.#scanBrokenActivityEffects(actor, registry));
     for (const owner of actor.items) {
       for (const row of planAdvancementRecordRepairs(actor, owner).issues) {
@@ -162,8 +162,8 @@ export class CharacterValidationService {
     if (!issue?.repairable) throw new Error("This validation issue has no safe automatic repair.");
 
     switch (issue.kind) {
-      case "invalid-fey-touched-spell":
-        return this.#repairFeyTouchedChoice(actor, issue);
+      case "invalid-native-spell-choice":
+        return this.#repairInvalidNativeSpell(actor, issue);
       case "serialized-advancement-record": {
         const owner = actor.items.get(issue.data.ownerId);
         const current = owner && planAdvancementRecordRepairs(actor, owner).issues
@@ -190,41 +190,46 @@ export class CharacterValidationService {
     }
   }
 
-  static #scanFeyTouchedChoices(actor, registry) {
-    const invalid = FeyTouchedChoiceService.invalidChoices(actor);
-    if (!invalid.length) return [];
-    const hasOptions = FeyTouchedChoiceService.replacementOptions(registry).length > 0;
-    return invalid.map(row => {
-      const { owner, advancementId, spell } = row;
-      const canReplace = FeyTouchedChoiceService.canReplace(actor, row);
+  static #scanInvalidNativeSpells(actor, registry) {
+    return NativeAdvancementSupportService.invalidSpellChoices(actor).map(row => {
+      const { owner, advancementId, level, spell } = row;
+      const hasOptions = NativeAdvancementSupportService.spellReplacementOptions(registry, row).length > 0;
+      const canReplace = NativeAdvancementSupportService.canReplaceSpell(actor, row);
       return {
-        id: `fey-touched-spell:${owner.id}:${advancementId}:${spell.id}`,
-        kind: "invalid-fey-touched-spell",
+        id: `native-spell-choice:${owner.id}:${advancementId}:${level}:${spell.id}`,
+        kind: "invalid-native-spell-choice",
         severity: "error",
         repairable: canReplace && hasOptions,
         repairMode: "guided",
         repairLabel: "Choose Replacement Spell",
-        title: `Fey-Touched — ${spell.name}`,
-        summary: FeyTouchedChoiceService.rejectionMessage(spell),
+        title: `${owner.name} — ${spell.name}`,
+        summary: NativeAdvancementSupportService.spellRejectionMessage(row),
         details: !canReplace
           ? "This spell also has another recorded acquisition. Review its ownership before replacing it."
           : hasOptions
-            ? "Choose an eligible spell from the enabled sources. The repair replaces only the Fey Magic choice."
+            ? "Choose an eligible spell from the enabled sources. The repair replaces only this Advancement choice."
             : "No eligible replacement spell is available from the enabled sources.",
-        data: { ownerId: owner.id, advancementId, spellId: spell.id }
+        data: { ownerId: owner.id, advancementId, level, spellId: spell.id }
       };
     });
   }
 
-  static async #repairFeyTouchedChoice(actor, issue) {
+  static async #repairInvalidNativeSpell(actor, issue) {
     const registry = new SourceRegistry();
     await registry.load();
-    const options = FeyTouchedChoiceService.replacementOptions(registry);
-    if (!options.length) throw new Error("No eligible Fey-Touched spells are available from enabled sources.");
+    const { ownerId, advancementId, spellId, level } = issue.data;
+    const row = NativeAdvancementSupportService.invalidSpellChoices(actor).find(choice =>
+      choice.owner.id === ownerId && choice.advancementId === advancementId
+      && choice.level === level && choice.spell.id === spellId);
+    if (!row || !NativeAdvancementSupportService.canReplaceSpell(actor, row)) {
+      throw new Error("The invalid spell choice could no longer be safely replaced.");
+    }
+    const options = NativeAdvancementSupportService.spellReplacementOptions(registry, row);
+    if (!options.length) throw new Error("No eligible spells are available from enabled sources.");
     const escape = foundry.utils.escapeHTML;
     const entries = options.map(spell => `<option value="${escape(spell.uuid)}">${escape(spell.name)}</option>`).join("");
     const sourceUuid = await foundry.applications.api.DialogV2.wait({
-      window: { title: "Replace Fey-Touched Spell", modal: true },
+      window: { title: `Replace Spell for ${row.owner.name}`, modal: true },
       content: `<p>${escape(issue.summary)}</p><label>Replacement spell <select name="spell" required>
         <option value="" selected disabled>Choose a spell</option>${entries}</select></label>`,
       buttons: [
@@ -235,8 +240,8 @@ export class CharacterValidationService {
       close: () => null
     });
     if (!sourceUuid) return { status: "cancelled", issueId: issue.id };
-    const replacement = await FeyTouchedChoiceService.replaceInvalidChoice(actor, registry, { ...issue.data, sourceUuid });
-    return { status: "repaired", issueId: issue.id, message: `Fey-Touched now grants ${replacement.name}.` };
+    const replacement = await NativeAdvancementSupportService.replaceInvalidSpell(actor, registry, { ...issue.data, sourceUuid });
+    return { status: "repaired", issueId: issue.id, message: `${row.owner.name} now grants ${replacement.name}.` };
   }
 
   static async #repairLand(actor, issue) {

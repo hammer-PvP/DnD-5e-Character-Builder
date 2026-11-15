@@ -5,7 +5,7 @@ import { SourceResolver } from "./source-resolver.mjs";
 import { AdvancementService } from "./advancement-service.mjs";
 import { ItemGrantIntegrityService } from "./item-grant-integrity-service.mjs";
 import { AdvancementChoiceAnnotationService } from "./advancement-choice-annotation-service.mjs";
-import { NativeAdvancementValidationService, StructuralLevelUpError } from "./native-advancement-validation-service.mjs";
+import { NativeAdvancementSupportService, StructuralLevelUpError } from "./native-advancement-support-service.mjs";
 import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.mjs";
 import { ManagedAdvancementRegistry } from "./managed-advancement-registry.mjs";
 import { ManagedFeatureAdvancementBridge } from "./managed-feature-advancement-bridge.mjs";
@@ -96,7 +96,7 @@ export class LevelUpAdvancementService {
         recoveryActor: manager.clone
       });
       await FeatureSpellOwnershipService.reconcile(draft, integrityResult, state);
-      await NativeAdvancementValidationService.validate(draft, {
+      await NativeAdvancementSupportService.validate(draft, {
         state,
         beforeItemIds,
         workflow: "Class Progression"
@@ -187,9 +187,8 @@ export class LevelUpAdvancementService {
   }
 
   static #runManager(manager) {
-    // The native D&D5e AdvancementManager and Compendium Browser must run
-    // completely untouched. Character Builder validates the resulting Draft
-    // only after the native workflow closes and before any live Actor commit.
+    // Keep the native manager and browser. The modal guard can reject an
+    // invalid choice in place before the resulting draft is validated.
     return NativeAdvancementModalGuard.run(manager);
   }
 

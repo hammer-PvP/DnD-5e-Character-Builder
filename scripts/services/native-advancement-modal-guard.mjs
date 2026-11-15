@@ -1,5 +1,6 @@
 import { MODULE_ID } from "../constants.mjs";
 import { LibWrapperService } from "./lib-wrapper-service.mjs";
+import { NativeAdvancementSupportService } from "./native-advancement-support-service.mjs";
 import { ModalStackService } from "./modal-stack-service.mjs";
 
 const ADVANCEMENT_NAV_ACTIONS = new Set(["previous", "restart", "next", "complete"]);
@@ -371,8 +372,19 @@ export class NativeAdvancementModalGuard {
       if (!(managerElement instanceof HTMLElement) || !managerElement.isConnected || !managerElement.contains(target)) return;
       const ready = this.#isCurrentStepReady(active);
       const complete = ready && this.#isCurrentStepComplete(active);
-      const blocked = !ready || (["next", "complete"].includes(action) && !complete);
-      if (!blocked) return;
+      const forward = action === "next" || action === "complete";
+      const correction = forward && complete && !active.choiceCorrection
+        ? NativeAdvancementSupportService.rejectCurrentSpellChoice(active.manager) : null;
+      if (correction) {
+        active.choiceCorrection = correction.catch(error => {
+          console.error(`${MODULE_ID} | Native spell choice could not be cleared.`, error);
+          ui.notifications.warn("Remove the invalid spell and choose another.");
+        }).finally(() => {
+          active.choiceCorrection = null;
+          this.#syncStepReadiness(active);
+        });
+      }
+      if (ready && !active.choiceCorrection && (!forward || complete)) return;
 
       event.preventDefault?.();
       event.stopImmediatePropagation?.();

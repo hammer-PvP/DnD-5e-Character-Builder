@@ -1,5 +1,5 @@
 import { MODULE_ID } from "../constants.mjs";
-import { advancementName } from "../utils/advancement-utils.mjs";
+import { advancementName, weaponMasteryChoices } from "../utils/advancement-utils.mjs";
 
 /**
  * Stores compact read-only choice badges on the exact feature that owns each
@@ -13,6 +13,59 @@ export class AdvancementChoiceAnnotationService {
 
   static getBadges(item) {
     return foundry.utils.deepClone(item?.getFlag(MODULE_ID, this.FLAG) ?? []);
+  }
+
+  static sheetBadges(actor) {
+    const byItem = new Map(actor.items.map(item => [item.id, this.getBadges(item)]));
+    this.#normalizeWeaponMastery(actor, byItem);
+    return byItem;
+  }
+
+  static async refreshWeaponMastery(actor) {
+    const byItem = this.sheetBadges(actor);
+    const updates = actor.items.flatMap(item => {
+      const next = byItem.get(item.id);
+      return this.#stableString(this.getBadges(item)) === this.#stableString(next) ? []
+        : [{ _id: item.id, [`flags.${MODULE_ID}.${this.FLAG}`]: next }];
+    });
+    if (updates.length) await actor.updateEmbeddedDocuments("Item", updates, { characterBuilderAdvancementAnnotations: true });
+    return updates;
+  }
+
+  static #masteryBadge({ cls, feature, rows }) {
+    if (!feature) return null;
+    const values = [...new Set(rows.flatMap(row => [...row.value.chosen]
+      .map(key => this.#traitKeyLabel(key))))].sort((a, b) => a.localeCompare(b, game.i18n.lang));
+    return {
+      advancementId: feature.id,
+      advancementType: "Trait",
+      advancementTitle: feature.name,
+      kind: "runtime-weapon-mastery",
+      icon: "fa-solid fa-list-check",
+      category: "Weapon Mastery",
+      values,
+      label: `Weapon Mastery [${values.join(", ")}]`,
+      tooltip: `Weapon Mastery: ${values.join(", ")}`,
+      context: "currentState",
+      classIdentifier: cls.system.identifier,
+      sourceItemId: cls.id,
+      targetItemId: feature.id
+    };
+  }
+
+  static #normalizeWeaponMastery(actor, byItem) {
+    for (const group of weaponMasteryChoices(actor)) {
+      const badge = this.#masteryBadge(group);
+      if (!badge) continue;
+      for (const [id, badges] of byItem) {
+        byItem.set(id, badges.filter(current => {
+          if (String(current?.category ?? "").toLowerCase() !== "weapon mastery") return true;
+          return id !== badge.targetItemId && current?.targetItemId !== badge.targetItemId
+            && current?.sourceItemId !== group.cls.id && current?.classIdentifier !== badge.classIdentifier;
+        }));
+      }
+      byItem.get(badge.targetItemId).push(badge);
+    }
   }
 
   /**
@@ -33,6 +86,11 @@ export class AdvancementChoiceAnnotationService {
     if (!sourceItem || !advancementId) return null;
     const advancement = sourceItem.toObject().system?.advancement?.[advancementId];
     if (!advancement) return null;
+    if (advancement.type === "Trait" && advancement.configuration?.mode === "mastery") {
+      const group = weaponMasteryChoices(actor).find(entry => entry.owners.some(owner => owner.id === sourceItemId));
+      const badge = group ? this.#masteryBadge(group) : null;
+      if (badge) return { targetItemId: badge.targetItemId, badge };
+    }
     const base = this.#buildBadge(advancementId, advancement, actor);
     if (!base) return null;
     const target = this.#resolvePresentationItem(sourceItem, base, actor);
@@ -67,6 +125,10 @@ export class AdvancementChoiceAnnotationService {
     if (!target) return { changed: false, reason: "missing-target" };
 
     const incoming = expected.badge;
+    if (incoming.kind === "runtime-weapon-mastery") {
+      const updates = await this.refreshWeaponMastery(actor);
+      return { changed: updates.length > 0, ...expected };
+    }
     const current = this.getBadges(target);
     // Runtime Weapon Mastery maintenance already owns a stable blue badge. A
     // Validator pass must not add a second cosmetic badge merely because the
@@ -159,6 +221,7 @@ export class AdvancementChoiceAnnotationService {
     // performs the same reconciliation when a known form is replaced, giving
     // older Actors a lazy repair path without a world-wide migration.
     this.#normalizeKnownFormsCurrentState(actor, byItem);
+    this.#normalizeWeaponMastery(actor, byItem);
 
     const updates = [];
     const changed = [];
@@ -514,6 +577,10 @@ export class AdvancementChoiceAnnotationService {
       weapon: CONFIG.DND5E.weaponTypes, weapons: CONFIG.DND5E.weaponTypes,
       armor: CONFIG.DND5E.armorTypes
     };
+    if (root === "weapon" || root === "weapons") {
+      const weapon = this.#labelFromTable(CONFIG.DND5E.weaponIds, value);
+      if (weapon) return weapon;
+    }
     const direct = this.#labelFromTable(tables[root], value);
     if (direct) return direct;
     for (const table of [CONFIG.DND5E.skills, CONFIG.DND5E.tools, CONFIG.DND5E.abilities, CONFIG.DND5E.languages]) {

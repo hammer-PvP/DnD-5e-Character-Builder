@@ -8,7 +8,7 @@ import { ItemGrantIntegrityService } from "./item-grant-integrity-service.mjs";
 import { LevelUpFeatureService } from "./level-up-feature-service.mjs";
 import { SubclassSpellcastingService } from "./subclass-spellcasting-service.mjs";
 import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.mjs";
-import { NativeAdvancementValidationService, StructuralLevelUpError } from "./native-advancement-validation-service.mjs";
+import { NativeAdvancementSupportService, StructuralLevelUpError } from "./native-advancement-support-service.mjs";
 import { PactOfTheTomeService } from "./pact-of-the-tome-service.mjs";
 import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
 import { MetamagicService } from "./metamagic-service.mjs";
@@ -708,7 +708,7 @@ export class LevelUpRulesService {
       state,
       classItem: cls
     });
-    await NativeAdvancementValidationService.validate(draft, {
+    await NativeAdvancementSupportService.validate(draft, {
       state,
       beforeItemIds: new Set(rollbackSnapshot.items.map(item => item._id)),
       workflow: "Spells & Features"
