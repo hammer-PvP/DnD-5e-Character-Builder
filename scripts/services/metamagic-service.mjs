@@ -1,3 +1,4 @@
+import { writeAdvancementValue, readAdvancementRecords } from "../utils/advancement-utils.mjs";
 import { MODULE_ID } from "../constants.mjs";
 import { SourceResolver } from "./source-resolver.mjs";
 import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
@@ -405,8 +406,7 @@ export class MetamagicService {
 
   static async #writeAdvancementValue(cls, advancementId, targetLevel, itemIds, replacementRecord = null) {
     if (!advancementId || (!itemIds.length && !replacementRecord)) return;
-    const source = cls.toObject();
-    const advancement = source.system?.advancement?.[advancementId];
+    const advancement = readAdvancementRecords(cls)[advancementId];
     if (!advancement) throw new Error("The Sorcerer Metamagic Advancement could not be found while saving choices.");
 
     advancement.value ??= { added: {}, replaced: {} };
@@ -425,9 +425,7 @@ export class MetamagicService {
         replacement: replacementRecord.replacement
       };
     }
-    await cls.update({
-      [`system.advancement.${advancementId}.value`]: advancement.value
-    });
+    await writeAdvancementValue(cls, advancementId, advancement.value);
   }
 
   static #advancementItemIds(advancement) {

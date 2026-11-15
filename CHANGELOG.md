@@ -1,3 +1,9 @@
+## 0.9.930 — Native Advancement record integrity
+
+- Save and verify ItemGrant and ItemChoice records with a whole-collection update. This covers High Elf cantrip swaps, Circle of the Land terrain swaps, managed spell choices, Eldritch Invocation and Metamagic choices, and native spell grant reconciliation.
+- Restore links when a prior save embedded a replacement operation inside an Advancement record and the intended Items can be verified by their original Advancement. Level Up repairs the draft, and Validate Character offers the repair on the character copy.
+- Preserve other grants, choices, and replacement history. Records with conflicting or unverifiable links remain available for GM review.
+
 ## 0.9.929 — Druid progression and High Elf rests
 
 - Wild Shape reads Known Forms and CR from the Wild Shape Feature on PHB 3.0 and from the Druid class scales on earlier PHB data. Level Up tracks the four, six, and eight known-form totals at Druid levels 2, 4, and 8. The native Wild Shape Automation picker offers the known forms.

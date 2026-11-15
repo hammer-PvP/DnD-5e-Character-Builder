@@ -1,3 +1,4 @@
+import { writeAdvancementRecords, readAdvancementRecords } from "../utils/advancement-utils.mjs";
 import { ManagedAdvancementRegistry } from "./managed-advancement-registry.mjs";
 import { MODULE_ID } from "../constants.mjs";
 
@@ -107,7 +108,7 @@ export class ManagedItemChoiceLedgerService {
     for (const owner of actor.items) {
       if (!this.hasManagedSpellChoices(owner, options)) continue;
       const acquisitions = [];
-      const advancements = owner.toObject().system.advancement;
+      const advancements = readAdvancementRecords(owner);
       for (const [id, advancement] of Object.entries(advancements)) {
         const descriptor = ManagedAdvancementRegistry.descriptor(advancement, { owner, ...options });
         if (advancement.configuration?.type !== "spell" || !descriptor || descriptor.handler === "pact-of-the-tome") continue;
@@ -145,10 +146,6 @@ export class ManagedItemChoiceLedgerService {
     }
     const plan = this.plan(owner, acquisitions, options);
     if (plan.skipped) return { reconciled: 0, advancementIds: [], legacyFallback: true };
-    const ForcedReplacement = foundry.data?.operators?.ForcedReplacement;
-    if (typeof ForcedReplacement?.create !== "function") {
-      throw new Error("Cannot record managed Advancement choices: Foundry ForcedReplacement is unavailable.");
-    }
     const root = String(owner.getFlag?.("dnd5e", "advancementRoot") ?? "");
     const updates = plan.mapped.filter(({ itemId, advancementId }) => {
       const item = actor.items.get(itemId);
@@ -166,7 +163,7 @@ export class ManagedItemChoiceLedgerService {
     if (updates.length) await actor.updateEmbeddedDocuments("Item", updates, {
       characterBuilderManagedAdvancementReconcile: true
     });
-    await owner.update({ "system.advancement": ForcedReplacement.create(plan.advancement) }, {
+    await writeAdvancementRecords(owner, plan.advancement, {
       characterBuilderManagedAdvancementReconcile: true
     });
     const actual = (actor.items.get(owner.id) ?? owner).toObject().system?.advancement ?? {};

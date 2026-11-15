@@ -10,7 +10,7 @@ import { LongRestSpellPreparationService } from "./long-rest-spell-preparation-s
 import { MemorizeSpellService } from "./memorize-spell-service.mjs";
 import { HighElfCantripService } from "./high-elf-cantrip-service.mjs";
 import { WarBondManagementService } from "./war-bond-management-service.mjs";
-import { wildShapeScales } from "../utils/advancement-utils.mjs";
+import { wildShapeScales, writeAdvancementRecords, writeAdvancementValue, readAdvancementRecords } from "../utils/advancement-utils.mjs";
 
 const LAND_LABELS = Object.freeze({ arid: "Arid", polar: "Polar", temperate: "Temperate", tropical: "Tropical" });
 const LAND_RESISTANCES = Object.freeze({ arid: "fire", polar: "cold", temperate: "lightning", tropical: "poison" });
@@ -990,7 +990,7 @@ export class RuntimeFeatureService {
   static landState(actor) {
     const feature = this.#feature(actor, "circle-of-the-land-spells");
     const saved = feature?.getFlag(MODULE_ID, "circleLand");
-    const choice = Object.entries(feature?.toObject().system.advancement ?? {}).find(([, row]) =>
+    const choice = Object.entries(readAdvancementRecords(feature)).find(([, row]) =>
       ManagedAdvancementRegistry.descriptor(row, {
         owner: feature, classIdentifier: "druid", workflow: "levelUp"
       })?.handler === "circle-land");
@@ -1019,7 +1019,7 @@ export class RuntimeFeatureService {
     const data = source.toObject();
     const preserve = state.landItems.find(item => item.system.identifier === source.system.identifier
       && (item.getFlag("dnd5e", "sourceId") ?? item._stats?.compendiumSource) === source.uuid);
-    const advancement = foundry.utils.deepClone(data.system.advancement);
+    const advancement = readAdvancementRecords(source);
     const desired = [];
     for (const [grantId, grant] of Object.entries(advancement ?? {})) {
       if (grant.type !== "ItemGrant" || Number(grant.level ?? 0) > level) continue;
@@ -1090,7 +1090,7 @@ export class RuntimeFeatureService {
       (item.getFlag(MODULE_ID, "featureSpellOwners") ?? []).some(isLandOwner)
       || landIds.has(item.getFlag("dnd5e", "advancementOrigin")?.split(".")[0])
       || (item.getFlag(MODULE_ID, "mergedItemGrants") ?? []).some(receipt => landIds.has(receipt.ownerItemId))
-      || landState.landItems.some(landItem => Object.values(landItem.toObject().system.advancement ?? {})
+      || landState.landItems.some(landItem => Object.values(readAdvancementRecords(landItem))
         .some(grant => Object.hasOwn(grant.value?.added ?? {}, item.id)))));
     let activeLand = native?.preserve ?? null;
     if (native && !activeLand) {
@@ -1298,18 +1298,17 @@ export class RuntimeFeatureService {
     }
 
     if (native) {
-      const replace = foundry.data.operators.ForcedReplacement;
       for (const [id, added] of Object.entries(grants)) {
         native.advancement[id].value = { ...native.advancement[id].value, added };
       }
+      await writeAdvancementRecords(activeLand, native.advancement, { characterBuilderRuntimeManagement: true });
       await activeLand.update({
-        "system.advancement": replace.create(native.advancement),
         "flags.dnd5e.advancementOrigin": landState.origin,
         "flags.dnd5e.advancementRoot": feature.getFlag("dnd5e", "advancementRoot") ?? landState.origin
       });
-      await feature.update({
-        [`system.advancement.${landState.choiceId}.value.added`]: replace.create({ "3": { [activeLand.id]: native.source.uuid } })
-      });
+      await writeAdvancementValue(feature, landState.choiceId, {
+        ...landState.row.value, added: { "3": { [activeLand.id]: native.source.uuid } }
+      }, { characterBuilderRuntimeManagement: true });
       const obsolete = landState.landItems.filter(item => item.id !== activeLand.id).map(item => item.id);
       if (obsolete.length) await actor.deleteEmbeddedDocuments("Item", obsolete, { deleteContents: false, characterBuilderRuntimeManagement: true });
     }

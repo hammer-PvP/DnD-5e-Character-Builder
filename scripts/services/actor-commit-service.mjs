@@ -1,3 +1,4 @@
+import { repairAdvancementRecords } from "../utils/advancement-utils.mjs";
 import { MODULE_ID, MODULE_VERSION } from "../constants.mjs";
 import { AgonizingBlastBindingService } from "./agonizing-blast-binding-service.mjs";
 import { TemporaryActorService } from "./temporary-actor-service.mjs";
@@ -41,6 +42,7 @@ export class ActorCommitService {
       if (!draft.items.some(item => item.type === "class")) {
         throw new Error("The Character Creation Draft has no Class Item.");
       }
+      await repairAdvancementRecords(draft);
       await AdvancementCompletionGateService.assertComplete(draft, {
         registry,
         context: "Character Creation"

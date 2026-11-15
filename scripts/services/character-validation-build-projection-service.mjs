@@ -7,7 +7,7 @@ import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mj
 import { AdditionalCantripEntitlementService } from "./additional-cantrip-entitlement-service.mjs";
 import { NativeSpellGrantProjectionService } from "./native-spell-grant-projection-service.mjs";
 import { GhostToolReconciliationService } from "./ghost-tool-reconciliation-service.mjs";
-import { advancementName } from "../utils/advancement-utils.mjs";
+import { advancementName, hasSerializedAdvancementReplacement } from "../utils/advancement-utils.mjs";
 
 const BUILD_TRAIT_OWNER_TYPES = new Set(["class", "subclass", "race", "background", "feat"]);
 const ALWAYS_PREPARED = SpellPreparationPolicyService.ALWAYS_PREPARED;
@@ -559,6 +559,7 @@ export class CharacterValidationBuildProjectionService {
       const advancementId = local?.id ?? sourceAdvancementId;
       const expectedOrigin = `${owner.id}.${advancementId}`;
       const expectedRoot = this.#expectedGrantRoot(owner, actor, expectedOrigin);
+      if (hasSerializedAdvancementReplacement(local?.advancement)) continue;
       const mappedRows = this.#flattenAddedMappings(local?.advancement?.value?.added ?? {});
 
       const expectedRows = [];

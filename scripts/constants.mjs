@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.929";
-export const MODULE_BUILD = "dnd5e-61-druid-high-elf";
+export const MODULE_VERSION = "0.9.930";
+export const MODULE_BUILD = "dnd5e-61-advancement-records";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {

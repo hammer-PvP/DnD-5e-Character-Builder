@@ -3,7 +3,7 @@ import { DraftManager } from "./draft-manager.mjs";
 import { LevelUpDraftManager } from "./level-up-draft-manager.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
 import { firstValue } from "../utils/safe-collections.mjs";
-import { advancementName } from "../utils/advancement-utils.mjs";
+import { advancementName, writeAdvancementValue, repairAdvancementRecords, hasSerializedAdvancementReplacement, readAdvancementRecords } from "../utils/advancement-utils.mjs";
 
 /**
  * Shared mandatory ItemGrant integrity audit for both Character Creation and
@@ -17,6 +17,7 @@ export class ItemGrantIntegrityService {
     recoveryActor = null
   } = {}) {
     const resolvedState = state ?? this.#state(draft, context);
+    await repairAdvancementRecords(draft);
     const sourceActor = game.actors.get(draft.getFlag(MODULE_ID, "sourceActorId"));
     const sourceItemIds = new Set(sourceActor?.items.map(item => item.id) ?? []);
     const queue = draft.items.filter(item => this.#belongsToContext(item, draft, resolvedState, context));
@@ -32,9 +33,9 @@ export class ItemGrantIntegrityService {
       processed.add(owner.id);
 
       const currentLevel = this.#currentLevel(owner, draft, resolvedState, context);
-      const rawAdvancements = owner.toObject().system?.advancement ?? {};
+      const rawAdvancements = readAdvancementRecords(owner);
       for (const [advancementId, raw] of Object.entries(rawAdvancements)) {
-        if (raw?.type !== "ItemGrant") continue;
+        if (raw?.type !== "ItemGrant" || hasSerializedAdvancementReplacement(raw)) continue;
         const advancementLevel = Number(raw.level ?? 0);
         if (advancementLevel > currentLevel) continue;
 
@@ -196,7 +197,7 @@ export class ItemGrantIntegrityService {
 
 
         if (valueChanged) {
-          await owner.update({ [`system.advancement.${advancementId}.value`]: value }, {
+          await writeAdvancementValue(owner, advancementId, value, {
             characterBuilderItemGrantIntegrity: true
           });
         }
@@ -224,13 +225,17 @@ export class ItemGrantIntegrityService {
     const failures = [];
     for (const owner of draft.items.filter(item => this.#belongsToContext(item, draft, resolvedState, context))) {
       const currentLevel = this.#currentLevel(owner, draft, resolvedState, context);
-      const rawAdvancements = owner.toObject().system?.advancement ?? {};
+      const rawAdvancements = readAdvancementRecords(owner);
       for (const [advancementId, raw] of Object.entries(rawAdvancements)) {
         if (raw?.type !== "ItemGrant" || Number(raw.level ?? 0) > currentLevel) continue;
         const expectedCounts = this.#countByUuid(this.#mandatoryEntries(raw.configuration ?? {}, {
           owner, raw, advancementId
         }));
         if (!expectedCounts.size) continue;
+        if (hasSerializedAdvancementReplacement(raw)) {
+          failures.push(`${owner.name}: ${advancementName(raw, "Item Grant")} (invalid saved record)`);
+          continue;
+        }
         const origin = `${owner.id}.${advancementId}`;
         const added = raw.value?.added ?? {};
         for (const [uuid, expectedCount] of expectedCounts) {
@@ -294,7 +299,7 @@ export class ItemGrantIntegrityService {
     if (!match || !owner || !raw) return false;
     const itemId = match[1];
     const level = Number(raw.level ?? 0);
-    const advancements = owner.toObject().system?.advancement ?? {};
+    const advancements = readAdvancementRecords(owner);
     for (const [otherId, other] of Object.entries(advancements)) {
       if (otherId === advancementId || other?.type !== "ItemGrant" || Number(other.level ?? 0) !== level) continue;
       const optionalGroup = Boolean(other.configuration?.optional);

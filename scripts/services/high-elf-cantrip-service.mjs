@@ -1,3 +1,4 @@
+import { writeAdvancementValue, repairAdvancementRecords, hasSerializedAdvancementReplacement, readAdvancementRecords } from "../utils/advancement-utils.mjs";
 import { MODULE_ID } from "../constants.mjs";
 
 const LINEAGE_IDENTIFIERS = new Set(["elven-lineage-high-elf", "high-elf"]);
@@ -53,7 +54,7 @@ export class HighElfCantripService {
     if (explicit.length === 1) return explicit[0];
     if (explicit.length > 1) return null;
 
-    const advancements = lineage.toObject?.().system?.advancement ?? lineage.system?.advancement ?? {};
+    const advancements = readAdvancementRecords(lineage);
     const slots = Object.entries(advancements).filter(([, row]) => row.type === "ItemGrant");
     const exact = candidates.filter(item => slots.some(([id, row]) =>
       Object.hasOwn(row.value?.added ?? {}, item.id)
@@ -157,6 +158,7 @@ export class HighElfCantripService {
   static async apply(actor, registry, payload, transactionId) {
     await this.validate(actor, registry, payload);
     const lineage = this.lineage(actor);
+    await repairAdvancementRecords(actor, { ownerId: lineage.id });
     const oldSpell = this.currentCantrip(actor, lineage);
     const source = await this.#sourceSpell(registry, payload?.newUuid);
     if (!lineage || !oldSpell || !source) throw new Error("The High Elf cantrip replacement could not be resolved.");
@@ -238,7 +240,6 @@ export class HighElfCantripService {
     // character's existing racial cantrip. Then move the native ItemGrant
     // ledger to the replacement before deleting the old embedded Item.
     let created = null;
-    let grantRelinked = false;
     try {
       [created] = await actor.createEmbeddedDocuments("Item", [data], {
         characterBuilderRuntimeManagement: true,
@@ -247,8 +248,7 @@ export class HighElfCantripService {
       if (!created) throw new Error("D&D5e did not create the replacement High Elf cantrip.");
 
       if (oldGrant) {
-        grantRelinked = await this.#relinkNativeGrant(actor, oldGrant, oldSpell.id, created.id);
-        if (!grantRelinked) {
+        if (!await this.#relinkNativeGrant(actor, oldGrant, oldSpell.id, created.id)) {
           throw new Error("The High Elf ItemGrant ledger could not be relinked to the replacement cantrip.");
         }
       }
@@ -264,7 +264,7 @@ export class HighElfCantripService {
       // replacement is safer than leaving the lineage with no cantrip.
       const originalStillExists = Boolean(actor.items.get(oldSpell.id));
       if (created && originalStillExists) {
-        if (grantRelinked) {
+        if (oldGrant) {
           try { await this.#relinkNativeGrant(actor, oldGrant, created.id, oldSpell.id); } catch (_rollbackError) {}
         }
         try {
@@ -298,7 +298,7 @@ export class HighElfCantripService {
     // Older/native-only High Elves may predate Character Builder's ItemGrant
     // receipt flags. Recover the same immutable slot identity from D&D5e's own
     // Advancement ledger before replacing the embedded spell.
-    const lineageSlots = Object.entries(lineage.toObject().system?.advancement ?? {}).filter(([, row]) =>
+    const lineageSlots = Object.entries(readAdvancementRecords(lineage)).filter(([, row]) =>
       row.type === "ItemGrant" && Object.hasOwn(row.value?.added ?? {}, spell.id));
     if (lineageSlots.length === 1) {
       const [[advancementId, row]] = lineageSlots;
@@ -317,7 +317,7 @@ export class HighElfCantripService {
       const [ownerItemId, advancementId] = String(reference).split(".");
       if (!ownerItemId || !advancementId) continue;
       const owner = actor.items.get(ownerItemId);
-      const raw = owner?.toObject?.().system?.advancement?.[advancementId];
+      const raw = readAdvancementRecords(owner)[advancementId];
       if (raw?.type !== "ItemGrant") continue;
       const configuredUuid = raw.value?.added?.[spell.id];
       if (!configuredUuid) continue;
@@ -337,17 +337,13 @@ export class HighElfCantripService {
     if (!grant?.ownerItemId || !grant?.advancementId || !grant?.configuredUuid) return false;
     const owner = actor.items.get(grant.ownerItemId);
     if (!owner) return false;
-    const raw = owner.toObject().system?.advancement?.[grant.advancementId];
-    if (!raw) return false;
+    const raw = readAdvancementRecords(owner)[grant.advancementId];
+    if (!raw || hasSerializedAdvancementReplacement(raw)) return false;
     const value = foundry.utils.deepClone(raw.value ?? {});
     value.added ??= {};
     delete value.added[oldItemId];
     value.added[newItemId] = grant.configuredUuid;
-    const replace = foundry.data?.operators?.ForcedReplacement;
-    const update = replace?.create
-      ? { [`system.advancement.${grant.advancementId}.value.added`]: replace.create(value.added) }
-      : { [`system.advancement.${grant.advancementId}.value`]: value };
-    await owner.update(update, {
+    await writeAdvancementValue(owner, grant.advancementId, value, {
       characterBuilderRuntimeManagement: true,
       characterBuilderHighElfCantripReplacement: true
     });

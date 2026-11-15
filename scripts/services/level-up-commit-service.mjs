@@ -1,3 +1,4 @@
+import { repairAdvancementRecords } from "../utils/advancement-utils.mjs";
 import { MODULE_ID, MODULE_VERSION } from "../constants.mjs";
 import { AgonizingBlastBindingService } from "./agonizing-blast-binding-service.mjs";
 import { LevelUpDraftManager } from "./level-up-draft-manager.mjs";
@@ -50,6 +51,7 @@ export class LevelUpCommitService {
       await progress(4, "Validating Draft", "Checking the completed Level Up draft.");
       this.#assertToken(actor, token);
       const state = LevelUpDraftManager.getState(draft);
+      await repairAdvancementRecords(draft);
       await ItemChoiceReplacementIntegrityService.reconcile(draft);
       if (!state.nativeComplete || !state.additionalComplete || !state.commitReady) {
         throw new Error("Complete every Level Up step before committing the transaction.");

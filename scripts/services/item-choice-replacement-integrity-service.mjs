@@ -1,5 +1,5 @@
 import { MODULE_ID } from "../constants.mjs";
-import { advancementName } from "../utils/advancement-utils.mjs";
+import { advancementName, writeAdvancementRecords, readAdvancementRecords } from "../utils/advancement-utils.mjs";
 
 /**
  * Repairs and validates native D&D5e ItemChoice replacement records without
@@ -15,8 +15,7 @@ export class ItemChoiceReplacementIntegrityService {
     let inspected = 0;
 
     for (const owner of actor.items.filter(item => ["class", "subclass", "feat"].includes(item.type))) {
-      const source = owner.toObject();
-      const advancements = source.system?.advancement ?? {};
+      const advancements = readAdvancementRecords(owner);
       let changed = false;
 
       for (const advancement of Object.values(advancements)) {
@@ -62,15 +61,11 @@ export class ItemChoiceReplacementIntegrityService {
         }
       }
 
-      if (changed) updates.push({ _id: owner.id, "system.advancement": advancements });
+      if (changed) updates.push({ owner, advancements });
     }
 
-    if (updates.length) {
-      await actor.updateEmbeddedDocuments("Item", updates, {
-        diff: false,
-        recursive: false,
-        characterBuilderItemChoiceReplacementRepair: true
-      });
+    for (const { owner, advancements } of updates) {
+      await writeAdvancementRecords(owner, advancements, { characterBuilderItemChoiceReplacementRepair: true });
     }
 
     this.validate(actor);
@@ -79,7 +74,7 @@ export class ItemChoiceReplacementIntegrityService {
 
   static validate(actor) {
     for (const owner of actor?.items ?? []) {
-      const advancements = owner.toObject().system?.advancement ?? {};
+      const advancements = readAdvancementRecords(owner);
       for (const advancement of Object.values(advancements)) {
         if (String(advancement?.type ?? "") !== "ItemChoice") continue;
         for (const [targetLevel, record] of Object.entries(advancement.value?.replaced ?? {})) {

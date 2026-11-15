@@ -2,7 +2,7 @@ import { MODULE_ID } from "../constants.mjs";
 import { AdvancementChoiceAnnotationService } from "./advancement-choice-annotation-service.mjs";
 import { ManagedItemChoiceLedgerService } from "./managed-item-choice-ledger-service.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
-import { normalizedAdvancementName } from "../utils/advancement-utils.mjs";
+import { normalizedAdvancementName, writeAdvancementRecords } from "../utils/advancement-utils.mjs";
 
 /**
  * Reusable Pact of the Tome selection logic. The acquisition mode is used by
@@ -157,7 +157,7 @@ export class PactOfTheTomeService {
     }
 
     const previousModuleFlags = foundry.utils.deepClone(invocation.flags?.[MODULE_ID] ?? {});
-    const previousNativeAdvancements = foundry.utils.deepClone(invocation.toObject().system?.advancement ?? {});
+    const previousNativeAdvancements = readAdvancementRecords(invocation);
     const previousSpellData = actor.items
       .filter(item => item.type === "spell" && item.getFlag(MODULE_ID, "pactOfTheTomeSelection")?.invocationItemId === invocation.id)
       .map(item => item.toObject());
@@ -352,12 +352,9 @@ export class PactOfTheTomeService {
         }
         // A failed acquisition must also restore the previous native choice
         // records, not just CB flags and spell Items.
-        const ForcedReplacement = foundry.data?.operators?.ForcedReplacement;
-        if (typeof ForcedReplacement?.create === "function") {
-          await invocation.update({ "system.advancement": ForcedReplacement.create(previousNativeAdvancements) }, {
-            characterBuilderPactOfTheTomeRollback: true
-          });
-        }
+        await writeAdvancementRecords(invocation, previousNativeAdvancements, {
+          characterBuilderPactOfTheTomeRollback: true
+        });
         await invocation.update({ [`flags.${MODULE_ID}`]: previousModuleFlags }, {
           characterBuilderPactOfTheTomeRollback: true
         });

@@ -1,3 +1,4 @@
+import { writeAdvancementValue, readAdvancementRecords } from "../utils/advancement-utils.mjs";
 import { AdditionalNativeSpellProgressionService } from "./additional-native-spell-progression-service.mjs";
 import { MODULE_ID, SPELL_ACCESS_MODELS, WIZARD_SCHOOLS } from "../constants.mjs";
 import { LevelUpDraftManager } from "./level-up-draft-manager.mjs";
@@ -1933,8 +1934,7 @@ export class LevelUpRulesService {
 
   static async #writeInvocationAdvancementValue(cls, advancementId, targetLevel, itemIds, replacementRecord = null) {
     if (!advancementId || (!itemIds.length && !replacementRecord)) return;
-    const source = cls.toObject();
-    const advancement = source.system?.advancement?.[advancementId];
+    const advancement = readAdvancementRecords(cls)[advancementId];
     if (!advancement) return;
     advancement.value ??= { added: {}, replaced: {} };
     advancement.value.added ??= {};
@@ -1952,13 +1952,11 @@ export class LevelUpRulesService {
         replacement: replacementRecord.replacement
       };
     }
-    await cls.update({
-      [`system.advancement.${advancementId}.value`]: advancement.value
-    });
+    await writeAdvancementValue(cls, advancementId, advancement.value);
   }
 
   static #findAdvancementItemLevel(cls, advancementId, itemId) {
-    const advancement = cls.toObject().system?.advancement?.[advancementId];
+    const advancement = readAdvancementRecords(cls)[advancementId];
     for (const [level, items] of Object.entries(advancement?.value?.added ?? {})) {
       if (Object.prototype.hasOwnProperty.call(items ?? {}, itemId)) return Number(level);
     }

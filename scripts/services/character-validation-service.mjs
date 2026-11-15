@@ -8,7 +8,7 @@ import { CharacterValidationProgressionService } from "./character-validation-pr
 import { NativeSpellGrantProjectionService } from "./native-spell-grant-projection-service.mjs";
 import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.mjs";
 import { InternalActorReferenceRebindingService } from "./internal-actor-reference-rebinding-service.mjs";
-import { advancementName } from "../utils/advancement-utils.mjs";
+import { advancementName, hasSerializedAdvancementReplacement, planAdvancementRecordRepairs, repairAdvancementRecords, readAdvancementRecords } from "../utils/advancement-utils.mjs";
 
 const VALIDATION_FLAG = "characterValidation";
 const SCHEMA_VERSION = 1;
@@ -91,6 +91,21 @@ export class CharacterValidationService {
 
     const issues = [];
     issues.push(...await this.#scanBrokenActivityEffects(actor, registry));
+    for (const owner of actor.items) {
+      for (const row of planAdvancementRecordRepairs(actor, owner).issues) {
+        issues.push({
+          id: `serialized-advancement:${owner.id}:${row.id}`,
+          kind: "serialized-advancement-record", severity: "error",
+          repairable: row.repairable, repairMode: "safe", repairLabel: "Restore Advancement Link",
+          title: `${owner.name} — Invalid Advancement Record`,
+          summary: `${advancementName(row.record, row.record.type)} contains a saved update operation.`,
+          details: row.repairable
+            ? "Restore the links to existing Items using their recorded Advancement origin."
+            : "The intended links cannot all be verified. This record needs GM review.",
+          data: { ownerId: owner.id, advancementId: row.id }
+        });
+      }
+    }
     issues.push(...await this.#scanMissingAdvancementItems(actor, registry));
     issues.push(...this.#scanForeignSelfReferences(actor));
     const land = RuntimeFeatureService.landState(actor);
@@ -146,6 +161,14 @@ export class CharacterValidationService {
     if (!issue?.repairable) throw new Error("This validation issue has no safe automatic repair.");
 
     switch (issue.kind) {
+      case "serialized-advancement-record": {
+        const owner = actor.items.get(issue.data.ownerId);
+        const current = owner && planAdvancementRecordRepairs(actor, owner).issues
+          .find(row => row.id === issue.data.advancementId);
+        if (current && !current.repairable) throw new Error("The intended Advancement links could no longer be verified.");
+        await repairAdvancementRecords(actor, { ownerId: issue.data.ownerId });
+        return { status: "repaired", issueId: issue.id, message: "Restored the Advancement links to existing Items." };
+      }
       case "broken-activity-effects":
         return this.#repairBrokenActivityEffects(actor, issue);
       case "missing-advancement-item":
@@ -349,8 +372,9 @@ export class CharacterValidationService {
   static async #scanMissingAdvancementItems(actor, registry) {
     const issues = [];
     for (const owner of actor.items ?? []) {
-      const advancements = owner.toObject().system?.advancement ?? {};
+      const advancements = readAdvancementRecords(owner);
       for (const [advancementId, advancement] of Object.entries(advancements)) {
+        if (hasSerializedAdvancementReplacement(advancement)) continue;
         const mappings = this.#flattenAddedMappings(advancement?.value?.added ?? {});
         for (const mapping of mappings) {
           if (actor.items.get(mapping.itemId)) continue;

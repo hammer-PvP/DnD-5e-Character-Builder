@@ -1,3 +1,4 @@
+import { readAdvancementRecords, writeAdvancementRecords } from "../utils/advancement-utils.mjs";
 import { ManagedAdvancementRegistry } from "./managed-advancement-registry.mjs";
 
 /**
@@ -140,17 +141,17 @@ export class ManagedFeatureAdvancementBridge {
       // Feature before Complete. Only restore those that survived the native
       // transaction, not abandoned choices from a previous step.
       if (!item) continue;
-      const current = item.toObject().system?.advancement ?? {};
+      const current = readAdvancementRecords(item);
       const merged = { ...current, ...removed };
-      await item.update({ "system.advancement": merged }, { characterBuilderManagedAdvancementRestore: true });
+      await writeAdvancementRecords(item, merged, { characterBuilderManagedAdvancementRestore: true });
     }
     session.removed.clear();
   }
 
   static async restoreItem(item, removed) {
     if (!item || !Object.keys(removed ?? {}).length) return;
-    const current = item.toObject().system?.advancement ?? {};
-    await item.update({ "system.advancement": { ...current, ...removed } }, {
+    const current = readAdvancementRecords(item);
+    await writeAdvancementRecords(item, { ...current, ...removed }, {
       characterBuilderManagedAdvancementRestore: true
     });
   }

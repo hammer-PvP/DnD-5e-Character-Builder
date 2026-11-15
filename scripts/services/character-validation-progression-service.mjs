@@ -6,7 +6,7 @@ import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.
 import { AdvancementChoiceAnnotationService } from "./advancement-choice-annotation-service.mjs";
 import { CharacterValidationBuildProjectionService } from "./character-validation-build-projection-service.mjs";
 import { NativeSpellGrantProjectionService } from "./native-spell-grant-projection-service.mjs";
-import { advancementName } from "../utils/advancement-utils.mjs";
+import { advancementName, hasSerializedAdvancementReplacement, readAdvancementRecords, writeAdvancementValue } from "../utils/advancement-utils.mjs";
 import { ManagedAdvancementRegistry } from "./managed-advancement-registry.mjs";
 
 const PHYSICAL_ITEM_TYPES = new Set(["weapon", "equipment", "consumable", "tool", "container", "loot"]);
@@ -507,6 +507,7 @@ export class CharacterValidationProgressionService {
         if (!configured.length) continue;
         const local = this.#findEquivalentAdvancement(owner, sourceAdvancementId, sourceAdvancement);
 
+        if (hasSerializedAdvancementReplacement(local?.advancement)) continue;
         for (const entry of configured) {
           const configuredUuid = String(entry.uuid ?? "");
           if (!configuredUuid || seen.has(`${owner.id}:${sourceAdvancementId}:${configuredUuid}`)) continue;
@@ -816,7 +817,7 @@ export class CharacterValidationProgressionService {
     const owner = actor.items.get(issue.data?.ownerId);
     if (!owner) throw new Error("The progression owner no longer exists on the revised Actor.");
     const advancementId = String(issue.data?.localAdvancementId ?? "");
-    const raw = owner.toObject().system?.advancement?.[advancementId];
+    const raw = readAdvancementRecords(owner)[advancementId];
     if (!raw) throw new Error("The Advancement record no longer exists on the revised Actor.");
     const level = String(issue.data?.level ?? "0");
     const added = foundry.utils.deepClone(raw.value?.added ?? {});
@@ -829,7 +830,7 @@ export class CharacterValidationProgressionService {
       row[linked.id] = uuid;
     }
     added[level] = row;
-    await owner.update({ [`system.advancement.${advancementId}.value.added`]: added }, {
+    await writeAdvancementValue(owner, advancementId, { ...raw.value, added }, {
       characterBuilderValidationRepair: true,
       characterBuilderValidationProgressionProjection: true
     });
@@ -904,7 +905,7 @@ export class CharacterValidationProgressionService {
       canonicalProjection: true
     };
 
-    const localRaw = owner.toObject().system?.advancement?.[localAdvancementId] ?? {};
+    const localRaw = readAdvancementRecords(owner)[localAdvancementId] ?? {};
     NativeSpellGrantProjectionService.apply(data, {
       sourceAdvancement,
       owner,
@@ -916,10 +917,10 @@ export class CharacterValidationProgressionService {
     });
     if (!created) throw new Error(`D&D5e did not restore ${sourceItem.name}.`);
 
-    const currentAdvancement = owner.toObject().system?.advancement?.[localAdvancementId] ?? ownerRaw.system?.advancement?.[localAdvancementId] ?? {};
+    const currentAdvancement = readAdvancementRecords(owner)[localAdvancementId] ?? ownerRaw.system?.advancement?.[localAdvancementId] ?? {};
     const added = foundry.utils.deepClone(currentAdvancement.value?.added ?? {});
     added[created.id] = issue.data?.configuredUuid ?? issue.data?.resolvedUuid;
-    await owner.update({ [`system.advancement.${localAdvancementId}.value.added`]: added }, {
+    await writeAdvancementValue(owner, localAdvancementId, { ...currentAdvancement.value, added }, {
       characterBuilderValidationRepair: true,
       characterBuilderValidationProgressionProjection: true
     });
@@ -1096,19 +1097,15 @@ export class CharacterValidationProgressionService {
     // ItemGrant relationship itself.
     const localAdvancementId = issue.data?.localAdvancementId ?? issue.data?.sourceAdvancementId;
     const configuredUuid = issue.data?.configuredUuid ?? issue.data?.resolvedUuid;
-    const refreshedAdvancement = owner.toObject().system?.advancement?.[localAdvancementId] ?? null;
+    const refreshedAdvancement = readAdvancementRecords(owner)[localAdvancementId] ?? null;
     if (refreshedAdvancement && configuredUuid) {
       const added = foundry.utils.deepClone(refreshedAdvancement.value?.added ?? {});
       if (added[spell.id] !== configuredUuid) {
         added[spell.id] = configuredUuid;
-        if (typeof owner.updateAdvancement === "function") {
-          await owner.updateAdvancement(localAdvancementId, { "value.added": added });
-        } else {
-          await owner.update({ [`system.advancement.${localAdvancementId}.value.added`]: added }, {
-            characterBuilderValidationRepair: true,
-            characterBuilderValidationProgressionProjection: true
-          });
-        }
+        await writeAdvancementValue(owner, localAdvancementId, { ...refreshedAdvancement.value, added }, {
+          characterBuilderValidationRepair: true,
+          characterBuilderValidationProgressionProjection: true
+        });
       }
     }
 
@@ -1189,25 +1186,15 @@ export class CharacterValidationProgressionService {
     const owner = actor.items.get(issue.data?.ownerId);
     const advancementId = issue.data?.advancementId;
     const configuredUuid = issue.data?.configuredUuid ?? issue.data?.resolvedUuid;
-    const rawAdvancement = owner?.toObject().system?.advancement?.[advancementId] ?? null;
+    const rawAdvancement = readAdvancementRecords(owner)[advancementId] ?? null;
     if (owner && advancementId && rawAdvancement && configuredUuid) {
       const added = foundry.utils.deepClone(rawAdvancement.value?.added ?? {});
-      for (const id of deleteIds) {
-        if (Object.hasOwn(added, id)) added[id] = new foundry.data.operators.ForcedDeletion();
-      }
+      for (const id of deleteIds) delete added[id];
       added[keep.id] = configuredUuid;
-      if (typeof owner.updateAdvancement === "function") {
-        await owner.updateAdvancement(advancementId, { "value.added": added });
-      } else {
-        await owner.update({ [`system.advancement.${advancementId}.value.added`]: added }, {
-          characterBuilderValidationRepair: true,
-          characterBuilderValidationProgressionProjection: true
-        });
-      }
-      const persisted = owner.toObject().system?.advancement?.[advancementId]?.value?.added ?? {};
-      if (deleteIds.some(id => Object.hasOwn(persisted, id)) || persisted[keep.id] !== configuredUuid) {
-        throw new Error(`The native ItemGrant ledger for ${keep.name} could not be reconciled to the enriched survivor.`);
-      }
+      await writeAdvancementValue(owner, advancementId, { ...rawAdvancement.value, added }, {
+        characterBuilderValidationRepair: true,
+        characterBuilderValidationProgressionProjection: true
+      });
     }
 
     await actor.deleteEmbeddedDocuments("Item", deleteIds, {
@@ -1236,13 +1223,27 @@ export class CharacterValidationProgressionService {
       const [, ownerId, advancementId] = origin.split(":");
       const owner = actor.items.get(ownerId);
       if (owner) {
-        const raw = owner.toObject().system?.advancement?.[advancementId];
+        const raw = readAdvancementRecords(owner)[advancementId];
         if (raw) {
           const added = foundry.utils.deepClone(raw.value?.added ?? {});
-          let keepUuid = keep.getFlag?.("dnd5e", "sourceId") ?? keep._stats?.compendiumSource ?? null;
-          this.#removeAddedIds(added, new Set(deleteIds));
-          if (keepUuid && !this.#flattenAddedMappings(added).some(row => row.itemId === keep.id)) added[keep.id] = keepUuid;
-          await owner.update({ [`system.advancement.${advancementId}.value.added`]: added }, {
+          const keepUuid = keep.getFlag?.("dnd5e", "sourceId") ?? keep._stats?.compendiumSource;
+          if (hasSerializedAdvancementReplacement(raw)) {
+            throw new Error("Restore the invalid Advancement record before merging these spells.");
+          }
+          const buckets = raw.type === "ItemChoice"
+            ? Object.values(added).filter(bucket => bucket && typeof bucket === "object") : [added];
+          const keeperRecorded = buckets.some(bucket => Object.hasOwn(bucket, keep.id));
+          const affected = buckets.filter(bucket => deleteIds.some(id => Object.hasOwn(bucket, id)));
+          if (!keeperRecorded && affected.length > 1) {
+            throw new Error("The redundant spells are recorded under different Advancement levels.");
+          }
+          for (const bucket of affected) {
+            const recorded = deleteIds.find(id => Object.hasOwn(bucket, id));
+            if (recorded && !keeperRecorded) bucket[keep.id] = bucket[recorded];
+            for (const id of deleteIds) delete bucket[id];
+          }
+          if (raw.type === "ItemGrant" && keepUuid) added[keep.id] ??= keepUuid;
+          await writeAdvancementValue(owner, advancementId, { ...raw.value, added }, {
             characterBuilderValidationRepair: true
           });
         }
@@ -1729,14 +1730,6 @@ export class CharacterValidationProgressionService {
       else if (child && typeof child === "object") this.#flattenAddedMappings(child, rows);
     }
     return rows;
-  }
-
-  static #removeAddedIds(value, ids) {
-    if (!value || typeof value !== "object" || Array.isArray(value)) return;
-    for (const [key, child] of Object.entries(value)) {
-      if (ids.has(key)) delete value[key];
-      else if (child && typeof child === "object") this.#removeAddedIds(child, ids);
-    }
   }
 
   static #isInvocationChoice(advancement) {

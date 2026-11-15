@@ -12,7 +12,7 @@ import { ManagedFeatureAdvancementBridge } from "./managed-feature-advancement-b
 import { ItemChoiceReplacementIntegrityService } from "./item-choice-replacement-integrity-service.mjs";
 import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
 import { RulesCompatibilityService } from "./rules-compatibility-service.mjs";
-import { normalizedAdvancementName } from "../utils/advancement-utils.mjs";
+import { normalizedAdvancementName, repairAdvancementRecords } from "../utils/advancement-utils.mjs";
 import { AdvancementCompletionGateService } from "./advancement-completion-gate-service.mjs";
 
 export class LevelUpAdvancementService {
@@ -27,6 +27,7 @@ export class LevelUpAdvancementService {
     const beforeItemIds = new Set(draft.items.map(item => item.id));
 
     try {
+      await repairAdvancementRecords(draft);
       let manager;
       let classIdentifier = state.selectedClassIdentifier;
       const hpValue = HitPointAdvancementService.advancementValue(state.hpResult);

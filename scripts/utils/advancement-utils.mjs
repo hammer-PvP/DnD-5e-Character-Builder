@@ -1,3 +1,5 @@
+import { MODULE_ID } from "../constants.mjs";
+
 /**
  * Return the display/name field for a D&D5e Advancement without touching the
  * deprecated Advancement#title getter introduced as a compatibility shim in 6.x.
@@ -88,4 +90,110 @@ export function wildShapeScales(feature, cls, level) {
   const forms = find(feature, ["forms"], "known forms") ?? find(cls, ["wild-shape-forms", "known-forms"], "known forms");
   const cr = find(feature, ["cr"], "wild shape cr") ?? find(cls, ["wild-shape-cr"], "wild shape cr");
   return { count: Number(atLevel(forms) ?? 0), cr: atLevel(cr), tracked: Boolean(forms && cr) };
+}
+
+export function readAdvancementRecords(owner) {
+  const records = owner?.toObject?.().system?.advancement ?? {};
+  // Native schema migrations can leave legacy packs in array form.
+  return Array.isArray(records) ? Object.fromEntries(records.filter(row => row?._id)
+    .map(row => [row._id, row])) : records;
+}
+
+// D&D5e consumes Foundry's replacement operator at the collection field.
+// A nested operator can be persisted inside an Advancement value as plain data.
+export async function writeAdvancementRecords(owner, records, options = {}) {
+  const expected = advancementRecordKey(records);
+  const replacement = foundry.data.operators.ForcedReplacement.create(records);
+  await owner.update({ "system.advancement": replacement }, options);
+  const persisted = owner.toObject().system?.advancement ?? {};
+  if (advancementRecordKey(persisted) !== expected) {
+    throw new Error(`The Advancement records on ${owner.name} could not be saved as intended.`);
+  }
+}
+
+export async function writeAdvancementValue(owner, id, value, options) {
+  const records = readAdvancementRecords(owner);
+  if (!records[id]) throw new Error(`The Advancement ${id} no longer exists on ${owner.name}.`);
+  records[id].value = value;
+  return writeAdvancementRecords(owner, records, options);
+}
+
+function advancementRecordKey(data) {
+  return JSON.stringify(data, (_key, value) => value && typeof value === "object" && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)))
+    : value);
+}
+
+export function hasSerializedAdvancementReplacement(record) {
+  return record?.value?.added?.["__$OPERATOR$__"] === "ForcedReplacement";
+}
+
+// Read the intended ledger only when each proposed link can be verified
+// against the Actor or the historical ItemChoice replacement records.
+export function planAdvancementRecordRepairs(actor, owner) {
+  const records = readAdvancementRecords(owner);
+  const issues = [];
+  for (const [id, record] of Object.entries(records)) {
+    if (!hasSerializedAdvancementReplacement(record)) continue;
+    const added = recoverAdvancementLinks(actor, owner, id, record);
+    issues.push({ id, record, repairable: Boolean(added) });
+    if (added) record.value.added = added;
+  }
+  return { records, issues };
+}
+
+export async function repairAdvancementRecords(actor, { ownerId = null } = {}) {
+  let repaired = 0;
+  const owners = ownerId ? [actor.items.get(ownerId)].filter(Boolean) : actor.items;
+  for (const owner of owners) {
+    const { records, issues } = planAdvancementRecordRepairs(actor, owner);
+    const count = issues.filter(issue => issue.repairable).length;
+    if (!count) continue;
+    await writeAdvancementRecords(owner, records, { characterBuilderAdvancementIntegrityRepair: true });
+    repaired += count;
+  }
+  return repaired;
+}
+
+function recoverAdvancementLinks(actor, owner, id, record) {
+  const { ["__$OPERATOR$__"]: _operator, value: intended, ...direct } = record.value.added;
+  if (!intended || typeof intended !== "object" || Array.isArray(intended)) return null;
+  const choice = record.type === "ItemChoice";
+  if (!choice && record.type !== "ItemGrant") return null;
+  const levels = choice ? Object.entries(intended) : [["", intended]];
+  const origin = `${owner.id}.${id}`;
+  const configured = new Set((record.configuration?.items ?? []).map(entry => entry?.uuid ?? entry));
+  const knownHistory = new Set(Object.values(record.value.replaced ?? {}).flatMap(entry => [entry?.original, entry?.replacement]));
+  const intendedIds = new Set();
+  for (const [level, links] of levels) {
+    if (choice && !/^\d+$/.test(level)) return null;
+    if (!links || typeof links !== "object" || Array.isArray(links)) return null;
+    for (const [itemId, uuid] of Object.entries(links)) {
+      if (!/^[A-Za-z0-9]{16}$/.test(itemId) || typeof uuid !== "string" || !uuid) return null;
+      if (intendedIds.has(itemId)) return null;
+      intendedIds.add(itemId);
+      const item = actor.items.get(itemId);
+      if (!item) {
+        if (!choice || !knownHistory.has(itemId)) return null;
+        continue;
+      }
+      const source = item.getFlag("dnd5e", "sourceId") ?? item._stats?.compendiumSource;
+      const receipt = item.getFlag(MODULE_ID, "itemGrantInstance");
+      const merged = item.getFlag(MODULE_ID, "mergedItemGrants") ?? [];
+      const ownOrigin = item.getFlag("dnd5e", "advancementOrigin") === origin;
+      const sameReceipt = grant => grant?.ownerItemId === owner.id
+        && grant.advancementId === id && grant.configuredUuid === uuid && grant.sourceUuid === source;
+      const valid = choice ? ownOrigin && source === uuid : configured.has(uuid) && (
+        (ownOrigin && (source === uuid || sameReceipt(receipt))) || merged.some(sameReceipt)
+      );
+      if (!valid) return null;
+    }
+  }
+  if (!intendedIds.size) return null;
+
+  // Leave ambiguous overlap for review if a directly recorded live Item
+  // would be dropped by the recovered snapshot.
+  const directIds = choice ? Object.values(direct).flatMap(links => Object.keys(links ?? {})) : Object.keys(direct);
+  if (directIds.some(itemId => actor.items.get(itemId) && !intendedIds.has(itemId))) return null;
+  return intended;
 }
