@@ -1,3 +1,11 @@
+## 0.9.934 — Compendium references and advancement stability
+
+- Display weapon names on Weapon Mastery badges and preserve class ownership when swapping a mastery after a Long Rest.
+- Resolve starting equipment links for supplemental backgrounds and show the name and icon of same-compendium grants in the subclass preview.
+- Keep class-owned Eldritch Invocations and Metamagic choices native during creation. Their existing Level Up handlers still apply.
+- Reconcile embedded Items by ID during Level Up and rollback. Keep unchanged Items in place, including protected Items, and preserve inventory additions made while a new draft was open.
+- Check native choices against live embedded Items and their grants. Circle of the Land validation uses the recorded native selection when its Item and origin agree.
+
 ## 0.9.933 — Advancement and Weapon Mastery compatibility
 
 - Rebuilt from the supplied 0.9.931 installer. Iterate Foundry embedded Item collections directly in Level Up, Validate Character, and Long Rest badge updates.

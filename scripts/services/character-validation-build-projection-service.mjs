@@ -565,7 +565,7 @@ export class CharacterValidationBuildProjectionService {
 
       const expectedRows = [];
       if (sourceAdvancement.type === "ItemGrant") {
-        for (const entry of sourceAdvancement.configuration?.items ?? []) {
+        for (const entry of Object.values(sourceAdvancement.configuration?.items ?? {})) {
           if (entry?.optional || !entry?.uuid) continue;
           expectedRows.push({ uuid: entry.uuid, mappedItemId: null });
         }

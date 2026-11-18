@@ -1,5 +1,6 @@
 import { MODULE_ID, defaultSettings } from "../constants.mjs";
 import { DraftManager } from "./draft-manager.mjs";
+import { SourceResolver } from "./source-resolver.mjs";
 import { ShopService } from "./shop-service.mjs";
 
 export class EquipmentService {
@@ -91,6 +92,23 @@ export class EquipmentService {
         packageContexts[0].entries.every(entry => entry.fixed),
       saved
     };
+  }
+
+  static async resolvePanelItems(panels, registry) {
+    const linked = panels.flatMap(panel => panel.packages.flatMap(group => group.entries))
+      .filter(entry => entry.type === "linked" && !registry.findOption(entry.raw.key));
+    const documents = new Map();
+    for (const { raw } of linked) {
+      if (!documents.has(raw.key)) {
+        documents.set(raw.key, SourceResolver.linkedDocument(raw.key).catch(() => null));
+      }
+    }
+    await Promise.all(linked.map(async entry => {
+      const document = await documents.get(entry.raw.key);
+      if (!document) return;
+      entry.name = document.name ?? entry.name;
+      entry.img = document.img ?? entry.img;
+    }));
   }
 
   /**
@@ -236,7 +254,7 @@ export class EquipmentService {
             if (requireChoices) throw new Error(`A starting equipment choice is missing for ${sourceItem.name}.`);
             continue;
           }
-          const document = await fromUuid(uuid);
+          const document = await SourceResolver.linkedDocument(uuid);
           if (!document) {
             if (requireChoices) throw new Error(`Unable to resolve starting equipment document: ${uuid}`);
             continue;
@@ -265,7 +283,7 @@ export class EquipmentService {
         id: entry._id,
         type: entry.type,
         fixed: true,
-        name: option?.name ?? entry.key,
+        name: option?.name ?? "Unavailable Equipment",
         img: option?.img ?? "icons/svg/item-bag.svg",
         count
       };

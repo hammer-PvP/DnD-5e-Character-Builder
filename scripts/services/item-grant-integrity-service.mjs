@@ -1,3 +1,4 @@
+import { SourceResolver } from "./source-resolver.mjs";
 import { MODULE_ID } from "../constants.mjs";
 import { DraftManager } from "./draft-manager.mjs";
 import { LevelUpDraftManager } from "./level-up-draft-manager.mjs";
@@ -447,14 +448,8 @@ export class ItemGrantIntegrityService {
   static #samePackReference(configuredUuid, owner, registry) {
     // An unqualified Item reference can name a sibling of the source document.
     // Resolve against that exact pack before consulting world Items.
-    const local = /^Item\.([A-Za-z0-9]{16})$/.exec(configuredUuid);
-    const ownerSource = owner.getFlag("dnd5e", "sourceId") ?? owner._stats?.compendiumSource;
-    const pack = /^Compendium\.(.+)\.Item\.[A-Za-z0-9]{16}$/.exec(ownerSource ?? "")?.[1];
-    if (local && pack) {
-      const sibling = `Compendium.${pack}.Item.${local[1]}`;
-      if (registry?.sourceForUuid?.(sibling) || this.#canonicalUuidResolvable(sibling)) return sibling;
-    }
-    return null;
+    const sibling = SourceResolver.samePackItemUuid(configuredUuid, owner);
+    return sibling && (registry?.sourceForUuid?.(sibling) || this.#canonicalUuidResolvable(sibling)) ? sibling : null;
   }
 
   static async #resolveUuid(configuredUuid, registry) {

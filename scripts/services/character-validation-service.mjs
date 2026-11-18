@@ -115,8 +115,8 @@ export class CharacterValidationService {
         id: `land-record:${land.feature.id}`, kind: "land-record-inconsistent",
         severity: "warning", repairable: true, repairMode: "safe", repairLabel: "Reconcile Existing Land",
         title: "Circle of the Land — Conflicting Land Records",
-        summary: `The native Advancement does not match the saved ${land.land} Land.`,
-        details: "Reconcile the native record and Circle Spells to the saved Land."
+        summary: `The Land records disagree. The active choice resolves to ${land.land}.`,
+        details: "Synchronize the Land records and Circle Spells with this choice."
       });
     }
     const wildShape = await LevelUpFeatureService.knownWildShapeContext(actor);

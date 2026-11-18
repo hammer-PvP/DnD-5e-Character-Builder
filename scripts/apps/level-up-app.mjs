@@ -1,4 +1,5 @@
 import { MODULE_ID } from "../constants.mjs";
+import { SourceResolver } from "../services/source-resolver.mjs";
 import { SourceRegistry } from "../services/source-registry.mjs";
 import { LevelUpService } from "../services/level-up-service.mjs";
 import { LevelUpDraftManager } from "../services/level-up-draft-manager.mjs";
@@ -698,19 +699,17 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       const level = Number(advancement?.level ?? 0);
       if (!Number.isFinite(level) || level <= 0) continue;
       const row = byLevel.get(level) ?? { level, entries: [] };
-      const configuredItems = Array.isArray(advancement?.configuration?.items)
-        ? advancement.configuration.items
-        : [];
+      const configuredItems = Object.values(advancement?.configuration?.items ?? {});
       const items = [];
       for (const configured of configuredItems) {
-        const uuid = String(configured?.uuid ?? "").trim();
+        const uuid = String((typeof configured === "string" ? configured : configured?.uuid) ?? "").trim();
         if (!uuid) continue;
         let document = null;
-        try { document = await fromUuid(uuid); }
+        try { document = await SourceResolver.linkedDocument(uuid, subclass); }
         catch (_error) { document = null; }
         items.push({
-          uuid,
-          name: document?.name ?? uuid.split(".").at(-1) ?? "Granted Feature",
+          uuid: document?.uuid ?? uuid,
+          name: document?.name ?? "Unavailable Item",
           img: document?.img ?? "icons/svg/book.svg"
         });
       }

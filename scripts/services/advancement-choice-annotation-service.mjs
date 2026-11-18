@@ -1,5 +1,5 @@
 import { MODULE_ID } from "../constants.mjs";
-import { advancementName, weaponMasteryChoices } from "../utils/advancement-utils.mjs";
+import { advancementName, weaponMasteryChoices, weaponMasteryLabel } from "../utils/advancement-utils.mjs";
 
 /**
  * Stores compact read-only choice badges on the exact feature that owns each
@@ -36,7 +36,7 @@ export class AdvancementChoiceAnnotationService {
   static #masteryBadge({ cls, feature, rows }) {
     if (!feature) return null;
     const values = [...new Set(rows.flatMap(row => [...row.value.chosen]
-      .map(key => this.#traitKeyLabel(key))))].sort((a, b) => a.localeCompare(b, game.i18n.lang));
+      .map(weaponMasteryLabel)))].sort((a, b) => a.localeCompare(b, game.i18n.lang));
     return {
       advancementId: feature.id,
       advancementType: "Trait",
@@ -629,7 +629,7 @@ export class AdvancementChoiceAnnotationService {
 
   static #isOptionalItemGrant(advancement) {
     return Boolean(advancement.configuration?.optional)
-      || (advancement.configuration?.items ?? []).some(entry => Boolean(entry?.optional));
+      || Object.values(advancement.configuration?.items ?? {}).some(entry => Boolean(entry?.optional));
   }
 
   static #collectionValues(value) {

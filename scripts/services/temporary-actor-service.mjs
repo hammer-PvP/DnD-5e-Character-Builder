@@ -226,6 +226,7 @@ export class TemporaryActorService {
       const levelUpState = foundry.utils.deepClone(request.levelUpState ?? {});
       if (!levelUpState?.transactionId) throw new Error("The Level Up Draft request is missing its transaction identity.");
       const data = this.#cloneActorSource(sourceActor);
+      levelUpState.sourceItemRevisions = Object.fromEntries(data.items.map(item => [item._id, item._stats?.modifiedTime ?? null]));
       delete data._id;
       data.name = `[Character Builder Level Up] ${sourceActor.name}`;
       data.folder = folder.id;

@@ -11,7 +11,7 @@ import { LongRestSpellPreparationService } from "./long-rest-spell-preparation-s
 import { MemorizeSpellService } from "./memorize-spell-service.mjs";
 import { HighElfCantripService } from "./high-elf-cantrip-service.mjs";
 import { WarBondManagementService } from "./war-bond-management-service.mjs";
-import { wildShapeScales, writeAdvancementRecords, writeAdvancementValue, readAdvancementRecords, weaponMasteryChoices } from "../utils/advancement-utils.mjs";
+import { wildShapeScales, writeAdvancementRecords, writeAdvancementValue, readAdvancementRecords, weaponMasteryChoices, weaponMasteryBaseItem, weaponMasteryLabel } from "../utils/advancement-utils.mjs";
 
 const LAND_LABELS = Object.freeze({ arid: "Arid", polar: "Polar", temperate: "Temperate", tropical: "Tropical" });
 const LAND_RESISTANCES = Object.freeze({ arid: "fire", polar: "cold", temperate: "lightning", tropical: "poison" });
@@ -488,21 +488,21 @@ export class RuntimeFeatureService {
 
   static async #masteryContext(actor, registry, operation) {
     const classRows = this.#masteryClasses(actor);
-    const currentAll = new Set(actor.system?.traits?.weaponProf?.mastery?.value ?? []);
+    const currentAll = new Set([...(actor.system?.traits?.weaponProf?.mastery?.value ?? [])].map(weaponMasteryBaseItem));
     const candidates = this.#weaponCandidates(registry);
     const candidateByBase = new Map(candidates.map(option => [String(option.baseItem), option]));
     const savedChanges = operation?.changes ?? [];
     return classRows.map(({ cls, rows, rule }) => {
       const currentChoices = rows.flatMap(row => (row.value?.chosen ?? []).map(key => {
-        const baseItem = String(key).split(":").at(-1);
+        const baseItem = weaponMasteryBaseItem(key);
         const option = candidateByBase.get(baseItem);
         return {
           key,
           advancementId: row.id,
           baseItem,
-          name: option?.name ?? this.#weaponLabel(key),
+          name: option?.name ?? weaponMasteryLabel(key),
           masteryLabel: option?.masteryLabel ?? "",
-          label: option?.displayLabel ?? this.#weaponLabel(key),
+          label: option?.displayLabel ?? weaponMasteryLabel(key),
           sourceId: option?.sourceId ?? "current",
           sourceLabel: option?.sourceLabel ?? "Current Choices",
           sourceRank: option?.sourceRank ?? 999
@@ -878,10 +878,10 @@ export class RuntimeFeatureService {
         throw new Error(`${classRow.cls.name} cannot choose the same replacement weapon more than once.`);
       }
       for (const change of changes) {
-        const baseItem = String(change.newKey).split(":").at(-1);
+        const baseItem = weaponMasteryBaseItem(change.newKey);
         const option = candidateByBase.get(baseItem);
         if (!option || !this.#weaponAllowedForMastery(actor, classRow.rule, option)) {
-          throw new Error(`${option?.displayLabel ?? this.#weaponLabel(change.newKey)} is not an eligible Weapon Mastery choice for ${classRow.cls.name}.`);
+          throw new Error(`${option?.displayLabel ?? weaponMasteryLabel(change.newKey)} is not an eligible Weapon Mastery choice for ${classRow.cls.name}.`);
         }
         const expected = `weapon:${option.category}:${option.baseItem}`;
         if (change.newKey !== expected) throw new Error("The selected Weapon Mastery key does not match its official weapon document.");
@@ -898,24 +898,26 @@ export class RuntimeFeatureService {
         const active = [...row.value.chosen];
         projected.push(...active.map(key => {
           if (replacements.has(key)) found.add(key);
-          return String(replacements.get(key) ?? key).split(":").at(-1);
+          const selected = replacements.get(key) ?? key;
+          return weaponMasteryBaseItem(selected) ?? selected;
         }));
       }
       for (const change of changes) {
-        if (!found.has(change.oldKey)) throw new Error(`${cls.name} no longer owns ${this.#weaponLabel(change.oldKey)} mastery.`);
+        if (!found.has(change.oldKey)) throw new Error(`${cls.name} no longer owns ${weaponMasteryLabel(change.oldKey)} mastery.`);
       }
 
       // Also update a stale mirrored choice, so replacing the active choice
       // cannot cause a legacy copy of the old selection to reappear.
       if (!found.size) continue;
-      const replacementsByWeapon = new Map(changes.map(change => [String(change.oldKey).split(":").at(-1), change.newKey]));
+      const replacementsByWeapon = new Map(changes.map(change => [weaponMasteryBaseItem(change.oldKey), change.newKey]));
+      if (replacementsByWeapon.has(null)) throw new Error("A selected Weapon Mastery could not be resolved.");
       for (const owner of owners) {
         const records = readAdvancementRecords(owner);
         let changed = false;
         for (const [id, record] of Object.entries(records)) {
           if (record.type !== "Trait" || record.configuration?.mode !== "mastery") continue;
           const chosen = [...(record.value?.chosen ?? [])]
-            .map(key => replacementsByWeapon.get(String(key).split(":").at(-1)) ?? key);
+            .map(key => replacementsByWeapon.get(weaponMasteryBaseItem(key)) ?? key);
           if (!chosen.some((key, index) => key !== record.value.chosen[index])) continue;
           records[id] = { ...record, value: { ...record.value, chosen } };
           changed = true;
@@ -929,9 +931,12 @@ export class RuntimeFeatureService {
     for (const [owner, records] of updates) {
       await writeAdvancementRecords(owner, records, { characterBuilderRuntimeManagement: true });
     }
-    const currentRepresented = new Set(projected);
-    const existing = new Set(actor.system?.traits?.weaponProf?.mastery?.value ?? []);
-    for (const change of requested) existing.delete(String(change.oldKey).split(":").at(-1));
+    const currentRepresented = new Set(projected.map(weaponMasteryBaseItem).filter(Boolean));
+    const removedWeapons = new Set(requested.map(change => weaponMasteryBaseItem(change.oldKey)));
+    const existing = new Set([...(actor.system?.traits?.weaponProf?.mastery?.value ?? [])].filter(key => {
+      const base = weaponMasteryBaseItem(key);
+      return !removedWeapons.has(base) && (!currentRepresented.has(base) || key === base);
+    }));
     for (const value of currentRepresented) existing.add(value);
     await actor.update({ "system.traits.weaponProf.mastery.value": [...existing] }, { characterBuilderRuntimeManagement: true });
     await AdvancementChoiceAnnotationService.refreshWeaponMastery(actor);
@@ -984,9 +989,13 @@ export class RuntimeFeatureService {
     const landItems = choice ? actor.items.filter(item => item.type === "feat"
       && (ids.includes(item.id) || item.getFlag("dnd5e", "advancementOrigin") === origin)) : [];
     const nativeLand = landItems.length === 1 ? landItems[0].system.identifier?.replace(/-land$/, "") : "";
-    const land = saved?.id || saved?.land || nativeLand;
+    const recorded = ids.length === 1 ? landItems.find(item => item.id === ids[0]
+      && item.getFlag("dnd5e", "advancementOrigin") === origin) : null;
+    const recordedLand = recorded?.system.identifier?.replace(/-land$/, "");
+    const savedLand = saved?.id || saved?.land;
+    const land = LAND_LABELS[recordedLand] ? recordedLand : savedLand || nativeLand;
     const needsRepair = Boolean(choice && LAND_LABELS[land]
-      && (nativeLand !== land || ids.length !== 1 || ids[0] !== landItems[0]?.id
+      && ((savedLand && savedLand !== land) || nativeLand !== land || ids.length !== 1 || ids[0] !== landItems[0]?.id
         || landItems[0]?.getFlag("dnd5e", "advancementOrigin") !== origin));
     return { feature, choiceId, row, ids, origin, landItems, nativeLand, land, needsRepair };
   }
@@ -2200,7 +2209,6 @@ export class RuntimeFeatureService {
     const label = CONFIG.DND5E.weaponMasteries?.[key]?.label;
     return label ? game.i18n.localize(label) : (key ? this.#humanize(key) : "");
   }
-  static #weaponLabel(value) { const key = String(value ?? "").split(":").at(-1); return CONFIG.DND5E.weaponIds?.[key]?.label ? game.i18n.localize(CONFIG.DND5E.weaponIds[key].label) : this.#humanize(key); }
   static #humanize(value) { return String(value ?? "").replace(/[-_]+/g, " ").replace(/\b\w/g, match => match.toUpperCase()); }
   static #crNumber(value) {
     if (value === null || value === undefined) return null;

@@ -190,10 +190,13 @@ export class CharacterValidationProgressionService {
         const managedSpell = choiceType === "spell" && ManagedAdvancementRegistry.isManaged(sourceAdvancement, {
           owner, classIdentifier, workflow: "levelUp"
         });
-        const actualLedger = local ? (managedSpell
-          ? this.#liveSpellChoiceCount(actor, owner, local, ownerLevel)
-          : this.#itemChoiceActual(local.advancement, ownerLevel)) : 0;
-        const linked = this.#linkedAdvancementItems(actor, owner.id, local?.id ?? sourceAdvancementId);
+        const live = this.#liveItemChoiceIds(actor, owner, local, ownerLevel, {
+          type: choiceType, strictSource: managedSpell
+        });
+        const actualLedger = live.size;
+        const recorded = new Set(this.#flattenAddedMappings(local?.advancement?.value?.added).map(row => row.itemId));
+        const linked = this.#linkedAdvancementItems(actor, owner.id, local?.id ?? sourceAdvancementId)
+          .filter(item => (!choiceType || item.type === choiceType) && (!recorded.has(item.id) || live.has(item.id)));
         const actualLinked = linked.length;
         const actual = managedSpell ? actualLedger : Math.max(actualLedger, actualLinked);
         if (actual >= expected) {
@@ -241,7 +244,9 @@ export class CharacterValidationProgressionService {
             sourceUuid: source.uuid,
             sourceAdvancementId,
             localAdvancementId: local?.id ?? null,
-            level: this.#firstItemChoiceDeficitLevel(sourceAdvancement, local?.advancement, ownerLevel),
+            level: this.#firstItemChoiceDeficitLevel(actor, owner, local, sourceAdvancement, ownerLevel, {
+              type: choiceType, strictSource: managedSpell
+            }),
             expected,
             actual,
             mode: local ? "modify" : "add"
@@ -351,7 +356,7 @@ export class CharacterValidationProgressionService {
       const expected = [];
       for (const [sourceAdvancementId, advancement] of this.#advancementEntries(source.document)) {
         if (advancement?.type !== "ItemGrant") continue;
-        for (const entry of advancement.configuration?.items ?? []) {
+        for (const entry of Object.values(advancement.configuration?.items ?? {})) {
           if (entry?.optional || !entry?.uuid) continue;
           const resolved = await this.#resolveGrantDocument(String(entry.uuid), registry);
           if (!resolved?.document || !this.#isOriginFeatDocument(resolved.document)) continue;
@@ -465,7 +470,7 @@ export class CharacterValidationProgressionService {
         const expected = this.#itemChoiceExpected(sourceAdvancement, classLevel);
         if (!expected) continue;
         const local = this.#findEquivalentAdvancement(owner, sourceAdvancementId, sourceAdvancement);
-        const localActual = local ? this.#itemChoiceActual(local.advancement, classLevel) : 0;
+        const localActual = this.#liveItemChoiceIds(actor, owner, local, classLevel, { type: "feat" }).size;
         const pool = await this.#poolIdentity(sourceAdvancement, registry);
         const actualItems = actor.items.filter(item => item.type === "feat"
           && (String(item.system?.type?.subtype ?? "") === "fightingStyle" || pool.identifiers.has(String(item.system?.identifier ?? ""))));
@@ -487,7 +492,7 @@ export class CharacterValidationProgressionService {
             sourceUuid: source.uuid,
             sourceAdvancementId,
             localAdvancementId: local?.id ?? null,
-            level: this.#firstItemChoiceDeficitLevel(sourceAdvancement, local?.advancement, classLevel),
+            level: this.#firstItemChoiceDeficitLevel(actor, owner, local, sourceAdvancement, classLevel, { type: "feat" }),
             expected,
             actual,
             mode: local ? "modify" : "add"
@@ -505,7 +510,7 @@ export class CharacterValidationProgressionService {
       const ownerLevel = this.#ownerLevel(owner, actor);
       for (const [sourceAdvancementId, sourceAdvancement] of this.#advancementEntries(source.document)) {
         if (sourceAdvancement?.type !== "ItemGrant" || !this.#advancementActive(sourceAdvancement, ownerLevel)) continue;
-        const configured = (sourceAdvancement.configuration?.items ?? []).filter(entry => !entry?.optional && entry?.uuid);
+        const configured = Object.values(sourceAdvancement.configuration?.items ?? {}).filter(entry => !entry?.optional && entry?.uuid);
         if (!configured.length) continue;
         const local = this.#findEquivalentAdvancement(owner, sourceAdvancementId, sourceAdvancement);
 
@@ -1334,7 +1339,7 @@ export class CharacterValidationProgressionService {
     if (type === "Trait") return [type, level, String(advancement.configuration?.mode ?? "default"), this.#normalize(advancementName(advancement))].join("|");
     if (type === "ItemChoice") return [type, String(advancement.configuration?.restriction?.type ?? ""), String(advancement.configuration?.restriction?.subtype ?? ""), this.#normalize(advancementName(advancement))].join("|");
     if (type === "ItemGrant") {
-      const ids = (advancement.configuration?.items ?? []).map(row => String(row?.uuid ?? "").split(".").at(-1)).filter(Boolean).sort().join(",");
+      const ids = Object.values(advancement.configuration?.items ?? {}).map(row => String(row?.uuid ?? "").split(".").at(-1)).filter(Boolean).sort().join(",");
       return [type, level, ids].join("|");
     }
     if (type === "ScaleValue") return [type, String(advancement.configuration?.identifier ?? ""), this.#normalize(advancementName(advancement))].join("|");
@@ -1378,48 +1383,56 @@ export class CharacterValidationProgressionService {
     return expected;
   }
 
-  static #itemChoiceActual(advancement, currentLevel) {
-    const added = advancement?.value?.added ?? {};
-    let total = 0;
-    for (const [level, choices] of Object.entries(added)) {
-      if (/^\d+$/.test(String(level)) && Number(level) > Number(currentLevel ?? 0)) continue;
-      if (choices && typeof choices === "object" && !Array.isArray(choices)) {
-        total += Object.values(choices).filter(value => typeof value === "string").length;
-      } else if (typeof choices === "string") total += 1;
-    }
-    return total || this.#flattenAddedMappings(added).length;
-  }
-
-  static #liveSpellChoiceCount(actor, owner, local, currentLevel) {
-    const value = local.advancement.value ?? {};
-    const replaced = new Set(Object.entries(value.replaced ?? {})
-      .filter(([level, entry]) => Number(level) <= currentLevel && entry?.replacement)
-      .map(([, entry]) => entry.original));
-    const active = new Set();
-    for (const [level, entries] of Object.entries(value.added ?? {})) {
-      if (Number(level) > currentLevel) continue;
-      for (const [id, uuid] of Object.entries(entries ?? {})) {
-        if (replaced.has(id)) continue;
-        const item = actor.items.get(id);
-        if (item?.type !== "spell" || item.getFlag("dnd5e", "advancementOrigin") !== `${owner.id}.${local.id}`) continue;
-        const source = item.getFlag("dnd5e", "sourceId") ?? item._stats?.compendiumSource;
-        if (source === uuid) active.add(id);
+  static #liveItemChoiceIds(actor, owner, local, currentLevel, { type, strictSource = false, through = currentLevel } = {}) {
+    const value = local?.advancement?.value ?? {};
+    const mappings = new Map();
+    for (const [level, row] of Object.entries(value.added ?? {})) {
+      // Older ItemChoice records may have a flat embedded-ID-to-source map.
+      if (typeof row === "string") {
+        mappings.set(level, { level: 0, uuid: row });
+      } else if (Number(level) <= currentLevel && row && typeof row === "object" && !Array.isArray(row)) {
+        for (const [id, uuid] of Object.entries(row)) {
+          if (typeof uuid === "string") mappings.set(id, { level: Number(level), uuid });
+        }
       }
     }
-    return active.size;
+
+    const replacements = new Map();
+    for (const [level, entry] of Object.entries(value.replaced ?? {})) {
+      if (Number(level) <= currentLevel && entry?.original && entry.replacement) {
+        replacements.set(entry.original, entry.replacement);
+      }
+    }
+
+    const expectedOrigin = `${owner.id}.${local?.id}`;
+    const active = new Set();
+    for (const [start, mapping] of mappings) {
+      if (mapping.level > through) continue;
+      let id = start;
+      const visited = new Set();
+      while (replacements.has(id) && !visited.has(id)) {
+        visited.add(id);
+        id = replacements.get(id);
+      }
+      if (visited.has(id)) continue;
+      const item = actor.items.get(id);
+      if (!item || (type && item.type !== type) || !mappings.has(id)) continue;
+      const origin = item.getFlag?.("dnd5e", "advancementOrigin");
+      if (origin && origin !== expectedOrigin) continue;
+      const source = item.getFlag?.("dnd5e", "sourceId") ?? item._stats?.compendiumSource;
+      if (strictSource && (origin !== expectedOrigin || source !== mappings.get(id).uuid)) continue;
+      active.add(id);
+    }
+    return active;
   }
 
-  static #firstItemChoiceDeficitLevel(sourceAdvancement, localAdvancement, currentLevel) {
-    let cumulativeExpected = 0;
-    let cumulativeActual = 0;
-    const levels = Object.keys(sourceAdvancement.configuration?.choices ?? {}).map(Number)
-      .filter(level => Number.isFinite(level) && level <= Number(currentLevel ?? 0)).sort((a, b) => a - b);
-    const localAdded = localAdvancement?.value?.added ?? {};
+  static #firstItemChoiceDeficitLevel(actor, owner, local, sourceAdvancement, currentLevel, options) {
+    let expected = 0;
+    const levels = this.#activeItemChoiceLevels(sourceAdvancement, currentLevel);
     for (const level of levels) {
-      cumulativeExpected += Math.max(0, Number(sourceAdvancement.configuration.choices?.[level]?.count ?? 0));
-      const row = localAdded?.[level] ?? localAdded?.[String(level)] ?? {};
-      cumulativeActual += row && typeof row === "object" ? Object.values(row).filter(value => typeof value === "string").length : 0;
-      if (cumulativeActual < cumulativeExpected) return level;
+      expected += Math.max(0, Number(sourceAdvancement.configuration?.choices?.[level]?.count ?? 0));
+      const actual = this.#liveItemChoiceIds(actor, owner, local, currentLevel, { ...options, through: level }).size;
+      if (actual < expected) return level;
     }
     return levels[0] ?? this.#firstAdvancementLevel(sourceAdvancement);
   }
@@ -1752,7 +1765,7 @@ export class CharacterValidationProgressionService {
     return actor.items.filter(item => {
       const advancementOrigin = String(item.getFlag?.("dnd5e", "advancementOrigin") ?? "");
       const advancementRoot = String(item.getFlag?.("dnd5e", "advancementRoot") ?? "");
-      return advancementOrigin === origin || advancementRoot === origin;
+      return advancementOrigin ? advancementOrigin === origin : advancementRoot === origin;
     });
   }
 

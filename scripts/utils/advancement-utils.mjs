@@ -162,7 +162,7 @@ function recoverAdvancementLinks(actor, owner, id, record) {
   if (!choice && record.type !== "ItemGrant") return null;
   const levels = choice ? Object.entries(intended) : [["", intended]];
   const origin = `${owner.id}.${id}`;
-  const configured = new Set((record.configuration?.items ?? []).map(entry => entry?.uuid ?? entry));
+  const configured = new Set(Object.values(record.configuration?.items ?? {}).map(entry => entry?.uuid ?? entry));
   const knownHistory = new Set(Object.values(record.value.replaced ?? {}).flatMap(entry => [entry?.original, entry?.replacement]));
   const intendedIds = new Set();
   for (const [level, links] of levels) {
@@ -198,6 +198,33 @@ function recoverAdvancementLinks(actor, owner, id, record) {
   return intended;
 }
 
+/** Normalize a weapon Trait key or a document UUID to the native base Item key. */
+export function weaponMasteryBaseItem(value) {
+  const key = String(value ?? "").split(":").at(-1);
+  if (!key.includes(".")) return key;
+  const weaponIds = globalThis.CONFIG?.DND5E?.weaponIds ?? {};
+  const configured = Object.entries(weaponIds).find(([, uuid]) => uuid === key)?.[0];
+  if (configured) return configured;
+  const weapon = weaponMasteryDocument(key);
+  return weapon?.system?.type?.baseItem || null;
+}
+
+function weaponMasteryDocument(uuid) {
+  if (typeof uuid !== "string" || !uuid) return null;
+  try { return globalThis.fromUuidSync?.(uuid); }
+  catch (_error) { return null; }
+}
+
+export function weaponMasteryLabel(value) {
+  const key = String(value ?? "").split(":").at(-1);
+  const base = weaponMasteryBaseItem(key);
+  const configured = globalThis.CONFIG?.DND5E?.weaponIds?.[base];
+  const document = weaponMasteryDocument(key.includes(".") ? key : configured);
+  const label = document?.name ?? (typeof configured === "object" ? configured?.label : null);
+  if (label) return globalThis.game.i18n.localize(label);
+  return base ? base.replace(/(^|\s)\S/g, character => character.toUpperCase()) : "Unavailable Weapon";
+}
+
 /** The embedded Item owning each native Weapon Mastery Trait is also its write target. */
 export function weaponMasteryChoices(actor) {
   const items = [...(actor?.items ?? [])];
@@ -218,7 +245,7 @@ export function weaponMasteryChoices(actor) {
   const groups = new Map();
   for (const owner of items) {
     const rows = Object.entries(readAdvancementRecords(owner))
-      .filter(([, row]) => row.type === "Trait" && row.configuration?.mode === "mastery")
+      .filter(([, row]) => row?.type === "Trait" && row.configuration?.mode === "mastery")
       .map(([id, row]) => ({ ...row, id, owner }));
     if (!rows.length) continue;
     const cls = classFor(owner);
@@ -240,10 +267,10 @@ export function weaponMasteryChoices(actor) {
     // Some migrated sheets retain an identical record on the former owner.
     // Use the feature-owned choice and keep distinct choices from all sources.
     const ownedSelections = new Set(rows.filter(row => row.owner.type !== "class")
-      .flatMap(row => [...(row.value?.chosen ?? [])].map(key => String(key).split(":").at(-1))));
+      .flatMap(row => [...(row.value?.chosen ?? [])].map(key => weaponMasteryBaseItem(key) ?? key)));
     const active = rows.map(row => row.owner.type === "class" ? {
       ...row, value: { ...row.value, chosen: [...(row.value?.chosen ?? [])]
-        .filter(key => !ownedSelections.has(String(key).split(":").at(-1))) }
+        .filter(key => !ownedSelections.has(weaponMasteryBaseItem(key) ?? key)) }
     } : row).filter(row => row.value?.chosen?.length);
     return { cls, feature, owners: [...new Set(rows.map(row => row.owner))], rows: active };
   }).filter(group => group.rows.length);

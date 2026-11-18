@@ -277,6 +277,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     const equipmentPanels = [characterClass, background].filter(Boolean).map(item =>
       EquipmentService.buildPanel(item, this.registry, this.draft, equipmentState[item.id] ?? {})
     );
+    if (step === "equipment") await EquipmentService.resolvePanelItems(equipmentPanels, this.registry);
     const shoppingCart = await ShopService.context(this.draft, this.registry, { view: "committed" });
     const spellAccess = await SpellAccessService.buildContext(this.draft, this.registry);
 

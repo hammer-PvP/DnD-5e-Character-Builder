@@ -1,3 +1,4 @@
+import { reconcileEmbeddedDocuments } from "../utils/embedded-document-utils.mjs";
 import { repairAdvancementRecords } from "../utils/advancement-utils.mjs";
 import { MODULE_ID, MODULE_VERSION } from "../constants.mjs";
 import { AgonizingBlastBindingService } from "./agonizing-blast-binding-service.mjs";
@@ -87,10 +88,23 @@ export class LevelUpCommitService {
       snapshotFingerprint = this.#fingerprint(snapshot);
       safetyBackup = await this.#createSafetyBackup(actor, draft, snapshot, token);
       const draftData = this.#documentSource(draft);
-      const itemData = draft.items.map(item => this.#documentSource(item));
+      const itemData = draft.items.map(item => item.toObject());
+      const revisions = state.sourceItemRevisions;
+      const originalIds = revisions ? new Set(Object.keys(revisions)) : null;
+      if (originalIds) {
+        for (const id of originalIds) {
+          const current = actor.items.get(id);
+          if (!current || (current._stats?.modifiedTime ?? null) !== revisions[id]) {
+            throw new Error("An Item changed on the live Actor while Level Up was open. Restart Level Up to use the current inventory.");
+          }
+        }
+        if (itemData.some(row => !originalIds.has(row._id) && actor.items.has(row._id))) {
+          throw new Error("An Item added during Level Up has the same ID as a new draft Item. Restart Level Up.");
+        }
+      }
       const sourceItemIds = new Set(actor.items.map(item => item.id));
       const createdItems = itemData.filter(item => !sourceItemIds.has(item._id));
-      const deletedItems = actor.items.filter(item => !draft.items.get(item.id));
+      const deletedItems = actor.items.filter(item => !draft.items.get(item.id) && (!originalIds || originalIds.has(item.id)));
       const baseUpdate = this.#flattenForUpdate({
         system: draftData.system,
         prototypeToken: draftData.prototypeToken,
@@ -109,24 +123,14 @@ export class LevelUpCommitService {
       });
 
       stage = "Creating Features and Spells";
-      await progress(44, stage, "Replacing embedded Items with the completed draft documents.");
+      await progress(44, stage, "Applying Item changes from the completed draft.");
       this.#assertToken(actor, token);
-      const existingIds = actor.items.map(item => item.id);
-      if (existingIds.length) {
-        await actor.deleteEmbeddedDocuments("Item", existingIds, {
-          render: false,
-          deleteContents: true,
-          characterBuilderLevelUp: true,
-          characterBuilderTransactionToken: token
-        });
-      }
+      await reconcileEmbeddedDocuments(actor, "Item", itemData, {
+        render: false,
+        characterBuilderLevelUp: true,
+        characterBuilderTransactionToken: token
+      }, originalIds);
       if (itemData.length) {
-        await actor.createEmbeddedDocuments("Item", itemData, {
-          render: false,
-          keepId: true,
-          characterBuilderLevelUp: true,
-          characterBuilderTransactionToken: token
-        });
         await InternalActorReferenceRebindingService.rebindActor(actor, {
           reason: "level-up-materialization",
           render: false
@@ -402,9 +406,9 @@ export class LevelUpCommitService {
 
   static #actorSnapshot(actor) {
     const source = this.#documentSource(actor);
-    source.items = actor.items.map(item => this.#documentSource(item));
+    source.items = actor.items.map(item => item.toObject());
     source.effects = (actor.effects?.contents ?? [...(actor.effects ?? [])])
-      .map(effect => this.#documentSource(effect));
+      .map(effect => effect.toObject());
     return source;
   }
 
@@ -448,8 +452,8 @@ export class LevelUpCommitService {
   }
 
   static async #restore(actor, snapshot, token) {
-    const itemData = this.#plainClone(snapshot.items ?? []);
-    const effectData = this.#plainClone(snapshot.effects ?? []);
+    const itemData = snapshot.items ?? [];
+    const effectData = snapshot.effects ?? [];
 
     // The commit only writes Character Builder flags. Remove that complete
     // namespace before restoring it so no partial history/lastLevelUp/safety
@@ -472,36 +476,9 @@ export class LevelUpCommitService {
       characterBuilderTransactionToken: token
     });
 
-    const existingEffectIds = (actor.effects?.contents ?? [...(actor.effects ?? [])]).map(effect => effect.id);
-    if (existingEffectIds.length) {
-      await actor.deleteEmbeddedDocuments("ActiveEffect", existingEffectIds, {
-        characterBuilderLevelUpRollback: true,
-        characterBuilderTransactionToken: token
-      });
-    }
-    if (effectData.length) {
-      await actor.createEmbeddedDocuments("ActiveEffect", effectData, {
-        keepId: true,
-        characterBuilderLevelUpRollback: true,
-        characterBuilderTransactionToken: token
-      });
-    }
-
-    const existingIds = actor.items.map(item => item.id);
-    if (existingIds.length) {
-      await actor.deleteEmbeddedDocuments("Item", existingIds, {
-        deleteContents: true,
-        characterBuilderLevelUpRollback: true,
-        characterBuilderTransactionToken: token
-      });
-    }
-    if (itemData.length) {
-      await actor.createEmbeddedDocuments("Item", itemData, {
-        keepId: true,
-        characterBuilderLevelUpRollback: true,
-        characterBuilderTransactionToken: token
-      });
-    }
+    const options = { characterBuilderLevelUpRollback: true, characterBuilderTransactionToken: token };
+    await reconcileEmbeddedDocuments(actor, "Item", itemData, options);
+    await reconcileEmbeddedDocuments(actor, "ActiveEffect", effectData, options);
   }
 
   static #fingerprint(snapshot) {

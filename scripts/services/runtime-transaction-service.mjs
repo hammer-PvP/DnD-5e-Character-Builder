@@ -1,3 +1,4 @@
+import { reconcileEmbeddedDocuments } from "../utils/embedded-document-utils.mjs";
 import { MODULE_ID, MODULE_VERSION } from "../constants.mjs";
 
 /**
@@ -10,6 +11,7 @@ export class RuntimeTransactionService {
 
   static async run(actor, { session, label = "Character Keeper" } = {}, callback) {
     if (!actor || actor.type !== "character") throw new Error("Character Keeper requires a Player Character Actor.");
+    if (actor.getFlag(MODULE_ID, "runtimeManagementSafetyLock")) throw new Error("A GM must inspect the previous Character Keeper rollback before continuing.");
     if (actor.getFlag(MODULE_ID, this.LOCK_FLAG)) throw new Error("Character Keeper is already applying changes to this Actor.");
     const token = foundry.utils.randomID();
     await actor.setFlag(MODULE_ID, this.LOCK_FLAG, {
@@ -72,36 +74,9 @@ export class RuntimeTransactionService {
   }
 
   static async #restore(actor, snapshot) {
-    const currentItemIds = actor.items.map(item => item.id);
-    if (currentItemIds.length) {
-      await actor.deleteEmbeddedDocuments("Item", currentItemIds, {
-        characterBuilderRuntimeManagement: true,
-        characterBuilderRuntimeRollback: true,
-        deleteContents: false
-      });
-    }
-    if (snapshot.items.length) {
-      await actor.createEmbeddedDocuments("Item", snapshot.items, {
-        keepId: true,
-        characterBuilderRuntimeManagement: true,
-        characterBuilderRuntimeRollback: true
-      });
-    }
-
-    const currentEffectIds = actor.effects?.map(effect => effect.id) ?? [];
-    if (currentEffectIds.length) {
-      await actor.deleteEmbeddedDocuments("ActiveEffect", currentEffectIds, {
-        characterBuilderRuntimeManagement: true,
-        characterBuilderRuntimeRollback: true
-      });
-    }
-    if (snapshot.effects.length) {
-      await actor.createEmbeddedDocuments("ActiveEffect", snapshot.effects, {
-        keepId: true,
-        characterBuilderRuntimeManagement: true,
-        characterBuilderRuntimeRollback: true
-      });
-    }
+    const options = { characterBuilderRuntimeManagement: true, characterBuilderRuntimeRollback: true };
+    await reconcileEmbeddedDocuments(actor, "Item", snapshot.items, options);
+    await reconcileEmbeddedDocuments(actor, "ActiveEffect", snapshot.effects, options);
 
     const currentFlags = foundry.utils.deepClone(actor.flags?.[MODULE_ID] ?? {});
     const update = { system: foundry.utils.deepClone(snapshot.system) };

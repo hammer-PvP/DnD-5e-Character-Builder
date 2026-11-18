@@ -1,5 +1,5 @@
 import { MODULE_ID, defaultSettings } from "../constants.mjs";
-import { advancementName, weaponMasteryChoices } from "../utils/advancement-utils.mjs";
+import { advancementName, weaponMasteryChoices, weaponMasteryBaseItem } from "../utils/advancement-utils.mjs";
 
 /**
  * Applies the selected rules-generation policy to native D&D5e class
@@ -96,14 +96,14 @@ export class RulesCompatibilityService {
     if (!actor || actor.type !== "character") return { updated: 0, skipped: 0 };
 
     const actorMasteries = [...new Set(this.#collectionValues(actor.system?.traits?.weaponProf?.mastery?.value)
-      .map(value => String(value ?? "").trim())
+      .map(weaponMasteryBaseItem)
       .filter(Boolean))];
     if (!actorMasteries.length) return { updated: 0, skipped: 0 };
 
     const classItems = this.#collectionValues(actor.items).filter(item => item?.type === "class");
     const classState = new Map();
     const represented = new Set(weaponMasteryChoices(actor).flatMap(group => group.rows
-      .flatMap(row => [...row.value.chosen].map(key => String(key).split(":").at(-1)))));
+      .flatMap(row => [...row.value.chosen].map(weaponMasteryBaseItem).filter(Boolean))));
     for (const cls of classItems) {
       const advancement = foundry.utils.deepClone(cls.toObject().system?.advancement ?? {});
       const rows = this.#advancementEntries(advancement)
@@ -111,7 +111,10 @@ export class RulesCompatibilityService {
           && row.configuration?.mode === "mastery"
           && this.#advancementIsActive(row, cls));
       for (const [, row] of rows) {
-        for (const key of row.value?.chosen ?? []) represented.add(String(key).split(":").at(-1));
+        for (const key of row.value?.chosen ?? []) {
+          const base = weaponMasteryBaseItem(key);
+          if (base) represented.add(base);
+        }
       }
       classState.set(cls.id, { cls, advancement, rows });
     }

@@ -7,6 +7,19 @@ import { MODULE_ID } from "../constants.mjs";
  * 3. before the Draft is committed to the real Actor.
  */
 export class SourceResolver {
+  static samePackItemUuid(uuid, owner) {
+    const local = /^Item\.([A-Za-z0-9]{16})$/.exec(uuid);
+    if (!local) return null;
+    const source = owner?.pack ? owner.uuid : owner?.getFlag?.("dnd5e", "sourceId") ?? owner?._stats?.compendiumSource;
+    const collection = /^Compendium\.(.+)\.Item\.[A-Za-z0-9]{16}$/.exec(source ?? "")?.[1];
+    return collection ? `Compendium.${collection}.Item.${local[1]}` : null;
+  }
+
+  static async linkedDocument(uuid, owner = null) {
+    const samePack = this.samePackItemUuid(uuid, owner);
+    return (samePack ? await fromUuid(samePack) : null) ?? await fromUuid(uuid);
+  }
+
   static filterAdvancementPools(itemData, registry) {
     const data = foundry.utils.deepClone(itemData);
     const advancements = data.system?.advancement ?? {};

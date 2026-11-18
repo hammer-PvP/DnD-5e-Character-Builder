@@ -9,9 +9,9 @@ import { normalizedAdvancementName } from "../utils/advancement-utils.mjs";
 export class ManagedAdvancementRegistry {
   static #rules = Object.freeze([
     // Legacy class-embedded ItemChoices remain supported as fallbacks.
-    { classIdentifier: "warlock", ownerType: "class", type: "ItemChoice", title: "eldritch invocations", handler: "warlock-invocations" },
-    { classIdentifier: "sorcerer", ownerType: "class", type: "ItemChoice", title: "metamagic", handler: "sorcerer-metamagic" },
-    { classIdentifier: "sorcerer", ownerType: "class", type: "ItemChoice", title: "metamagic options", handler: "sorcerer-metamagic" },
+    { classIdentifier: "warlock", ownerType: "class", type: "ItemChoice", title: "eldritch invocations", handler: "warlock-invocations", workflow: "levelUp" },
+    { classIdentifier: "sorcerer", ownerType: "class", type: "ItemChoice", title: "metamagic", handler: "sorcerer-metamagic", workflow: "levelUp" },
+    { classIdentifier: "sorcerer", ownerType: "class", type: "ItemChoice", title: "metamagic options", handler: "sorcerer-metamagic", workflow: "levelUp" },
     // Modern PHB sources place the choices on the granted Feature itself.
     { classIdentifier: "warlock", ownerIdentifier: "eldritch-invocations", type: "ItemChoice", choiceType: "feat", handler: "warlock-invocations", workflow: "levelUp" },
     { classIdentifier: "sorcerer", ownerIdentifier: "metamagic", type: "ItemChoice", choiceType: "feat", handler: "sorcerer-metamagic", workflow: "levelUp" },
