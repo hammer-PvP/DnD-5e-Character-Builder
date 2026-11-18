@@ -1,10 +1,9 @@
-## 0.9.934 — Compendium references and advancement stability
+## 0.9.935 — Level Up and recovery
 
-- Display weapon names on Weapon Mastery badges and preserve class ownership when swapping a mastery after a Long Rest.
-- Resolve starting equipment links for supplemental backgrounds and show the name and icon of same-compendium grants in the subclass preview.
-- Keep class-owned Eldritch Invocations and Metamagic choices native during creation. Their existing Level Up handlers still apply.
-- Reconcile embedded Items by ID during Level Up and rollback. Keep unchanged Items in place, including protected Items, and preserve inventory additions made while a new draft was open.
-- Check native choices against live embedded Items and their grants. Circle of the Land validation uses the recorded native selection when its Item and origin agree.
+- Level Up compares Item and Active Effect game data by document ID. Foundry timestamps can change as documents move from the draft to the original Actor. Effects retain their source, duration and ordered changes.
+- A GM can right-click the original Actor and select **Recover Failed Level Up** after a partial Level Up. When the original data still matches the linked backup, recovery lists the extra draft Items for confirmation, verifies the cleanup, and starts the next attempt with a fresh draft. The original Actor, safety backup and archived draft remain available. Conflicting data requires manual review.
+- Weapon Mastery badges and Long Rest choices show the selected weapon names. Supplemental starting equipment and subclass previews resolve item names and icons from their compendiums.
+- Native class choices during creation, Human Versatile and Circle of the Land use the owning Advancement and its Items. Level Up preserves unchanged Items and checks inventory revisions before committing.
 
 ## 0.9.933 — Advancement and Weapon Mastery compatibility
 

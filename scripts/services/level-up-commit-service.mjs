@@ -1,4 +1,4 @@
-import { reconcileEmbeddedDocuments } from "../utils/embedded-document-utils.mjs";
+import { documentFingerprint, fieldChanges, reconcileEmbeddedDocuments } from "../utils/embedded-document-utils.mjs";
 import { repairAdvancementRecords } from "../utils/advancement-utils.mjs";
 import { MODULE_ID, MODULE_VERSION } from "../constants.mjs";
 import { AgonizingBlastBindingService } from "./agonizing-blast-binding-service.mjs";
@@ -44,6 +44,7 @@ export class LevelUpCommitService {
     let snapshotFingerprint = null;
     let safetyBackup = null;
     let actorMutationStarted = false;
+    let attemptedItemIds = new Set();
     const progress = (percent, label, detail = "") => this.#emitProgress(onProgress, {
       token, percent, stage: label, detail
     });
@@ -91,6 +92,9 @@ export class LevelUpCommitService {
       const itemData = draft.items.map(item => item.toObject());
       const revisions = state.sourceItemRevisions;
       const originalIds = revisions ? new Set(Object.keys(revisions)) : null;
+      if (!originalIds && actor.items.some(item => !draft.items.has(item.id))) {
+        throw new Error("This older draft has no inventory baseline for a removal. Restart Class Selection to capture the current inventory.");
+      }
       if (originalIds) {
         for (const id of originalIds) {
           const current = actor.items.get(id);
@@ -104,6 +108,7 @@ export class LevelUpCommitService {
       }
       const sourceItemIds = new Set(actor.items.map(item => item.id));
       const createdItems = itemData.filter(item => !sourceItemIds.has(item._id));
+      attemptedItemIds = new Set(createdItems.map(row => row._id));
       const deletedItems = actor.items.filter(item => !draft.items.get(item.id) && (!originalIds || originalIds.has(item.id)));
       const baseUpdate = this.#flattenForUpdate({
         system: draftData.system,
@@ -261,7 +266,7 @@ export class LevelUpCommitService {
           error.commitStage = stage;
           throw error;
         }
-        const blocked = new Error(`Level Up was blocked during ${stage}. The live Actor was not changed. Correct the problem and redo the Level Up.`);
+        const blocked = new Error(`Level Up was blocked during ${stage}. The live Actor was not changed. ${error.message}`);
         blocked.cause = error;
         blocked.actorRestored = true;
         blocked.commitStage = stage;
@@ -270,10 +275,21 @@ export class LevelUpCommitService {
 
       await progress(96, "Rolling Back", `A failure occurred during ${stage}. Restoring the original Actor.`);
       try {
-        await this.#restore(actor, snapshot, token);
+        await this.#restore(actor, snapshot, token, attemptedItemIds);
         const restoredFingerprint = this.#fingerprint(this.#actorSnapshot(actor));
         if (restoredFingerprint !== snapshotFingerprint) {
           throw new Error("The post-rollback Actor does not match the pre-commit safety snapshot.");
+        }
+        // A verified rollback may have recreated an Item with a new database
+        // timestamp. Rebase only revisions the original draft actually tracked.
+        const revisions = draft.getFlag(MODULE_ID, "levelUpState")?.sourceItemRevisions;
+        if (revisions) {
+          const refreshed = Object.fromEntries(Object.keys(revisions).map(id => [id, actor.items.get(id)?._stats?.modifiedTime ?? null]));
+          try {
+            await draft.update({ [`flags.${MODULE_ID}.levelUpState.sourceItemRevisions`]: refreshed }, { render: false });
+          } catch (refreshError) {
+            console.warn(`${MODULE_ID} | Verified rollback. Restart Level Up to capture fresh inventory revisions.`, refreshError);
+          }
         }
         await this.#deleteSafetyBackup(safetyBackup);
         safetyBackup = null;
@@ -310,6 +326,89 @@ export class LevelUpCommitService {
       }
     } finally {
       if (this.#activeTransactions.get(actor.id) === token) this.#activeTransactions.delete(actor.id);
+    }
+  }
+
+  // A failed 0.9.934 rollback can leave all original documents intact plus
+  // Items seen only in the draft. Recover that provable state on the original Actor.
+  static inspectRecovery(actor) {
+    if (!game.user.isGM) throw new Error("A GM is required to recover a Level Up.");
+    const lock = actor.getFlag(MODULE_ID, "commitSafetyLock");
+    const backup = game.actors.get(lock?.safetyBackupActorId);
+    const draftId = actor.getFlag(MODULE_ID, "levelUpDraftId");
+    const draft = game.actors.get(draftId);
+    if (!lock?.transactionToken || !backup || !draft || new Set([actor.id, backup.id, draft.id]).size !== 3
+      || backup.getFlag(MODULE_ID, "commitSafetyBackup") !== true
+      || backup.getFlag(MODULE_ID, "transactionToken") !== lock.transactionToken
+      || backup.getFlag(MODULE_ID, "sourceActorId") !== actor.id
+      || backup.getFlag(MODULE_ID, "levelUpDraftId") !== draftId
+      || draft.getFlag(MODULE_ID, "isLevelUpDraft") !== true
+      || draft.getFlag(MODULE_ID, "sourceActorId") !== actor.id) {
+      throw new Error("Recovery requires the original Actor and the linked Level Up draft and safety backup from the same transaction.");
+    }
+    const live = this.#actorSnapshot(actor);
+    const before = this.#actorSnapshot(backup);
+    const flags = { ...live.flags?.[MODULE_ID] };
+    delete flags.commitSafetyLock;
+    const backupFlags = { ...before.flags?.[MODULE_ID] };
+    for (const key of ["commitSafetyBackup", "sourceActorId", "transactionToken", "createdAt", "createdByUserId", "moduleVersion"]) {
+      // These fields were written on the temporary copy during backup creation.
+      delete backupFlags[key];
+      delete flags[key];
+    }
+    const actorState = (data, savedFlags) => documentFingerprint({
+      system: data.system, img: data.img, prototypeToken: data.prototypeToken,
+      effects: data.effects, flags: { [MODULE_ID]: savedFlags }
+    }, "Actor");
+    if (actorState(live, flags) !== actorState(before, backupFlags)) {
+      throw new Error("The Actor data differs from the safety backup. Inspect the original and backup before restoring manually.");
+    }
+    for (const row of before.items) {
+      const item = actor.items.get(row._id);
+      if (!item || documentFingerprint(item.toObject(), "Item") !== documentFingerprint(row, "Item")) {
+        throw new Error(`The original Item ${row.name} differs from the backup. Manual review is required.`);
+      }
+    }
+    const remove = live.items.filter(row => !backup.items.has(row._id));
+    for (const row of remove) {
+      const source = draft.items.get(row._id);
+      if (!source || documentFingerprint(row, "Item") !== documentFingerprint(source.toObject(), "Item")
+        || Number(row._stats?.modifiedTime ?? 0) > Number(lock.lockedAt)) {
+        throw new Error(`Item ${row.name} cannot be attributed safely to this failed Level Up. Manual review is required.`);
+      }
+    }
+    return { token: lock.transactionToken, draft, backup, remove };
+  }
+
+  static async recover(actor, expectedToken, confirmedIds = null) {
+    const plan = this.inspectRecovery(actor);
+    if (this.#activeTransactions.has(actor.id) || plan.token !== expectedToken
+      || (confirmedIds && (plan.remove.length !== confirmedIds.length || plan.remove.some(row => !confirmedIds.includes(row._id))))) {
+      throw new Error("This transaction changed. Reopen recovery on the original Actor.");
+    }
+    this.#activeTransactions.set(actor.id, plan.token);
+    try {
+      if (plan.remove.length) {
+        await actor.deleteEmbeddedDocuments("Item", plan.remove.map(row => row._id), {
+          deleteContents: false, characterBuilderLevelUpRollback: true, characterBuilderTransactionToken: plan.token
+        });
+      }
+      const verified = this.inspectRecovery(actor);
+      if (verified.token !== plan.token || verified.remove.length) throw new Error("Recovery could not verify the original inventory.");
+      await plan.draft.setFlag(MODULE_ID, "recoveredTransaction", plan.token);
+      if (plan.draft.getFlag(MODULE_ID, "recoveredTransaction") !== plan.token) throw new Error("Could not archive the failed draft.");
+      // Keep the backup and the abandoned draft. A new attempt must capture fresh revisions.
+      const final = this.inspectRecovery(actor);
+      if (final.token !== plan.token || final.remove.length) throw new Error("The Actor changed during recovery.");
+      await actor.update({
+        [`flags.${MODULE_ID}.levelUpDraftId`]: new foundry.data.operators.ForcedDeletion(),
+        [`flags.${MODULE_ID}.commitSafetyLock`]: new foundry.data.operators.ForcedDeletion()
+      }, { characterBuilderLevelUpRollback: true, characterBuilderTransactionToken: plan.token });
+      if (actor.getFlag(MODULE_ID, "commitSafetyLock") || actor.getFlag(MODULE_ID, "levelUpDraftId")) {
+        throw new Error("Could not clear the verified transaction lock. Inspect the preserved safety backup.");
+      }
+    } finally {
+      this.#activeTransactions.delete(actor.id);
     }
   }
 
@@ -451,50 +550,22 @@ export class LevelUpCommitService {
     return output;
   }
 
-  static async #restore(actor, snapshot, token) {
+  static async #restore(actor, snapshot, token, attemptedItemIds) {
     const itemData = snapshot.items ?? [];
     const effectData = snapshot.effects ?? [];
 
-    // The commit only writes Character Builder flags. Remove that complete
-    // namespace before restoring it so no partial history/lastLevelUp/safety
-    // marker survives a failed transaction.
-    if (actor.flags?.[MODULE_ID] !== undefined) {
-      await actor.update({ [`flags.${MODULE_ID}`]: new foundry.data.operators.ForcedDeletion() }, {
-        characterBuilderLevelUpRollback: true,
-        characterBuilderTransactionToken: token
-      });
-    }
-    const update = this.#flattenForUpdate({
-      system: snapshot.system,
-      prototypeToken: snapshot.prototypeToken,
-      img: snapshot.img,
-      name: snapshot.name,
-      flags: snapshot.flags
-    });
-    await actor.update(update, {
-      characterBuilderLevelUpRollback: true,
-      characterBuilderTransactionToken: token
-    });
-
     const options = { characterBuilderLevelUpRollback: true, characterBuilderTransactionToken: token };
-    await reconcileEmbeddedDocuments(actor, "Item", itemData, options);
-    await reconcileEmbeddedDocuments(actor, "ActiveEffect", effectData, options);
+    const actorFields = data => ({
+      system: data.system, prototypeToken: data.prototypeToken, img: data.img, name: data.name,
+      flags: data.flags?.[MODULE_ID] === undefined ? {} : { [MODULE_ID]: data.flags[MODULE_ID] }
+    });
+    const update = fieldChanges(actorFields(this.#documentSource(actor)), actorFields(snapshot));
+    if (Object.keys(update).length) await actor.update(update, options);
+    await reconcileEmbeddedDocuments(actor, "Item", itemData, options, attemptedItemIds);
+    await reconcileEmbeddedDocuments(actor, "ActiveEffect", effectData, options, new Set());
   }
 
   static #fingerprint(snapshot) {
-    const normalize = value => {
-      if (Array.isArray(value)) return value.map(normalize);
-      if (!value || typeof value !== "object") return value;
-      const output = {};
-      for (const key of Object.keys(value).sort()) {
-        if (key === "_stats") continue;
-        output[key] = normalize(value[key]);
-      }
-      return output;
-    };
-    const prepared = this.#plainClone(snapshot);
-    prepared.items = [...(prepared.items ?? [])].sort((a, b) => String(a._id).localeCompare(String(b._id)));
-    prepared.effects = [...(prepared.effects ?? [])].sort((a, b) => String(a._id).localeCompare(String(b._id)));
-    return JSON.stringify(normalize(prepared));
+    return documentFingerprint(snapshot, "Actor");
   }
 }

@@ -384,7 +384,7 @@ export class TemporaryActorService {
       if (candidate.type !== "character") return false;
       if (candidate.getFlag(MODULE_ID, "sourceActorId") !== sourceActor.id) return false;
       if (kind === "character-draft") return candidate.getFlag(MODULE_ID, "isDraft") && !candidate.getFlag(MODULE_ID, "isLevelUpDraft");
-      if (kind === "level-up-draft") return candidate.getFlag(MODULE_ID, "isLevelUpDraft");
+      if (kind === "level-up-draft") return candidate.getFlag(MODULE_ID, "isLevelUpDraft") && !candidate.getFlag(MODULE_ID, "recoveredTransaction");
       return false;
     });
     return [...candidates].sort((left, right) => Number(right.getFlag(MODULE_ID, "createdAt") ?? 0)

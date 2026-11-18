@@ -4,6 +4,7 @@ import { SupportCreatorApp } from "./apps/support-creator-app.mjs";
 import { CharacterBuilderApp } from "./apps/character-builder-app.mjs";
 import { CharacterBuilderToolApp } from "./apps/character-builder-tool-app.mjs";
 import { CharacterValidationApp } from "./apps/character-validation-app.mjs";
+import { LevelUpCommitService } from "./services/level-up-commit-service.mjs";
 import { LevelUpApp } from "./apps/level-up-app.mjs";
 import { LevelUpService } from "./services/level-up-service.mjs";
 import { LevelUpDraftManager } from "./services/level-up-draft-manager.mjs";
@@ -168,6 +169,7 @@ Hooks.once("init", async () => {
       createEffect: (actor, effectData, lifecycle = {}) => RulesAssistanceService.createManagedEffect(actor, effectData, lifecycle)
     }),
     openTool: () => game.user.isGM ? new CharacterBuilderToolApp().render({ force: true }) : null,
+    recoverFailedLevelUp: recoverLevelUp,
     validateCharacter: actor => game.user.isGM ? CharacterValidationApp.launch(actor) : null,
     openTutorial: () => SplashTutorialService.openNow()
   };
@@ -263,6 +265,7 @@ Hooks.on("renderActorDirectory", (app, html) => injectActorDirectoryTool(app, ht
 
 Hooks.on("getActorDirectoryEntryContext", (_application, options) => {
   if (!game.user.isGM || !Array.isArray(options)) return;
+  LibWrapperService.addRecoveryControl(options);
   if (options.some(option => option?.classes?.includes?.("cb-validate-character-context"))) return;
   options.push({
     label: "Validate Character",
@@ -388,6 +391,22 @@ Hooks.on("getHeaderControlsApplicationV2", (app, controls) => {
 
   if (moduleControls.length) controls.unshift(...moduleControls);
 });
+
+async function recoverLevelUp(actor) {
+  try {
+    const plan = LevelUpCommitService.inspectRecovery(actor);
+    const escape = foundry.utils.escapeHTML;
+    const items = plan.remove.map(item => "<li>" + escape(item.name) + "</li>").join("");
+    const content = "<p>Restore " + escape(actor.name) + " to its verified pre-level-up state? The GM safety backup will be kept.</p>"
+      + (items ? "<p>Remove these Items from the failed attempt:</p><ul>" + items + "</ul>" : "")
+      + "<p>The next Level Up starts with a fresh draft.</p>";
+    if (!await confirmAction({ title: "Recover Failed Level Up", content, yes: "Recover Actor" })) return;
+    await LevelUpCommitService.recover(actor, plan.token, plan.remove.map(item => item._id));
+    ui.notifications.info("Original Actor verified and unlocked. Start Level Up again.");
+  } catch (error) {
+    ui.notifications.error(error.message, { permanent: true });
+  }
+}
 
 async function confirmAction({ title, content, yes }) {
   const DialogV2 = foundry.applications.api.DialogV2;
@@ -844,6 +863,7 @@ async function openEpicBoon(actor) {
 }
 
 function openLevelUp(actor) {
+  if (game.user.isGM && actor.getFlag(MODULE_ID, "commitSafetyLock")?.safetyBackupActorId) return recoverLevelUp(actor);
   const eligibility = LevelUpService.eligibility(actor);
   if (!eligibility.ready) return ui.notifications.warn(eligibility.reason);
   minimizeTargetActorSheet(actor);

@@ -185,6 +185,7 @@ export class LibWrapperService {
         function (wrapped, ...args) {
           const options = wrapped(...args);
           if (!Array.isArray(options) || !game.user?.isGM) return options;
+          LibWrapperService.addRecoveryControl(options);
           if (options.some(option => String(option?.classes ?? "").split(/\s+/).includes("cb-validate-character-context"))) {
             return options;
           }
@@ -251,6 +252,17 @@ export class LibWrapperService {
       current.delete(callback);
       if (!current.size) this.#advancementCloseObservers.delete(manager);
     };
+  }
+
+  static addRecoveryControl(options) {
+    if (options.some(option => option.classes === "cb-recover-level-up")) return;
+    options.push({
+      label: "Recover Failed Level Up",
+      icon: "fa-solid fa-rotate-left",
+      classes: "cb-recover-level-up",
+      visible: target => Boolean(game.user.isGM && LibWrapperService.#actorFromDirectoryTarget(target)?.getFlag(MODULE_ID, "commitSafetyLock")?.safetyBackupActorId),
+      onClick: (_event, target) => game.modules.get(MODULE_ID)?.api?.recoverFailedLevelUp?.(LibWrapperService.#actorFromDirectoryTarget(target))
+    });
   }
 
   static #actorFromDirectoryTarget(target) {
