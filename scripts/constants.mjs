@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.935";
-export const MODULE_BUILD = "dnd5e-61-level-up-recovery";
+export const MODULE_VERSION = "0.9.936";
+export const MODULE_BUILD = "optional-warcraft-progression";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {
@@ -115,6 +115,14 @@ export const RULES_ASSISTANCE_DEFINITIONS = Object.freeze([
     label: "Agonizing Blast Native Binding",
     description: "Maintains the native enchantment on the cantrip selected by the Invocation.",
     tag: "Native Binding"
+  }),
+  Object.freeze({
+    key: "warcraftBeacon",
+    ruleId: "warcraft-beacon",
+    requiresModule: "dnd-world-warcraft",
+    label: "Holy Paladin — Beacon of Light",
+    description: "Heal the marked ally for half the hit points restored to another creature by this Paladin.",
+    tag: "Healing"
   }),
   Object.freeze({
     key: "layOnHandsRemovePoison",

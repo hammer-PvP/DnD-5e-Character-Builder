@@ -1,3 +1,4 @@
+import { runeContext, bloodRuneRest, inscribeWeapon, validateRuneWeapon } from "./warcraft-runeforging-service.mjs";
 import { AdvancementChoiceAnnotationService } from "./advancement-choice-annotation-service.mjs";
 import { ManagedAdvancementRegistry } from "./managed-advancement-registry.mjs";
 import { AdditionalNativeSpellProgressionService } from "./additional-native-spell-progression-service.mjs";
@@ -99,6 +100,9 @@ export class RuntimeFeatureService {
     if (defensive && ["short", "long"].includes(type)) add("defensive-tactics", "Defensive Tactics", defensive, "activity-choice",
       "Choose Escape the Horde or Multiattack Defense.", { order: 80 });
 
+    const rune = type === "long" ? runeContext(actor) : null;
+    if (rune) add("runeforging", rune.rune.name, rune.rune, "rune-manager",
+      "Choose the weapon to inscribe at the end of this Long Rest.", { order: 12 });
     const warBond = this.#feature(actor, "war-bond");
     if (type === "short" && warBond && WarBondManagementService.canManage(actor)) add("war-bond", "War Bond", warBond, "war-bond-manager",
       "Manage the source-native weapon bonds and reconcile the native War Bond capacity.", { order: 90 });
@@ -245,7 +249,7 @@ export class RuntimeFeatureService {
     const portent = this.#feature(actor, "portent");
     const resourceful = this.#feature(actor, "resourceful");
     const needsHeroicInspiration = Boolean(resourceful && actor.system?.attributes?.inspiration !== true);
-    return Boolean(cosmic?.getFlag(MODULE_ID, "activeCosmicOmen")
+    return Boolean(runeContext(actor)?.bonds.length || cosmic?.getFlag(MODULE_ID, "activeCosmicOmen")
       || portent?.getFlag(MODULE_ID, "portentResults")
       || needsHeroicInspiration);
   }
@@ -253,6 +257,7 @@ export class RuntimeFeatureService {
   static async applyRestLifecycle(actor, restType, operations = [], transactionId = null) {
     if (restType !== "long") return [];
     const staged = new Set((operations ?? []).map(operation => operation.actionId));
+    if (!staged.has("runeforging")) await bloodRuneRest(actor);
     const results = [];
     const rows = [
       { actionId: "cosmic-omen", identifier: "cosmic-omen", flag: "activeCosmicOmen", badgeKind: "runtime-cosmic-omen" },
@@ -292,6 +297,7 @@ export class RuntimeFeatureService {
   }
 
   static async validateOperation(actor, registry, actionId, payload = {}, session = null) {
+    if (actionId === "runeforging") return validateRuneWeapon(actor, payload);
     if (RestDecisionAssistanceService.isManagedAction(actionId)) {
       return RestDecisionAssistanceService.validateOperation(actor, actionId, payload, session);
     }
@@ -357,6 +363,7 @@ export class RuntimeFeatureService {
       return LongRestSpellPreparationService.applyOperation(actor, actionId, payload, transactionId);
     }
     switch (actionId) {
+      case "runeforging": return inscribeWeapon(actor, payload);
       case "weapon-mastery": return this.#applyMastery(actor, registry, payload);
       case "aspect-of-the-wilds":
       case "fiendish-resilience": return this.#applyEffectChoice(actor, actionId, payload, transactionId);

@@ -199,6 +199,7 @@ export class FeatureSpellOwnershipService {
   }
 
   static #featureForTitle(draft, title, owner) {
+    if (owner?.type === "feat") return owner;
     const normalized = this.#normalize(title);
     if (!normalized) return owner?.type === "feat" ? owner : null;
     const candidates = draft.items.filter(item => item.type === "feat" && (

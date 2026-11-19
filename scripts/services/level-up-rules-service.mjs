@@ -1,3 +1,4 @@
+import { eligibleWarcraftSpell } from "./warcraft-progression-service.mjs";
 import { writeAdvancementValue, readAdvancementRecords } from "../utils/advancement-utils.mjs";
 import { AdditionalNativeSpellProgressionService } from "./additional-native-spell-progression-service.mjs";
 import { MODULE_ID, SPELL_ACCESS_MODELS, WIZARD_SCHOOLS } from "../constants.mjs";
@@ -49,13 +50,13 @@ export class LevelUpRulesService {
       ? await SubclassSpellcastingService.spellList(subclassCaster, draft, newClassLevel)
       : { type: "class", identifier };
     const baseSpellPool = progression === "none" || !spellList ? []
-      : await this.#classSpellPool(spellList.identifier, registry, spellList.type);
+      : (await this.#classSpellPool(spellList.identifier, registry, spellList.type)).filter(spell => eligibleWarcraftSpell(draft, spell));
     const spellListIssue = subclassCaster && !baseSpellPool.length
       ? `Unable to resolve an eligible spell list for ${subclassCaster.subclass.name}. Register a D&D5e subclass spell list, provide an explicit spell-list source in its granted Spellcasting feature, or configure a class spell list. Character Builder will not guess which spells are legal.`
       : "";
     let spellPool = baseSpellPool;
     const magicalSecretsActive = identifier === "bard" && LevelUpFeatureService.magicalSecretsActive(draft, newClassLevel);
-    if (magicalSecretsActive) spellPool = await LevelUpFeatureService.magicalSecretsPool(registry);
+    if (magicalSecretsActive) spellPool = (await LevelUpFeatureService.magicalSecretsPool(registry)).filter(spell => eligibleWarcraftSpell(draft, spell));
     const cantripPool = baseSpellPool.filter(option => Number(option.system?.level ?? 0) === 0);
     const leveledPool = spellPool.filter(option => {
       const level = Number(option.system?.level ?? 0);

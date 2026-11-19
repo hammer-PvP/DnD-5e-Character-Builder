@@ -1,3 +1,4 @@
+import { selectWarcraftClass } from "./warcraft-progression-service.mjs";
 import { MODULE_ID } from "../constants.mjs";
 import { HitPointService } from "./hit-point-service.mjs";
 import { SourceResolver } from "./source-resolver.mjs";
@@ -51,6 +52,8 @@ export class AdvancementService {
 
     let data = document.toObject();
     if (type === "class") {
+      data = await selectWarcraftClass(data, registry);
+      if (!data) return null;
       data = RulesCompatibilityService.prepareClassData(data, { sourceUuid: document.uuid ?? null });
     }
     delete data._id;

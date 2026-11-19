@@ -1,3 +1,5 @@
+import { isWarcraftRune, removeRuneInscriptions } from "./warcraft-runeforging-service.mjs";
+import { validateHunterChoice, prepareHunterChoice, selectWarcraftClass, resolveDeferredKnight, retireGrantTree, invalidListGrant, activeWarcraft } from "./warcraft-progression-service.mjs";
 import { MODULE_ID } from "../constants.mjs";
 import { LevelUpDraftManager } from "./level-up-draft-manager.mjs";
 import { HitPointAdvancementService } from "./hit-point-advancement-service.mjs";
@@ -29,13 +31,17 @@ export class LevelUpAdvancementService {
     try {
       await repairAdvancementRecords(draft);
       let manager;
+      let deferred = "unchanged";
+      const previousRunes = activeWarcraft() ? draft.items.filter(isWarcraftRune) : [];
       let classIdentifier = state.selectedClassIdentifier;
       const hpValue = HitPointAdvancementService.advancementValue(state.hpResult);
 
       if (state.multiclass) {
         const document = await fromUuid(state.selectedClassSourceUuid);
         if (!document) throw new Error("The selected multiclass source document could not be loaded.");
-        let data = SourceResolver.filterAdvancementPools(document.toObject(), registry);
+        let data = await selectWarcraftClass(document.toObject(), registry);
+        if (!data) return { completed: false };
+        data = SourceResolver.filterAdvancementPools(data, registry);
         data = RulesCompatibilityService.prepareClassData(data, { sourceUuid: document.uuid ?? state.selectedClassSourceUuid });
         delete data._id;
         data.system ??= {};
@@ -49,6 +55,11 @@ export class LevelUpAdvancementService {
       } else {
         const classItem = draft.items.get(state.selectedClassId);
         if (!classItem) throw new Error("The selected Class no longer exists on the Level Up draft.");
+        deferred = await resolveDeferredKnight(draft, classItem, state.targetClassLevel, registry);
+        if (deferred === "cancelled") return { completed: false };
+        const hunter = await prepareHunterChoice(draft, classItem, state.targetClassLevel, registry);
+        if (hunter === "cancelled") return { completed: false };
+        if (hunter === "changed") deferred = "changed";
         await RulesCompatibilityService.ensureClassItemPolicy(classItem);
         manager = Manager.forLevelChange(draft, classItem.id, 1, {
           automaticApplication: true,
@@ -80,15 +91,24 @@ export class LevelUpAdvancementService {
         ManagedFeatureAdvancementBridge.end(managed);
       }
       if (!result.completed) {
+        if (deferred === "changed") await this.#restore(draft, rollbackSnapshot);
         await LevelUpDraftManager.setState(draft, { nativeRunning: false });
         return result;
       }
 
+      if (!state.multiclass) validateHunterChoice(draft, draft.items.get(state.selectedClassId), state.targetClassLevel);
       await SourceResolver.enforceAllowedSources(draft, registry, {
         beforeItemIds,
         context: "current Level Up"
       });
       await ItemChoiceReplacementIntegrityService.reconcile(draft);
+      const retiredRunes = previousRunes.filter(item => !draft.items.has(item.id));
+      if (retiredRunes.length) {
+        await retireGrantTree(draft, retiredRunes.map(item => item.id));
+        await removeRuneInscriptions(draft, retiredRunes);
+      }
+      const invalid = draft.items.filter(item => invalidListGrant(draft, item));
+      if (invalid.length) await draft.deleteEmbeddedDocuments("Item", invalid.map(item => item.id));
       await AdvancementService.dedupe(draft, { beforeItemIds });
       const integrityResult = await ItemGrantIntegrityService.reconcile(draft, registry, {
         context: "levelUp",

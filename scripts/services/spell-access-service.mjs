@@ -1,3 +1,4 @@
+import { eligibleWarcraftSpell } from "./warcraft-progression-service.mjs";
 import { AdditionalNativeSpellProgressionService } from "./additional-native-spell-progression-service.mjs";
 import { MODULE_ID, SPELL_ACCESS_MODELS } from "../constants.mjs";
 import { DraftManager } from "./draft-manager.mjs";
@@ -35,7 +36,7 @@ export class SpellAccessService {
       };
     }
 
-    const pool = await this.#classSpellPool(identifier, registry);
+    const pool = (await this.#classSpellPool(identifier, registry)).filter(spell => eligibleWarcraftSpell(draft, spell));
     const classLevel = Number(cls.system.levels ?? 1);
     const maximumSpellLevel = this.#maximumSpellLevel(progression, classLevel);
     // ScaleValue is the base class entitlement. Selected features that add to

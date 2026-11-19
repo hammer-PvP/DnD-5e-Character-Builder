@@ -236,10 +236,11 @@ export class AlwaysPreparedSpellReconciliationService {
 
   static #currentGrant(spell, draft, transactionId, state = null) {
     const grant = spell.getFlag(MODULE_ID, "itemGrantInstance");
-    const integrityRow = (state?.itemGrantIntegrity?.items
+    const receipts = (state?.itemGrantIntegrity?.items
       ?? state?.itemGrantReconciliation?.items
-      ?? []).find(row => row.itemId === spell.id
-        || (row.ownerItemId === grant?.ownerItemId && row.advancementId === grant?.advancementId));
+      ?? []);
+    const integrityRow = receipts.find(row => row.itemId === spell.id) ?? receipts.find(row =>
+      row.ownerItemId === grant?.ownerItemId && row.advancementId === grant?.advancementId && row.configuredUuid === grant?.configuredUuid);
     const owners = (spell.getFlag(MODULE_ID, "featureSpellOwners") ?? [])
       .filter(owner => owner?.alwaysPrepared && owner.transactionId === transactionId);
     const levelUpSpell = spell.getFlag(MODULE_ID, "levelUpSpell");

@@ -25,6 +25,10 @@ function documentFields(data, type) {
       else delete fields.flags["scene-packer"];
     }
   }
+  if (type === "Item" && record(fields.flags?.dnd5e) && !Object.keys(fields.flags.dnd5e).length) {
+    fields.flags = { ...fields.flags };
+    delete fields.flags.dnd5e;
+  }
   if (type === "Item" || type === "Actor") delete fields.effects;
   if (type === "Actor") delete fields.items;
   return fields;

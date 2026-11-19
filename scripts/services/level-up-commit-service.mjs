@@ -89,7 +89,11 @@ export class LevelUpCommitService {
       snapshotFingerprint = this.#fingerprint(snapshot);
       safetyBackup = await this.#createSafetyBackup(actor, draft, snapshot, token);
       const draftData = this.#documentSource(draft);
-      const itemData = draft.items.map(item => item.toObject());
+      const isManagedInspiration = item => item?.flags?.["heroic-inspiration-manager"]?.managed === true;
+      const managed = actor.items.filter(isManagedInspiration);
+      const managedIds = new Set(managed.map(item => item.id));
+      const itemData = draft.items.filter(item => !isManagedInspiration(item) && !managedIds.has(item.id))
+        .concat(managed).map(item => item.toObject());
       const revisions = state.sourceItemRevisions;
       const originalIds = revisions ? new Set(Object.keys(revisions)) : null;
       if (!originalIds && actor.items.some(item => !draft.items.has(item.id))) {
@@ -98,6 +102,8 @@ export class LevelUpCommitService {
       if (originalIds) {
         for (const id of originalIds) {
           const current = actor.items.get(id);
+          if (!current && isManagedInspiration(draft.items.get(id))) continue;
+          if (isManagedInspiration(current)) continue;
           if (!current || (current._stats?.modifiedTime ?? null) !== revisions[id]) {
             throw new Error("An Item changed on the live Actor while Level Up was open. Restart Level Up to use the current inventory.");
           }
@@ -109,7 +115,7 @@ export class LevelUpCommitService {
       const sourceItemIds = new Set(actor.items.map(item => item.id));
       const createdItems = itemData.filter(item => !sourceItemIds.has(item._id));
       attemptedItemIds = new Set(createdItems.map(row => row._id));
-      const deletedItems = actor.items.filter(item => !draft.items.get(item.id) && (!originalIds || originalIds.has(item.id)));
+      const deletedItems = actor.items.filter(item => !managedIds.has(item.id) && !draft.items.get(item.id) && (!originalIds || originalIds.has(item.id)));
       const baseUpdate = this.#flattenForUpdate({
         system: draftData.system,
         prototypeToken: draftData.prototypeToken,

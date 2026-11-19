@@ -545,7 +545,16 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       this.commitDialog = null;
       this.#releaseCommitDialog();
       await super.close();
-      this.actor.sheet?.render(false);
+      try {
+        const sheet = this.actor.sheet;
+        if (sheet) {
+          await sheet.render({ force: true });
+          await sheet.maximize?.();
+          sheet.bringToFront?.();
+        }
+      } catch (sheetError) {
+        console.warn(`${MODULE_ID} | Level Up completed, but the character sheet could not be restored.`, sheetError);
+      }
     } catch (error) {
       console.error(`${MODULE_ID} | Protected Level Up commit failed.`, error);
       this.commitInProgress = false;

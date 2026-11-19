@@ -75,7 +75,8 @@ export class SourceRegistry {
       for (const pack of packs) {
         let index;
         try {
-          index = await pack.getIndex({ fields: INDEX_FIELDS });
+          index = await pack.getIndex({ fields: pack.collection === "dnd-world-warcraft.spells"
+            ? [...INDEX_FIELDS, "system.description.value"] : INDEX_FIELDS });
         } catch (error) {
           console.warn(`${MODULE_ID} | Unable to index ${pack.collection}`, error);
           continue;

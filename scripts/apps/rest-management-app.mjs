@@ -1,3 +1,4 @@
+import { chooseRuneWeapon } from "../services/warcraft-runeforging-service.mjs";
 import { MODULE_ID } from "../constants.mjs";
 import { SourceRegistry } from "../services/source-registry.mjs";
 import { RestSessionService } from "../services/rest-session-service.mjs";
@@ -403,6 +404,11 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
         case "clear-prepare-spells":
           this.#clearPreparedSpellSelection();
           break;
+        case "open-rune-manager": {
+          const payload = await chooseRuneWeapon(this.actor, this.session?.operations?.runeforging?.payload);
+          if (payload) await this.#confirmCurrentAction(payload);
+          break;
+        }
         case "open-war-bond-manager":
           await WarBondManagerApp.launch(this.actor, { featureItemId: this.#selectedAction()?.featureItemId ?? null });
           break;
@@ -427,11 +433,11 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
     await this.render({ force: true });
   }
 
-  async #confirmCurrentAction() {
+  async #confirmCurrentAction(selection = null) {
     if (this.busy) return;
     const action = this.#selectedAction();
     if (!action || action.native) return;
-    const payload = this.#payloadFor(action);
+    const payload = selection ?? this.#payloadFor(action);
     if (action.kind === "scribe-spell" && !(await this.#confirmScribeCheckout(payload))) return;
     const token = foundry.utils.randomID();
     if (this.operationToken) return;
@@ -906,6 +912,7 @@ export class RestManagementApp extends HandlebarsApplicationMixin(ApplicationV2)
       isPortent: kind === "roll-portent",
       isRoll: ["roll-cosmic-omen", "roll-portent"].includes(kind),
       isScribe: kind === "scribe-spell",
+      isRuneManager: kind === "rune-manager",
       isWarBondManager: kind === "war-bond-manager",
       isMemorizeSpell: kind === "memorize-spell",
       isSpellSlotRecovery: kind === "spell-slot-recovery",

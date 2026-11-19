@@ -74,7 +74,7 @@ export class WarBondManagementService {
     const max = this.#usesMax(feature);
     if (!Number.isFinite(max) || max <= 0) throw new Error("War Bond does not currently expose a valid native bond capacity.");
     const spent = Math.max(0, Math.min(max, Number(feature.system?.uses?.spent ?? 0)));
-    const bonds = this.#appliedBonds(actor, activity);
+    const bonds = this.appliedEnchantments(actor, activity);
     const validCount = bonds.length;
     const brokenCount = Math.max(0, Math.min(max - validCount, spent - validCount));
     const occupied = Math.min(max, validCount + brokenCount);
@@ -104,7 +104,7 @@ export class WarBondManagementService {
     const bondedWeaponIds = new Set(bonds.map(row => row.weapon.id));
     const availableWeapons = [...(actor.items ?? [])]
       .filter(item => item?.type === "weapon" && !bondedWeaponIds.has(item.id))
-      .map(weapon => ({ weapon, errors: this.#enchantmentErrors(activity, weapon) }))
+      .map(weapon => ({ weapon, errors: this.enchantmentErrors(activity, weapon) }))
       .filter(row => row.errors.length === 0)
       .map(({ weapon }) => ({
         id: weapon.id,
@@ -152,7 +152,7 @@ export class WarBondManagementService {
       throw new Error("War Bond is at its native maximum. Break a bond before binding another weapon.");
     }
 
-    const errors = this.#enchantmentErrors(activity, weapon);
+    const errors = this.enchantmentErrors(activity, weapon);
     if (errors.length) throw new Error(errors.map(error => error?.message ?? String(error)).filter(Boolean).join(" ") || "That weapon is not eligible for War Bond.");
     const profile = activity.availableEnchantments?.[0]?._id ?? activity.availableEnchantments?.[0]?.id ?? null;
     if (!profile) throw new Error("The source-native War Bond enchantment profile could not be resolved.");
@@ -170,7 +170,7 @@ export class WarBondManagementService {
     const context = await this.context(actor, { featureItemId, activityId });
     const feature = this.feature(actor, context.featureItemId);
     const activity = this.activity(feature, context.activityId);
-    const bond = this.#appliedBonds(actor, activity).find(row => row.effect.uuid === effectUuid || row.effect.id === effectUuid);
+    const bond = this.appliedEnchantments(actor, activity).find(row => row.effect.uuid === effectUuid || row.effect.id === effectUuid);
     if (!bond) throw new Error("That War Bond is no longer present.");
     await bond.effect.delete({ characterBuilderRuntimeManagement: true, characterBuilderWarBond: true });
     const afterValid = Math.max(0, context.validCount - 1);
@@ -186,7 +186,7 @@ export class WarBondManagementService {
     return { changed: true, released: 1 };
   }
 
-  static #appliedBonds(actor, activity) {
+  static appliedEnchantments(actor, activity) {
     let effects = [];
     try {
       effects = [...(globalThis.dnd5e?.registry?.enchantments?.applied?.(activity.uuid) ?? [])];
@@ -211,7 +211,7 @@ export class WarBondManagementService {
       });
   }
 
-  static #enchantmentErrors(activity, weapon) {
+  static enchantmentErrors(activity, weapon) {
     try {
       const result = activity?.canEnchant?.(weapon);
       if (result === true || result == null) return [];

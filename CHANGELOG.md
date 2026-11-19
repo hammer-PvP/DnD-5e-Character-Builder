@@ -1,3 +1,12 @@
+## 0.9.936 — Optional Warcraft progression
+
+- Choose a Warcraft class variant during character creation or multiclassing. A Paladin can become a Death Knight immediately or decide at Paladin level 3.
+- Warcraft class spell lists honor subclass, hero variant and lineage prerequisites. Character Validation can remove a verified ineligible class-list grant on its revised copy.
+- Warcraft Hunter Beast Masters choose Roving or Pet Specialization at Ranger level 6. Eligible older characters can review the choice in Character Validation.
+- Change a Death Knight rune during advancement and select its weapon in the Long Rest panel. Blood Rune grants temporary hit points on inscription and after a Long Rest.
+- Short Rest Hit Dice use the native roll with Troll Healing, Inner Peace and Quiet Contemplation. Beacon of Light assists with secondary healing from spells and Lay on Hands when Rules Assistance is enabled.
+- Level Up preserves managed Heroic Inspiration and reopens the character sheet after completion. Warcraft features require the active Dungeons & Dragons: World of Warcraft module.
+
 ## 0.9.935 — Level Up and recovery
 
 - Level Up compares Item and Active Effect game data by document ID. Foundry timestamps can change as documents move from the draft to the original Actor. Effects retain their source, duration and ordered changes.

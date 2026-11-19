@@ -1,3 +1,6 @@
+import { activeWarcraft } from "./warcraft-progression-service.mjs";
+import { registerBeacon } from "./warcraft-beacon-service.mjs";
+import { registerRestDice } from "./warcraft-rest-dice-service.mjs";
 import { LevelUpFeatureService } from "./level-up-feature-service.mjs";
 import { MODULE_ID } from "../constants.mjs";
 import { PlayerSheetIntegrityService } from "./player-sheet-integrity-service.mjs";
@@ -220,6 +223,10 @@ export class LibWrapperService {
         },
         "WRAPPER"
       );
+      if (activeWarcraft()) {
+        registerRestDice(api, MODULE_ID);
+        registerBeacon(api, MODULE_ID);
+      }
       this.#registered = true;
       return true;
     } catch (error) {

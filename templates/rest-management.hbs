@@ -64,7 +64,9 @@
           </div>
         </div>
         <div class="cb-keeper-feature-actions">
-          {{#if selected.isWarBondManager}}
+          {{#if selected.isRuneManager}}
+          <button type="button" class="cb-primary-confirm" data-action="open-rune-manager" {{#if busy}}disabled{{/if}}><i class="fa-solid fa-link"></i> Select Rune Weapon</button>
+          {{else if selected.isWarBondManager}}
           <button type="button" class="cb-primary-confirm" data-action="open-war-bond-manager" {{#if busy}}disabled{{/if}}>
             <i class="fa-solid fa-link"></i>
             <span><strong>Manage War Bonds</strong><small>Open the same manager used by Bond with Weapon</small></span>

@@ -45,7 +45,7 @@ export class RulesAssistanceSettingsService {
 
   static rows(candidate = null) {
     const settings = this.settings(candidate);
-    return RULES_ASSISTANCE_DEFINITIONS.map(rule => ({
+    return RULES_ASSISTANCE_DEFINITIONS.filter(rule => !rule.requiresModule || globalThis.game?.modules?.get?.(rule.requiresModule)?.active).map(rule => ({
       ...rule,
       enabled: settings.rulesAssistance?.rules?.[rule.key] !== false
     }));

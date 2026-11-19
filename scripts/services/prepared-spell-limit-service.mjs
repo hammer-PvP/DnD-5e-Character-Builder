@@ -1,3 +1,4 @@
+import { invalidListGrant } from "./warcraft-progression-service.mjs";
 import { MODULE_ID, SPELL_ACCESS_MODELS } from "../constants.mjs";
 import { ClassProgressionGuard } from "./class-progression-guard.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
@@ -25,6 +26,7 @@ export class PreparedSpellLimitService {
     if (state === PREPARED || state === ALWAYS_PREPARED) return { allowed: true };
     if (Number(spell.system?.level ?? 0) <= 0) return { allowed: true };
 
+    if (invalidListGrant(actor, spell)) return { allowed: false, message: "This character does not meet the Warcraft spell prerequisite." };
     const context = this.classContextForSpell(actor, spell);
     if (!context?.limit) return { allowed: true };
 
@@ -102,7 +104,7 @@ export class PreparedSpellLimitService {
     return [...(actor.items ?? [])].filter(spell => {
       if (spell?.type !== "spell") return false;
       if (Number(spell.system?.level ?? 0) <= 0) return false;
-      if (this.#excludedGrant(spell)) return false;
+      if (this.#excludedGrant(spell) || invalidListGrant(actor, spell)) return false;
       return this.#belongsToClass(actor, spell, cls);
     });
   }

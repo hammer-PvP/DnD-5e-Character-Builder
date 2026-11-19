@@ -1,3 +1,5 @@
+import { SourceRegistry } from "./source-registry.mjs";
+import { eligibleWarcraftSpell, invalidListGrant, hunterReview, prepareHunterChoice } from "./warcraft-progression-service.mjs";
 import { NativeAdvancementSupportService } from "./native-advancement-support-service.mjs";
 import { ManagedAdvancementRegistry } from "./managed-advancement-registry.mjs";
 import { AdditionalNativeSpellProgressionService } from "./additional-native-spell-progression-service.mjs";
@@ -33,6 +35,12 @@ export class CharacterValidationBuildProjectionService {
   static async scan(actor, registry, graph) {
     const issues = [];
     issues.push(...this.#scanMalformedSpells(actor));
+    for (const cls of actor.items.filter(item => hunterReview(actor, item, registry))) {
+      issues.push({ id: "warcraft-hunter-pet:" + cls.id, kind: "warcraft-hunter-pet", severity: "warning",
+        repairable: true, repairMode: "guided", repairLabel: "Review Level 6 Choice", title: "Beast Master — Pet Specialization",
+        summary: "Review the Warcraft Hunter alternative to Roving on the revised character.",
+        data: { classItemId: cls.id } });
+    }
 
     const spellProjection = await this.#buildSpellProjection(actor, registry, graph);
     issues.push(...spellProjection.issues);
@@ -54,6 +62,8 @@ export class CharacterValidationBuildProjectionService {
 
   static canRepair(kind) {
     return new Set([
+      "warcraft-hunter-pet",
+      "warcraft-class-list-grant",
       "malformed-empty-spell",
       "class-spell-access-missing",
       "class-spell-choice-incomplete",
@@ -73,6 +83,18 @@ export class CharacterValidationBuildProjectionService {
 
   static async applyRepair(actor, issue) {
     switch (issue?.kind) {
+      case "warcraft-hunter-pet": {
+        const registry = await new SourceRegistry().load();
+        const cls = actor.items.get(issue.data.classItemId);
+        if (!hunterReview(actor, cls, registry)) return null;
+        const result = await prepareHunterChoice(actor, cls, Number(cls.system.levels) + 1, registry);
+        return { status: result === "changed" ? "repaired" : "cancelled", issueId: issue.id, title: issue.title };
+      }
+      case "warcraft-class-list-grant": {
+        const spell = actor.items.get(issue.data.spellId);
+        if (spell && invalidListGrant(actor, spell)) await actor.deleteEmbeddedDocuments("Item", [spell.id], { characterBuilderValidationRepair: true });
+        return { status: "repaired", issueId: issue.id, title: issue.title, message: "Rechecked the Warcraft class-list prerequisite." };
+      }
       case "malformed-empty-spell":
         return this.#removeMalformedSpell(actor, issue);
       case "class-spell-access-missing":
@@ -180,7 +202,7 @@ export class CharacterValidationBuildProjectionService {
 
       let pool;
       try {
-        pool = await this.#classSpellPool(identifier, registry);
+        pool = (await this.#classSpellPool(identifier, registry)).filter(spell => eligibleWarcraftSpell(actor, spell));
       } catch (error) {
         available = false;
         issues.push({
@@ -231,6 +253,13 @@ export class CharacterValidationBuildProjectionService {
       // spell list / current spell-level access. They are review findings, not
       // deletion instructions: legacy/homebrew provenance can be meaningful.
       for (const spell of classSpells) {
+        if (invalidListGrant(actor, spell)) {
+          issues.push({ id: "warcraft-class-list-grant:" + spell.id, kind: "warcraft-class-list-grant",
+            severity: "warning", repairable: true, repairMode: "safe", repairLabel: "Remove Class-list Grant",
+            title: spell.name + " — Warcraft Prerequisite", summary: "Character Builder granted this class-list spell before its Warcraft prerequisite was met.",
+            details: "Remove the ordinary class-list copy from this revised character.", data: { spellId: spell.id } });
+          continue;
+        }
         const option = pool.find(row => row.identifier === spell.system?.identifier);
         const level = Number(spell.system?.level ?? -1);
         if (option && (level === 0 || level <= maximumSpellLevel)) continue;
