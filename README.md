@@ -1,6 +1,6 @@
 # Character Builder
 
-**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14. **v0.9.937 supports Warcraft hero choices at creation and class level 3, plus a level 6 Beast Master choice. Level Up preserves managed Heroic Inspiration and restores the character sheet after completion.**
+**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14. **v0.9.938 keeps Warcraft class identity on the Builder’s class page and subclass selection in the native D&D5e browser.** Choose a starting class or leave the choice open until class level 3. A Ranger can start as Ranger, Warcraft Hunter or Demon Hunter. At level 3, confirm a new heroic progression after inspecting the native subclass options. Draconic Sorcery can retain its normal features or take the Evoker progression.
 
 > **Post-migration status:** the `v0.9.x1–x4` series was the D&D5e 6.x migration branch. v0.9.921 preserves the stabilized D&D5e 6.x runtime baseline on the normal `v0.9.9xx` line and continues the evidence-driven compatibility-fix policy.
 

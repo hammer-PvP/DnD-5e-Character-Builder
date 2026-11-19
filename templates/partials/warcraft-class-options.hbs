@@ -1,0 +1,12 @@
+{{#if warcraft}}
+<fieldset class="cb-warcraft-identity">
+  <legend>{{warcraft.title}}</legend>
+  {{#each warcraft.rows}}
+  <label>
+    <input type="radio" name="warcraftIdentity" value="{{id}}" {{checked checked}}>
+    <span><strong>{{name}}</strong><small>{{hint}}</small></span>
+  </label>
+  {{/each}}
+  {{#if warcraft.note}}<p>{{warcraft.note}}</p>{{/if}}
+</fieldset>
+{{/if}}

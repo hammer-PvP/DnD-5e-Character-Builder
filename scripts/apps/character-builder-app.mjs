@@ -1,3 +1,4 @@
+import { warcraftChoices, selectWarcraftClass } from "../services/warcraft-progression-service.mjs";
 import {
   MODULE_ID, ABILITIES, STANDARD_ARRAY, CUSTOM_ARRAY_SLOT_COUNT, POINT_BUY_COSTS, POINT_BUY_BUDGET, defaultSettings
 } from "../constants.mjs";
@@ -53,6 +54,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     this.registry = new SourceRegistry();
     this.previewUuid = null;
     this.previewKind = null;
+    this.warcraftPicks = new Map();
     this.pendingPrimaryUuid = { species: null, class: null };
     this.pendingCharacterName = null;
     this.primarySelectionBusy = false;
@@ -333,6 +335,10 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       selectedBackgroundUuid,
       selectedBackgroundOption,
       backgroundSelection,
+      warcraft: step === "class" && pendingClassUuid && !activeStepGate?.browseOnly
+        ? warcraftChoices(this.registry.findOption(pendingClassUuid)?.identifier,
+          this.registry.findOption(pendingClassUuid)?.name, this.registry,
+          { level: 1, selected: this.warcraftPicks.get(pendingClassUuid) }) : null,
       classGroups: decoratePrimaryGroups(
         this.registry.optionsByType("class"), selectedClassUuid, pendingClassUuid, effectiveClassUuid
       ),
@@ -389,6 +395,9 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   _onRender() {
     const root = this.element;
 
+    root.querySelectorAll('[name="warcraftIdentity"]').forEach(input => input.addEventListener("change", () => {
+      if (input.checked) this.warcraftPicks.set(this.pendingPrimaryUuid.class, input.value);
+    }));
     const characterNameInput = root.querySelector('[name="characterName"]');
     characterNameInput?.addEventListener("input", event => {
       this.pendingCharacterName = event.currentTarget.value;
@@ -864,6 +873,9 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       }
 
       NativeAdvancementModalGuard.assertAvailable();
+      const preparedClass = type === "class"
+        ? await selectWarcraftClass(document.toObject(), this.registry, this.warcraftPicks.get(uuid)) : null;
+      if (type === "class" && !preparedClass) return;
       ui.notifications.info(`Selecting ${document.name} with the native D&D5e Advancement flow.`);
 
       const selected = await AdvancementService.replacePrimaryDocument(this.draft, document, type, async () => {
@@ -880,7 +892,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         }
         if (Object.keys(changes).length) await DraftManager.setBuildState(this.draft, changes);
         await SourceResolver.enforceAllowedSources(this.draft, this.registry);
-      }, { registry: this.registry });
+      }, { registry: this.registry, preparedClass });
       if (!selected) {
         this.pendingPrimaryUuid[kind] = null;
         await this.#setStageEditing(kind, false);

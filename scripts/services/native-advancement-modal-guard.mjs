@@ -43,7 +43,7 @@ export class NativeAdvancementModalGuard {
    * @param {Function|null} [options.onComplete]
    * @returns {Promise<{completed: boolean, cancelled?: boolean}>}
    */
-  static run(manager, { onComplete = null, reservationToken = null } = {}) {
+  static run(manager, { onComplete = null, reservationToken = null, beforeForward = null } = {}) {
     if (!manager) return Promise.reject(new Error("A native AdvancementManager is required."));
 
     this.#releaseStaleActive();
@@ -71,6 +71,7 @@ export class NativeAdvancementModalGuard {
       const active = {
         manager,
         ownerElement,
+        beforeForward,
         modalToken: null,
         completionHook: null,
         renderHook: null,
@@ -384,7 +385,25 @@ export class NativeAdvancementModalGuard {
           this.#syncStepReadiness(active);
         });
       }
-      if (ready && !active.choiceCorrection && (!forward || complete)) return;
+      if (ready && !active.choiceCorrection && (!forward || complete)) {
+        if (!active.beforeForward || !forward) return;
+        if (active.resumeButton === target) return;
+        if (!active.forwardReview) {
+          const step = active.manager.step;
+          const review = active.beforeForward();
+          if (!review) return;
+          active.forwardReview = Promise.resolve(review).then(continueStep => {
+            if (!continueStep || active.released || active.manager.step !== step) return;
+            const button = active.manager.element?.querySelector('[data-action="' + action + '"]');
+            if (!button || button.disabled) return;
+            active.resumeButton = button;
+            try { button.click(); } finally { active.resumeButton = null; }
+          }).catch(error => {
+            console.error(MODULE_ID + " | Subclass confirmation failed.", error);
+            ui.notifications.error(error.message);
+          }).finally(() => { active.forwardReview = null; });
+        }
+      }
 
       event.preventDefault?.();
       event.stopImmediatePropagation?.();

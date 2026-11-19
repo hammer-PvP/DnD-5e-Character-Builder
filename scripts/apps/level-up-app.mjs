@@ -1,3 +1,4 @@
+import { warcraftChoices } from "../services/warcraft-progression-service.mjs";
 import { MODULE_ID } from "../constants.mjs";
 import { SourceResolver } from "../services/source-resolver.mjs";
 import { SourceRegistry } from "../services/source-registry.mjs";
@@ -33,6 +34,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     this.commitTransactionToken = null;
     this.commitModalToken = null;
     this.metadataReconciled = false;
+    this.warcraftPicks = new Map();
   }
 
   static DEFAULT_OPTIONS = {
@@ -104,6 +106,13 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const subclassReview = state.subclassReviewRequired
       ? await this.#subclassReviewContext(state)
       : null;
+    const cls = state.selectedClassId ? this.draft.items.get(state.selectedClassId) : null;
+    const source = this.registry.findOption(state.selectedClassSourceUuid);
+    const warcraft = state.step === "advancements" && !state.nativeComplete
+      ? warcraftChoices(state.selectedClassIdentifier,
+        source?.name ?? cls?.getFlag(MODULE_ID, "sourceSnapshot")?.name ?? state.selectedClassName, this.registry,
+        { level: state.targetClassLevel, current: cls?.flags?.["dnd-world-warcraft"]?.heroClass,
+          selected: this.warcraftPicks.get(state.selectedClassId ?? state.selectedClassSourceUuid) }) : null;
     const review = this.#reviewContext(state);
     const stepOrder = ["class", "hp", "advancements", "choices", "review"];
     const activeIndex = Math.max(0, stepOrder.indexOf(state.step ?? "class"));
@@ -142,6 +151,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       retainedHitPointRoll: HitPointAdvancementService.lockedRoll(this.actor),
       hpSummary: HitPointAdvancementService.summary(state.hpResult),
       rules,
+      warcraft,
       subclassReview,
       review,
       steps,
@@ -155,6 +165,10 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
   _onRender() {
     const root = this.element;
+    root.querySelectorAll('[name="warcraftIdentity"]').forEach(input => input.addEventListener("change", () => {
+      const state = LevelUpDraftManager.getState(this.draft);
+      if (input.checked) this.warcraftPicks.set(state.selectedClassId ?? state.selectedClassSourceUuid, input.value);
+    }));
     root.querySelectorAll("[data-action]").forEach(element => {
       element.addEventListener("click", event => this.#onAction(event));
     });
@@ -401,9 +415,10 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   async #runNativeAdvancements() {
+    const identity = this.element.querySelector('[name="warcraftIdentity"]:checked')?.value;
     this.busy = true;
     this.render({ force: true });
-    const result = await LevelUpAdvancementService.apply(this.draft, this.registry);
+    const result = await LevelUpAdvancementService.apply(this.draft, this.registry, identity);
     if (result.completed) {
       const state = LevelUpDraftManager.getState(this.draft);
       if (!state.subclassReviewRequired) {

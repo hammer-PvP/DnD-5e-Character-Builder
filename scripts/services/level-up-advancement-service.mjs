@@ -1,5 +1,5 @@
 import { isWarcraftRune, removeRuneInscriptions } from "./warcraft-runeforging-service.mjs";
-import { validateHunterChoice, prepareHunterChoice, selectWarcraftClass, resolveHeroProgression, retireGrantTree, invalidListGrant, activeWarcraft } from "./warcraft-progression-service.mjs";
+import { validateHunterChoice, prepareHunterChoice, selectWarcraftClass, nativeHeroChoice, resolveHeroProgression, retireGrantTree, invalidListGrant, activeWarcraft } from "./warcraft-progression-service.mjs";
 import { MODULE_ID } from "../constants.mjs";
 import { LevelUpDraftManager } from "./level-up-draft-manager.mjs";
 import { HitPointAdvancementService } from "./hit-point-advancement-service.mjs";
@@ -18,7 +18,7 @@ import { normalizedAdvancementName, repairAdvancementRecords } from "../utils/ad
 import { AdvancementCompletionGateService } from "./advancement-completion-gate-service.mjs";
 
 export class LevelUpAdvancementService {
-  static async apply(draft, registry) {
+  static async apply(draft, registry, identity) {
     const state = LevelUpDraftManager.getState(draft);
     if (state.nativeComplete) return { completed: true, classItem: draft.items.get(state.selectedClassId) };
     if (!state.hpResult) throw new Error("Resolve Hit Points before confirming Class Progression.");
@@ -32,7 +32,7 @@ export class LevelUpAdvancementService {
       await repairAdvancementRecords(draft);
       let manager;
       let progressionChanged = false;
-      let chosenSubclass;
+      let subclassChoice;
       const previousRunes = activeWarcraft() ? draft.items.filter(isWarcraftRune) : [];
       let classIdentifier = state.selectedClassIdentifier;
       const hpValue = HitPointAdvancementService.advancementValue(state.hpResult);
@@ -40,7 +40,7 @@ export class LevelUpAdvancementService {
       if (state.multiclass) {
         const document = await fromUuid(state.selectedClassSourceUuid);
         if (!document) throw new Error("The selected multiclass source document could not be loaded.");
-        let data = await selectWarcraftClass(document.toObject(), registry);
+        let data = await selectWarcraftClass(document.toObject(), registry, identity);
         if (!data) return { completed: false };
         data = SourceResolver.filterAdvancementPools(data, registry);
         data = RulesCompatibilityService.prepareClassData(data, { sourceUuid: document.uuid ?? state.selectedClassSourceUuid });
@@ -56,10 +56,9 @@ export class LevelUpAdvancementService {
       } else {
         const classItem = draft.items.get(state.selectedClassId);
         if (!classItem) throw new Error("The selected Class no longer exists on the Level Up draft.");
-        const progression = await resolveHeroProgression(draft, classItem, state.targetClassLevel, registry);
+        const progression = await resolveHeroProgression(draft, classItem, state.targetClassLevel, registry, identity);
         if (!progression) return { completed: false };
         progressionChanged = progression.changed;
-        chosenSubclass = progression.subclass;
         const hunter = await prepareHunterChoice(draft, classItem, state.targetClassLevel, registry);
         if (hunter === "cancelled") {
           if (progressionChanged) await this.#restore(draft, rollbackSnapshot);
@@ -71,12 +70,7 @@ export class LevelUpAdvancementService {
           automaticApplication: true,
           showVisualizer: false
         });
-        if (progression.subclass) {
-          const step = manager.steps.find(step => step.type === "forward" && step.flow?.advancement?.type === "Subclass"
-            && step.flow.advancement.item.id === classItem.id);
-          if (!step) throw new Error("The subclass advancement is unavailable for this class.");
-          step.flow.getAutomaticApplicationValue = async () => ({ uuid: progression.subclass });
-        }
+        subclassChoice = nativeHeroChoice(manager, classItem, state.targetClassLevel, registry);
         const cloneClass = manager.clone.items.get(classItem.id);
         if (!cloneClass) throw new Error("The native Advancement clone did not contain the selected Class.");
         const source = cloneClass.toObject();
@@ -97,7 +91,7 @@ export class LevelUpAdvancementService {
       const managed = ManagedFeatureAdvancementBridge.begin(manager, { workflow: "levelUp", classIdentifier });
       let result;
       try {
-        result = await this.#runManager(manager);
+        result = await NativeAdvancementModalGuard.run(manager, { beforeForward: subclassChoice?.beforeForward });
         if (result.completed) await ManagedFeatureAdvancementBridge.restore(draft, managed);
       } finally {
         ManagedFeatureAdvancementBridge.end(managed);
@@ -108,6 +102,7 @@ export class LevelUpAdvancementService {
         return result;
       }
 
+      await subclassChoice?.finish(draft);
       if (!state.multiclass) validateHunterChoice(draft, draft.items.get(state.selectedClassId), state.targetClassLevel);
       await SourceResolver.enforceAllowedSources(draft, registry, {
         beforeItemIds,
@@ -160,11 +155,6 @@ export class LevelUpAdvancementService {
       const newSubclass = draft.items.find(item => item.type === "subclass"
         && !beforeItemIds.has(item.id)
         && (!item.system?.classIdentifier || item.system.classIdentifier === resolvedClassIdentifier));
-      if (chosenSubclass) {
-        const accepted = Object.values(classItem.toObject().system.advancement ?? {}).some(step =>
-          step.type === "Subclass" && step.value?.uuid === chosenSubclass && step.value.document === newSubclass?.id);
-        if (!newSubclass || !accepted) throw new Error("The native advancement did not apply the selected subclass.");
-      }
       const subclassReviewRequired = Boolean(newSubclass);
 
       await LevelUpDraftManager.setState(draft, {
@@ -221,12 +211,6 @@ export class LevelUpAdvancementService {
       owner: step?.flow?.item ?? advancement?.item ?? null,
       workflow: "levelUp"
     });
-  }
-
-  static #runManager(manager) {
-    // Keep the native manager and browser. The modal guard can reject an
-    // invalid choice in place before the resulting draft is validated.
-    return NativeAdvancementModalGuard.run(manager);
   }
 
   static #snapshot(draft) {

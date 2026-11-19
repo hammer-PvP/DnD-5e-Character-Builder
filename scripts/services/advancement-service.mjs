@@ -42,6 +42,7 @@ export class AdvancementService {
 
   static async addItem(draft, document, type, onComplete, {
     abilityAssignments = null,
+    preparedClass = null,
     registry = null,
     reservationToken = null
   } = {}) {
@@ -52,7 +53,7 @@ export class AdvancementService {
 
     let data = document.toObject();
     if (type === "class") {
-      data = await selectWarcraftClass(data, registry);
+      data = preparedClass ?? await selectWarcraftClass(data, registry);
       if (!data) return null;
       data = RulesCompatibilityService.prepareClassData(data, { sourceUuid: document.uuid ?? null });
     }

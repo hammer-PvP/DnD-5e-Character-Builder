@@ -1,3 +1,9 @@
+## 0.9.938 — Warcraft class and subclass choices
+
+- Choose the starting identity on the class page, also when adding a new class. Each option shows what it means for the character’s progression.
+- At class level 3, confirm an unrestricted Warcraft identity on the Builder page and explore subclasses in the native D&D5e browser. Selecting a heroic subclass prompts when advancing from that step. Back returns to the native subclass choices and keeps earlier steps.
+- Draconic Sorcery offers both ordinary Sorcerer and Warcraft Evoker progression. Hunter remains a Ranger identity with free subclass selection. The existing Beast Master level 6 choice remains available.
+
 ## 0.9.937 — Warcraft hero choices
 
 - Start a Warcraft progression at class level 1 or choose it while reviewing subclasses at class level 3. Inspect the choices and confirm a conversion before it applies. Shared subclasses can retain their ordinary progression.

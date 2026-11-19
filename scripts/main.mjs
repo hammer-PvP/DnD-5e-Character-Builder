@@ -42,6 +42,7 @@ Hooks.once("init", async () => {
   Handlebars.registerHelper("dnd5eCharacterBuilderAdd", (a, b) => Number(a) + Number(b));
   Handlebars.registerHelper("dnd5eCharacterBuilderConcat", (...values) => values.slice(0, -1).join(""));
   await loadTemplates([
+    `modules/${MODULE_ID}/templates/partials/warcraft-class-options.hbs`,
     `modules/${MODULE_ID}/templates/partials/source-preview.hbs`,
     `modules/${MODULE_ID}/templates/partials/pact-of-the-tome-selection.hbs`
   ]);
