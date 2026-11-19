@@ -942,7 +942,7 @@ export class PlayerSheetIntegrityService {
 
   static #removeContextOptions(options, blockedNames) {
     for (let i = options.length - 1; i >= 0; i--) {
-      const name = String(options[i]?.name ?? "");
+      const name = String(options[i]?.label ?? options[i]?.name ?? "");
       if (blockedNames.has(name)) options.splice(i, 1);
     }
   }

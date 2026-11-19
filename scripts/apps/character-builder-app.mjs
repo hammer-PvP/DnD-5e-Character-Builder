@@ -102,6 +102,10 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   }
 
   async _prepareContext() {
+    // Progress renders can outlive the draft that commit consumes.
+    if (this.commitInProgress && this.lastCreationContext) {
+      return { ...this.lastCreationContext, busy: true, commitInProgress: true, commitDialog: this.commitDialog };
+    }
     this.draft ??= await DraftManager.getOrCreate(this.actor);
     await this.registry.load();
 
@@ -300,7 +304,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       }))
     }));
 
-    return {
+    return this.lastCreationContext = {
       actor: this.actor,
       draft: this.draft,
       state,
@@ -1474,9 +1478,9 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       stage: "Starting",
       detail: "Preparing the protected Character Creation transaction."
     };
-    this.render({ force: true });
 
     try {
+      await this.render({ force: true });
       await SourceResolver.enforceAllowedSources(this.draft, this.registry);
       const creationState = DraftManager.getBuildState(this.draft);
       const integrityResult = await ItemGrantIntegrityService.reconcile(this.draft, this.registry, { context: "creation" });

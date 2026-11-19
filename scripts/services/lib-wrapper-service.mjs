@@ -1,3 +1,4 @@
+import { guardWarcraftItemGrantRender } from "./warcraft-item-grant-compatibility.mjs";
 import { activeWarcraft } from "./warcraft-progression-service.mjs";
 import { registerBeacon } from "./warcraft-beacon-service.mjs";
 import { registerRestDice } from "./warcraft-rest-dice-service.mjs";
@@ -29,6 +30,32 @@ const DND5E_DAMAGE_TARGET_OPTIONS_TARGET = "dnd5e.applications.components.Damage
  */
 export class LibWrapperService {
   static #registered = false;
+  static #targets = new Set();
+  static #warcraftReady = false;
+  static failure = "";
+
+  static #install(moduleId, target, fn, mode) {
+    if (this.#targets.has(target)) return;
+    try {
+      globalThis.libWrapper.register(moduleId, target, fn, mode);
+      this.#targets.add(target);
+    } catch (error) {
+      throw new Error(target + ": " + error.message, { cause: error });
+    }
+  }
+
+  static ready() {
+    if (!this.register() || !activeWarcraft() || this.#warcraftReady) return;
+    this.#warcraftReady = true;
+    const api = { register: (...args) => this.#install(...args) };
+    for (const [name, setup] of [["Pet Specialization", guardWarcraftItemGrantRender], ["Short Rest Hit Dice", registerRestDice], ["Beacon of Light", registerBeacon]]) {
+      try { setup(api, MODULE_ID); }
+      catch (error) {
+        console.error(MODULE_ID + " | Warcraft " + name, error);
+        if (game.user.isGM) ui.notifications.warn("Character Builder: Warcraft " + name + " could not initialize. " + error.message);
+      }
+    }
+  }
   static #advancementCloseObservers = new WeakMap();
 
   static get registered() {
@@ -50,7 +77,7 @@ export class LibWrapperService {
     }
 
     try {
-      api.register(
+      this.#install(
         MODULE_ID,
         ADVANCEMENT_CLOSE_TARGET,
         function (wrapped, ...args) {
@@ -82,7 +109,7 @@ export class LibWrapperService {
         },
         "WRAPPER"
       );
-      api.register(
+      this.#install(
         MODULE_ID,
         ACTOR_SHEET_ADD_TARGET,
         function (wrapped, ...args) {
@@ -91,7 +118,7 @@ export class LibWrapperService {
         },
         "WRAPPER"
       );
-      api.register(
+      this.#install(
         MODULE_ID,
         ACTOR_SHEET_DROP_ITEM_TARGET,
         function (wrapped, event, item, ...args) {
@@ -100,7 +127,7 @@ export class LibWrapperService {
         },
         "WRAPPER"
       );
-      api.register(
+      this.#install(
         MODULE_ID,
         ACTOR_SHEET_DROP_TARGET,
         function (wrapped, event, items, behavior, ...args) {
@@ -110,7 +137,7 @@ export class LibWrapperService {
         },
         "WRAPPER"
       );
-      api.register(
+      this.#install(
         MODULE_ID,
         DND5E_ACTOR_MODIFY_TOKEN_ATTRIBUTE_TARGET,
         async function (wrapped, attribute, value, isDelta, isBar, ...args) {
@@ -119,7 +146,7 @@ export class LibWrapperService {
         },
         "WRAPPER"
       );
-      api.register(
+      this.#install(
         MODULE_ID,
         DND5E_ACTOR_REVERT_ORIGINAL_FORM_TARGET,
         function (wrapped, ...args) {
@@ -128,7 +155,7 @@ export class LibWrapperService {
         "WRAPPER"
       );
       if (globalThis.dnd5e?.documents?.activity?.TransformActivity?.prototype?.queryActor) {
-        api.register(MODULE_ID, `${DND5E_TRANSFORM_ACTIVITY}.use`,
+        this.#install(MODULE_ID, `${DND5E_TRANSFORM_ACTIVITY}.use`,
           async function (wrapped, ...args) {
             if (LevelUpFeatureService.isTrackedWildShapeActivity(this) && this.item.isOwner && this.canUse
               && !(await LevelUpFeatureService.availableWildShapeForms(this)).length) {
@@ -137,13 +164,13 @@ export class LibWrapperService {
             }
             return wrapped(...args);
           }, "MIXED");
-        api.register(MODULE_ID, `${DND5E_TRANSFORM_ACTIVITY}.queryActor`,
+        this.#install(MODULE_ID, `${DND5E_TRANSFORM_ACTIVITY}.queryActor`,
           function (wrapped, ...args) {
             if (!LevelUpFeatureService.isTrackedWildShapeActivity(this)) return wrapped(...args);
             return LevelUpFeatureService.availableWildShapeForms(this)
               .then(forms => LevelUpFeatureService.chooseWildShapeForm(forms));
           }, "MIXED");
-        api.register(MODULE_ID, `${DND5E_TRANSFORM_ACTIVITY}.onChatAction`,
+        this.#install(MODULE_ID, `${DND5E_TRANSFORM_ACTIVITY}.onChatAction`,
           async function (wrapped, event, target, message, ...args) {
             const action = target.dataset.action ?? message.system?.getButton?.(target)?.action;
             const selected = message.getFlag("dnd5e", "transform.uuid");
@@ -155,7 +182,7 @@ export class LibWrapperService {
             return wrapped(event, target, message, ...args);
           }, "MIXED");
       }
-      api.register(
+      this.#install(
         MODULE_ID,
         DND5E_ATTACK_ROLL_TARGET,
         function (wrapped, config = {}, dialog = {}, message = {}) {
@@ -165,7 +192,7 @@ export class LibWrapperService {
         // exists it must be allowed to stop the roll instead of chaining.
         "MIXED"
       );
-      api.register(
+      this.#install(
         MODULE_ID,
         DND5E_ATTACK_CHAT_ACTION_TARGET,
         async function (wrapped, event, target, message, ...args) {
@@ -174,7 +201,7 @@ export class LibWrapperService {
         },
         "MIXED"
       );
-      api.register(
+      this.#install(
         MODULE_ID,
         DND5E_DAMAGE_TARGET_OPTIONS_TARGET,
         function (wrapped, targetUuid, ...args) {
@@ -182,7 +209,7 @@ export class LibWrapperService {
         },
         "WRAPPER"
       );
-      api.register(
+      this.#install(
         MODULE_ID,
         ACTOR_DIRECTORY_CONTEXT_TARGET,
         function (wrapped, ...args) {
@@ -223,14 +250,11 @@ export class LibWrapperService {
         },
         "WRAPPER"
       );
-      if (activeWarcraft()) {
-        registerRestDice(api, MODULE_ID);
-        registerBeacon(api, MODULE_ID);
-      }
       this.#registered = true;
       return true;
     } catch (error) {
-      console.error(`${MODULE_ID} | Could not register the AdvancementManager close-lifecycle wrapper.`, error);
+      this.failure = error.message;
+      console.error(MODULE_ID + " | Could not initialize a core wrapper.", error);
       return false;
     }
   }

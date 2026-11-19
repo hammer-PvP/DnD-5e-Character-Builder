@@ -1,5 +1,5 @@
 import { SourceRegistry } from "./source-registry.mjs";
-import { eligibleWarcraftSpell, invalidListGrant, hunterReview, prepareHunterChoice } from "./warcraft-progression-service.mjs";
+import { eligibleWarcraftSpell, invalidListGrant, restrictedOrdinarySpell, reviewRestrictedSpell, sourceOf, hunterReview, prepareHunterChoice } from "./warcraft-progression-service.mjs";
 import { NativeAdvancementSupportService } from "./native-advancement-support-service.mjs";
 import { ManagedAdvancementRegistry } from "./managed-advancement-registry.mjs";
 import { AdditionalNativeSpellProgressionService } from "./additional-native-spell-progression-service.mjs";
@@ -64,6 +64,7 @@ export class CharacterValidationBuildProjectionService {
     return new Set([
       "warcraft-hunter-pet",
       "warcraft-class-list-grant",
+      "warcraft-spell-origin-review",
       "malformed-empty-spell",
       "class-spell-access-missing",
       "class-spell-choice-incomplete",
@@ -89,6 +90,10 @@ export class CharacterValidationBuildProjectionService {
         if (!hunterReview(actor, cls, registry)) return null;
         const result = await prepareHunterChoice(actor, cls, Number(cls.system.levels) + 1, registry);
         return { status: result === "changed" ? "repaired" : "cancelled", issueId: issue.id, title: issue.title };
+      }
+      case "warcraft-spell-origin-review": {
+        const result = await reviewRestrictedSpell(actor, actor.items.get(issue.data.spellId));
+        return { status: result === "cancelled" ? "cancelled" : "repaired", issueId: issue.id, title: issue.title };
       }
       case "warcraft-class-list-grant": {
         const spell = actor.items.get(issue.data.spellId);
@@ -258,6 +263,15 @@ export class CharacterValidationBuildProjectionService {
             severity: "warning", repairable: true, repairMode: "safe", repairLabel: "Remove Class-list Grant",
             title: spell.name + " — Warcraft Prerequisite", summary: "Character Builder granted this class-list spell before its Warcraft prerequisite was met.",
             details: "Remove the ordinary class-list copy from this revised character.", data: { spellId: spell.id } });
+          continue;
+        }
+        if (!eligibleWarcraftSpell(actor, spell)) {
+          if (restrictedOrdinarySpell(actor, spell) && spell.flags?.[MODULE_ID]?.warcraftRetainedSpell !== sourceOf(spell)) {
+            issues.push({ id: "warcraft-spell-origin-review:" + spell.id, kind: "warcraft-spell-origin-review",
+              severity: "warning", repairable: true, repairMode: "guided", repairLabel: "Review Spell",
+              title: spell.name + " — Warcraft Prerequisite", summary: "This character lacks the prerequisite. The original acquisition is unverified.",
+              details: "Keep an intentional GM grant or remove this spell from the revised character.", data: { spellId: spell.id } });
+          }
           continue;
         }
         const option = pool.find(row => row.identifier === spell.system?.identifier);

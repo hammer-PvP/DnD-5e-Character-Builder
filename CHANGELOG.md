@@ -1,3 +1,10 @@
+## 0.9.937 — Warcraft hero choices
+
+- Start a Warcraft progression at class level 1 or choose it while reviewing subclasses at class level 3. Inspect the choices and confirm a conversion before it applies. Shared subclasses can retain their ordinary progression.
+- Eligible Beast Masters can choose Roving or Pet Specialization at Ranger level 6. Character Validation offers that choice on existing characters and lets the GM review restricted Warcraft spells on the revised copy.
+- Hero selection waits for the outgoing dialog to close before opening Advancement. Character creation progress can finish rendering after the draft is consumed.
+- Warcraft 1.0.0 Pet Specialization render compatibility, world-ready Beacon initialization and updated Foundry text enrichment for subclass review.
+
 ## 0.9.936 — Optional Warcraft progression
 
 - Choose a Warcraft class variant during character creation or multiclassing. A Paladin can become a Death Knight immediately or decide at Paladin level 3.

@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.936";
-export const MODULE_BUILD = "optional-warcraft-progression";
+export const MODULE_VERSION = "0.9.937";
+export const MODULE_BUILD = "warcraft-hero-choices";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {

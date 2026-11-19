@@ -688,7 +688,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const rawDescription = String(subclass.system?.description?.value ?? subclass.system?.description?.chat ?? "").trim();
     let description = rawDescription;
     try {
-      description = await globalThis.TextEditor?.enrichHTML?.(rawDescription, {
+      description = await foundry.applications.ux.TextEditor.implementation.enrichHTML(rawDescription, {
         async: true,
         relativeTo: subclass,
         secrets: Boolean(game.user?.isGM)

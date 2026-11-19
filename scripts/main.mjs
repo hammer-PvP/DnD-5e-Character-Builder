@@ -182,8 +182,12 @@ Hooks.once("ready", async () => {
   TemporaryActorService.ready();
   ShortRestHomebrewService.ready();
   console.info(`Character Builder ${MODULE_VERSION} (${MODULE_BUILD}) loaded.`);
-  if (!LibWrapperService.register() && game.user.isGM) {
-    ui.notifications.error("Character Builder requires libWrapper. Install and activate libWrapper, then reload the world.", { permanent: true });
+  LibWrapperService.ready();
+  if (!LibWrapperService.registered && game.user.isGM) {
+    const message = globalThis.libWrapper?.register
+      ? "Character Builder could not initialize a core integration. " + LibWrapperService.failure
+      : "Character Builder requires the libWrapper API. Check that libWrapper is active and reload the world.";
+    ui.notifications.error(message, { permanent: true });
   }
   if (game.system.id !== "dnd5e") {
     ui.notifications.error("Character Builder requires the D&D5e system.");

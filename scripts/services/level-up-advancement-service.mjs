@@ -1,5 +1,5 @@
 import { isWarcraftRune, removeRuneInscriptions } from "./warcraft-runeforging-service.mjs";
-import { validateHunterChoice, prepareHunterChoice, selectWarcraftClass, resolveDeferredKnight, retireGrantTree, invalidListGrant, activeWarcraft } from "./warcraft-progression-service.mjs";
+import { validateHunterChoice, prepareHunterChoice, selectWarcraftClass, resolveHeroProgression, retireGrantTree, invalidListGrant, activeWarcraft } from "./warcraft-progression-service.mjs";
 import { MODULE_ID } from "../constants.mjs";
 import { LevelUpDraftManager } from "./level-up-draft-manager.mjs";
 import { HitPointAdvancementService } from "./hit-point-advancement-service.mjs";
@@ -31,7 +31,8 @@ export class LevelUpAdvancementService {
     try {
       await repairAdvancementRecords(draft);
       let manager;
-      let deferred = "unchanged";
+      let progressionChanged = false;
+      let chosenSubclass;
       const previousRunes = activeWarcraft() ? draft.items.filter(isWarcraftRune) : [];
       let classIdentifier = state.selectedClassIdentifier;
       const hpValue = HitPointAdvancementService.advancementValue(state.hpResult);
@@ -55,16 +56,27 @@ export class LevelUpAdvancementService {
       } else {
         const classItem = draft.items.get(state.selectedClassId);
         if (!classItem) throw new Error("The selected Class no longer exists on the Level Up draft.");
-        deferred = await resolveDeferredKnight(draft, classItem, state.targetClassLevel, registry);
-        if (deferred === "cancelled") return { completed: false };
+        const progression = await resolveHeroProgression(draft, classItem, state.targetClassLevel, registry);
+        if (!progression) return { completed: false };
+        progressionChanged = progression.changed;
+        chosenSubclass = progression.subclass;
         const hunter = await prepareHunterChoice(draft, classItem, state.targetClassLevel, registry);
-        if (hunter === "cancelled") return { completed: false };
-        if (hunter === "changed") deferred = "changed";
+        if (hunter === "cancelled") {
+          if (progressionChanged) await this.#restore(draft, rollbackSnapshot);
+          return { completed: false };
+        }
+        progressionChanged ||= hunter === "changed";
         await RulesCompatibilityService.ensureClassItemPolicy(classItem);
         manager = Manager.forLevelChange(draft, classItem.id, 1, {
           automaticApplication: true,
           showVisualizer: false
         });
+        if (progression.subclass) {
+          const step = manager.steps.find(step => step.type === "forward" && step.flow?.advancement?.type === "Subclass"
+            && step.flow.advancement.item.id === classItem.id);
+          if (!step) throw new Error("The subclass advancement is unavailable for this class.");
+          step.flow.getAutomaticApplicationValue = async () => ({ uuid: progression.subclass });
+        }
         const cloneClass = manager.clone.items.get(classItem.id);
         if (!cloneClass) throw new Error("The native Advancement clone did not contain the selected Class.");
         const source = cloneClass.toObject();
@@ -91,7 +103,7 @@ export class LevelUpAdvancementService {
         ManagedFeatureAdvancementBridge.end(managed);
       }
       if (!result.completed) {
-        if (deferred === "changed") await this.#restore(draft, rollbackSnapshot);
+        if (progressionChanged) await this.#restore(draft, rollbackSnapshot);
         await LevelUpDraftManager.setState(draft, { nativeRunning: false });
         return result;
       }
@@ -148,6 +160,11 @@ export class LevelUpAdvancementService {
       const newSubclass = draft.items.find(item => item.type === "subclass"
         && !beforeItemIds.has(item.id)
         && (!item.system?.classIdentifier || item.system.classIdentifier === resolvedClassIdentifier));
+      if (chosenSubclass) {
+        const accepted = Object.values(classItem.toObject().system.advancement ?? {}).some(step =>
+          step.type === "Subclass" && step.value?.uuid === chosenSubclass && step.value.document === newSubclass?.id);
+        if (!newSubclass || !accepted) throw new Error("The native advancement did not apply the selected subclass.");
+      }
       const subclassReviewRequired = Boolean(newSubclass);
 
       await LevelUpDraftManager.setState(draft, {
