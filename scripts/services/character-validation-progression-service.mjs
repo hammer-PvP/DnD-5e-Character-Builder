@@ -1,4 +1,5 @@
 import { RuntimeFeatureService } from "./runtime-feature-service.mjs";
+import { effectiveWarcraftAdvancements } from "./warcraft-progression-service.mjs";
 import { MODULE_ID } from "../constants.mjs";
 import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
@@ -151,14 +152,17 @@ export class CharacterValidationProgressionService {
       const source = await this.#resolveSource(owner, registry);
       if (!source?.document) continue;
       const ownerLevel = this.#ownerLevel(owner, actor);
-      const record = { owner, source, ownerLevel };
+      const record = { owner, source: {
+        ...source,
+        effectiveAdvancement: await effectiveWarcraftAdvancements(actor, owner, source.document, registry)
+      }, ownerLevel };
       owners.push(record);
-      for (const [sourceAdvancementId, sourceAdvancement] of this.#advancementEntries(source.document)) {
+      for (const [sourceAdvancementId, sourceAdvancement] of this.#advancementEntries(record.source)) {
         if (!this.#advancementActive(sourceAdvancement, ownerLevel)) continue;
         const local = this.#findEquivalentAdvancement(owner, sourceAdvancementId, sourceAdvancement);
         nodes.push({
           owner,
-          source,
+          source: record.source,
           ownerLevel,
           sourceAdvancementId,
           sourceAdvancement,
@@ -354,7 +358,7 @@ export class CharacterValidationProgressionService {
     const issues = [];
     for (const { owner, source } of graph.owners.filter(row => row.owner.type === "background")) {
       const expected = [];
-      for (const [sourceAdvancementId, advancement] of this.#advancementEntries(source.document)) {
+      for (const [sourceAdvancementId, advancement] of this.#advancementEntries(source)) {
         if (advancement?.type !== "ItemGrant") continue;
         for (const entry of Object.values(advancement.configuration?.items ?? {})) {
           if (entry?.optional || !entry?.uuid) continue;
@@ -394,7 +398,7 @@ export class CharacterValidationProgressionService {
     const rows = [];
     const masteryOwners = sourceOwners.filter(({ owner }) => this.#classItem(owner, actor))
       .map(({ owner, source }) => {
-        const advancements = this.#advancementEntries(source.document)
+        const advancements = this.#advancementEntries(source)
           .filter(([, advancement]) => advancement?.type === "Trait"
             && advancement.configuration?.mode === "mastery"
             && this.#advancementActive(advancement, this.#ownerLevel(owner, actor)));
@@ -465,7 +469,7 @@ export class CharacterValidationProgressionService {
     const rows = [];
     for (const { owner, source } of sourceOwners.filter(({ owner }) => owner.type === "class")) {
       const classLevel = this.#ownerLevel(owner, actor);
-      for (const [sourceAdvancementId, sourceAdvancement] of this.#advancementEntries(source.document)) {
+      for (const [sourceAdvancementId, sourceAdvancement] of this.#advancementEntries(source)) {
         if (!this.#isFightingStyleAdvancement(sourceAdvancement)) continue;
         const expected = this.#itemChoiceExpected(sourceAdvancement, classLevel);
         if (!expected) continue;
@@ -508,7 +512,7 @@ export class CharacterValidationProgressionService {
     const seen = new Set();
     for (const { owner, source } of sourceOwners) {
       const ownerLevel = this.#ownerLevel(owner, actor);
-      for (const [sourceAdvancementId, sourceAdvancement] of this.#advancementEntries(source.document)) {
+      for (const [sourceAdvancementId, sourceAdvancement] of this.#advancementEntries(source)) {
         if (sourceAdvancement?.type !== "ItemGrant" || !this.#advancementActive(sourceAdvancement, ownerLevel)) continue;
         const configured = Object.values(sourceAdvancement.configuration?.items ?? {}).filter(entry => !entry?.optional && entry?.uuid);
         if (!configured.length) continue;
@@ -578,7 +582,9 @@ export class CharacterValidationProgressionService {
           const spell = this.#preferredGrantedSpell(matches, owner, local?.id ?? sourceAdvancementId);
           if (!spell) continue;
 
-          const nativeSourceAdvancement = source.document?.advancement?.byId?.[sourceAdvancementId] ?? sourceAdvancement;
+          const nativeSourceAdvancement = source.effectiveAdvancement
+            ? sourceAdvancement
+            : (source.document?.advancement?.byId?.[sourceAdvancementId] ?? sourceAdvancement);
           const nativeMechanics = await this.#nativeSpellGrantMechanicsStatus(spell, {
             sourceAdvancement: nativeSourceAdvancement,
             sourceDocument: sourceItem.document,
@@ -728,7 +734,7 @@ export class CharacterValidationProgressionService {
     const issues = [];
     for (const { owner, source } of sourceOwners.filter(({ owner }) => owner.type === "class" && owner.system?.identifier === "warlock")) {
       const level = Number(owner.system?.levels ?? 0);
-      const sourceAdvancements = this.#advancementEntries(source.document);
+      const sourceAdvancements = this.#advancementEntries(source);
       const scale = sourceAdvancements.find(([, advancement]) => advancement?.type === "ScaleValue"
         && advancement.configuration?.identifier === "invocations-known")?.[1]?.configuration?.scale ?? {};
       let expected = 0;
@@ -775,6 +781,15 @@ export class CharacterValidationProgressionService {
     let manager;
     if (issue.data?.mode === "add") {
       const sourceDocument = await fromUuid(issue.data?.sourceUuid);
+      const effective = await effectiveWarcraftAdvancements(actor, owner, sourceDocument, null);
+      const candidate = effective?.[issue.data?.sourceAdvancementId];
+      if (candidate) {
+        // Never replay the unmodified PHB class Advancement into a Warcraft
+        // identity. An incomplete local choice can use ModifyChoices; a missing
+        // structural advancement must first be restored from the effective
+        // source contract, not guessed from the base class.
+        throw new Error("The Warcraft identity changes this Advancement. Review or restore the effective source Advancement before native repair.");
+      }
       const advancement = sourceDocument?.advancement?.byId?.[issue.data?.sourceAdvancementId]
         ?? this.#collectionValues(sourceDocument?.advancement).find(row => (row.id ?? row._id) === issue.data?.sourceAdvancementId);
       if (!advancement) throw new Error("The source Advancement used for this repair is unavailable.");
@@ -872,14 +887,17 @@ export class CharacterValidationProgressionService {
     const owner = actor.items.get(issue.data?.ownerId);
     if (!owner) throw new Error("The progression owner no longer exists on the revised Actor.");
     const sourceOwner = await fromUuid(issue.data?.sourceOwnerUuid);
-    const sourceAdvancement = sourceOwner?.advancement?.byId?.[issue.data?.sourceAdvancementId] ?? null;
+    const effective = await effectiveWarcraftAdvancements(actor, owner, sourceOwner, null);
+    const sourceAdvancement = effective?.[issue.data?.sourceAdvancementId]
+      ?? sourceOwner?.advancement?.byId?.[issue.data?.sourceAdvancementId] ?? null;
     const sourceItem = await fromUuid(issue.data?.resolvedUuid ?? issue.data?.configuredUuid);
     if (!sourceItem) throw new Error("The required source Item is unavailable.");
 
     let localAdvancementId = issue.data?.localAdvancementId;
     const ownerRaw = owner.toObject();
     if (!localAdvancementId) {
-      const raw = sourceOwner?.toObject?.().system?.advancement?.[issue.data?.sourceAdvancementId];
+      const raw = effective?.[issue.data?.sourceAdvancementId]
+        ?? sourceOwner?.toObject?.().system?.advancement?.[issue.data?.sourceAdvancementId];
       if (!raw) throw new Error("The required source Advancement is unavailable.");
       localAdvancementId = issue.data.sourceAdvancementId;
       const advancementData = foundry.utils.deepClone(raw);
@@ -1014,7 +1032,9 @@ export class CharacterValidationProgressionService {
     if (!spell || !owner) throw new Error("The granted spell or its owning progression Item no longer exists.");
 
     const sourceOwner = await fromUuid(issue.data?.sourceOwnerUuid);
-    const sourceAdvancement = sourceOwner?.advancement?.byId?.[issue.data?.sourceAdvancementId] ?? null;
+    const effective = await effectiveWarcraftAdvancements(actor, owner, sourceOwner, null);
+    const sourceAdvancement = effective?.[issue.data?.sourceAdvancementId]
+      ?? sourceOwner?.advancement?.byId?.[issue.data?.sourceAdvancementId] ?? null;
     const sourceItem = await fromUuid(issue.data?.resolvedUuid ?? issue.data?.configuredUuid);
     if (!sourceAdvancement || !sourceItem) throw new Error("The native spell grant source is unavailable.");
 
@@ -1319,7 +1339,10 @@ export class CharacterValidationProgressionService {
   }
 
   static #advancementEntries(document) {
-    const raw = document?.toObject?.().system?.advancement ?? document?.system?.advancement ?? {};
+    const raw = document?.effectiveAdvancement
+      ?? document?.document?.toObject?.().system?.advancement
+      ?? document?.toObject?.().system?.advancement
+      ?? document?.system?.advancement ?? {};
     return Object.entries(raw);
   }
 

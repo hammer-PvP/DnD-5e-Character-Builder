@@ -827,6 +827,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const selectedClass = this.draft.items.get(state.selectedClassId)
       ?? this.draft.items.find(item => item.type === "class" && item.system?.identifier === state.selectedClassIdentifier);
     const cantripAugmentChanges = this.#cantripAugmentChanges();
+    const retiredSpellBenefits = this.#retiredSpellBenefitChanges();
     const alwaysPreparedChanges = foundry.utils.deepClone(
       state.alwaysPreparedSpellReconciliation?.items ?? []
     );
@@ -848,10 +849,42 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       removed,
       addedCount: added.length,
       removedCount: removed.length,
+      retiredSpellBenefits,
       cantripAugmentChanges,
       alwaysPreparedChanges,
       alwaysPreparedChangeCount: alwaysPreparedChanges.length
     };
+  }
+
+
+  #retiredSpellBenefitChanges() {
+    const removed = [];
+    const freeActivities = item => Object.values(item.toObject().system?.activities ?? {})
+      .filter(activity => activity?.type === "forward"
+        && (activity.consumption?.targets ?? []).some(target => target?.type === "itemUses"));
+    for (const prior of this.actor.items.filter(item => item.type === "spell")) {
+      const current = this.draft.items.get(prior.id);
+      if (!current || current.type !== "spell") continue;
+      const before = prior.toObject().system ?? {};
+      const after = current.toObject().system ?? {};
+      const removedForward = Math.max(0, freeActivities(prior).length - freeActivities(current).length);
+      // Only describe this as a grant retirement when the original Item has
+      // an identified grant receipt. Other routine spell edits should not
+      // appear under the grant-benefit review heading.
+      const hasGrant = Boolean(prior.getFlag(MODULE_ID, "alwaysPreparedReconciliation")
+        || prior.getFlag(MODULE_ID, "mergedItemGrants")?.length);
+      if (!hasGrant) continue;
+      const oldMax = String(before.uses?.max ?? "");
+      const newMax = String(after.uses?.max ?? "");
+      const oldRecovery = JSON.stringify(before.uses?.recovery ?? []);
+      const newRecovery = JSON.stringify(after.uses?.recovery ?? []);
+      if (!removedForward && oldMax === newMax && oldRecovery === newRecovery) continue;
+      const details = [];
+      if (removedForward) details.push(`${removedForward} free-cast ${removedForward === 1 ? "Activity" : "Activities"} retired`);
+      if (oldMax !== newMax || oldRecovery !== newRecovery) details.push("grant-specific uses/recovery removed or adjusted");
+      removed.push({ id: prior.id, name: prior.name, img: current.img, detail: details.join("; ") });
+    }
+    return removed;
   }
 
   #cantripAugmentChanges() {

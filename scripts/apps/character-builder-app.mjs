@@ -719,6 +719,20 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     const picked = this.pendingPrimaryUuid.class ? this.pendingClassIdentity : currentIdentity;
     const selected = this.pendingPrimaryUuid.class ?? baseUuid;
     const identity = requested !== "standard" && selected === uuid && picked === requested ? "standard" : requested;
+    // A repeated click on the still-unconfirmed base row deselects it. The
+    // variant path used to retain the pending class indefinitely, unlike Bard
+    // and the other ordinary class rows.
+    if (this.pendingPrimaryUuid.class === uuid && requested === "standard"
+      && this.pendingClassIdentity === "standard") {
+      this.#rememberPrimaryListScroll("class");
+      this.pendingPrimaryUuid.class = null;
+      this.pendingClassIdentity = currentIdentity;
+      this.previewUuid = baseUuid;
+      this.previewKind = baseUuid ? "class" : null;
+      if (baseUuid) await this.#setStageEditing("class", false);
+      this.render({ force: true });
+      return;
+    }
     const unchanged = baseUuid === uuid && identity === currentIdentity;
     if (!unchanged && !await this.#authorizeConfirmedStageChange("class", { choiceLabel: "Class" })) return;
     if (unchanged) await this.#setStageEditing("class", false);

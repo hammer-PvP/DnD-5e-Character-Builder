@@ -1,8 +1,10 @@
 import { heroDialog } from "./warcraft-hero-dialog.mjs";
 import { SourceResolver } from "./source-resolver.mjs";
 import { readAdvancementRecords, writeAdvancementRecords } from "../utils/advancement-utils.mjs";
+import { NativeAdvancementModalGuard } from "./native-advancement-modal-guard.mjs";
 import { MODULE_ID } from "../constants.mjs";
 import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.mjs";
+import { SpellGrantReversalService } from "./spell-grant-reversal-service.mjs";
 
 const WOW = "dnd-world-warcraft";
 export function activeWarcraft() {
@@ -11,7 +13,7 @@ export function activeWarcraft() {
 }
 
 export function sourceOf(item) {
-  return item?._stats?.compendiumSource || item?.flags?.dnd5e?.sourceId || item?.uuid || "";
+  return item?.flags?.dnd5e?.sourceId || item?._stats?.compendiumSource || item?.uuid || "";
 }
 
 function optionsFor(identifier, registry) {
@@ -40,7 +42,8 @@ async function replaceGrants(data, replacements, replaced = []) {
       if (!replacement) continue;
       for (const [id, uuid] of Object.entries(step.value?.added ?? {})) {
         if (uuid !== entry.uuid && uuid !== original.uuid) continue;
-        replaced.push({ id, origin: data._id + "." + step._id, uuid: original.uuid });
+        replaced.push({ id, origin: data._id + "." + step._id, uuid: original.uuid,
+          replacementUuid: replacement });
         delete step.value.added[id];
       }
       entry.uuid = replacement;
@@ -77,6 +80,48 @@ export function warcraftChoices(identifier, baseName, registry, { level, current
     rows: rows.map(row => ({ ...row, checked: row.id === choice })) };
 }
 
+/**
+ * Compute the effective canonical advancement contracts for an already-built
+ * character, without mutating either the source document or the Actor. The
+ * Validator must interpret the source through the same WoW replacement map
+ * that creation and Level Up use, otherwise it restores legally retired grants.
+ */
+export async function effectiveWarcraftAdvancements(actor, owner, sourceDocument, registry) {
+  if (!activeWarcraft() || !sourceDocument || !owner) return null;
+  const data = sourceDocument.toObject();
+  const identifier = owner.type === "class"
+    ? owner.system?.identifier
+    : (owner.type === "subclass" ? owner.system?.classIdentifier : null);
+  if (!identifier) return null;
+  let changed = false;
+  const cls = owner.type === "class" ? owner : actor.items.find(item => item.type === "class"
+    && item.system?.identifier === identifier);
+  const selection = cls?.flags?.[WOW]?.heroClass;
+  const variant = optionsFor(identifier, registry).find(row => row.identifier === selection);
+  const replacements = owner.type === "class" ? variant?.replacedClassFeatures
+    : (sourceOf(owner) === variant?.subclass ? variant?.replacedSubclassFeatures : null);
+  if (replacements) {
+    await replaceGrants(data, replacements);
+    changed = true;
+  }
+  // Roving / Pet Specialization is a source-authorized choice at Ranger 6,
+  // not a mandatory missing Roving after the player has selected Pet. Mirror
+  // the native local choice configuration only when the WoW eligibility and
+  // the real ItemGrant ledger both prove that alternative is in effect.
+  if (owner.type === "class" && eligibleBeastMaster(actor, owner, registry)
+    && existingPetChoice(owner, actor)) {
+    const local = readAdvancementRecords(owner);
+    for (const [id, grant] of Object.entries(local)) {
+      if (Number(grant.level) !== 6 || grant.type !== "ItemGrant") continue;
+      if (!Object.values(grant.configuration?.items ?? {}).some(entry => entry?.uuid === PET_SPECIALIZATION)) continue;
+      if (!data.system?.advancement?.[id]) continue;
+      data.system.advancement[id].configuration = foundry.utils.deepClone(grant.configuration);
+      changed = true;
+    }
+  }
+  return changed ? data.system?.advancement ?? null : null;
+}
+
 export async function selectWarcraftClass(data, registry, selection = "standard") {
   if (!selection || selection === "standard" || data.flags?.[WOW]?.heroClass) return data;
   const variant = optionsFor(data.system.identifier, registry).find(row => row.identifier === selection);
@@ -86,7 +131,8 @@ export async function selectWarcraftClass(data, registry, selection = "standard"
 
 function otherAcquisition(item) {
   const flags = item.flags?.[MODULE_ID] ?? {};
-  return flags.classSpellAccess || (flags.levelUpSpell && !flags.levelUpSpell.featureItemId);
+  return flags.classSpellAccess || flags.alwaysPreparedReconciliation?.normalAcquisition
+    || (flags.levelUpSpell && !flags.levelUpSpell.featureItemId);
 }
 
 export async function retireGrantTree(actor, parentIds) {
@@ -100,27 +146,41 @@ export async function retireGrantTree(actor, parentIds) {
       const owns = row => (row.ownerItemId ?? row.featureItemId) === parentId;
       const owners = flags.featureSpellOwners ?? [];
       const receipts = flags.mergedItemGrants ?? [];
-      if (!linked && !owners.some(owns) && !receipts.some(owns)) continue;
+      if (!linked && !owners.some(owns) && !receipts.some(owns)
+        && !(flags.alwaysPreparedReconciliation?.grants ?? []).some(owns)) continue;
       const survivingReceipts = receipts.filter(row => !owns(row));
+      const history = flags.alwaysPreparedReconciliation;
+      const grants = history?.grants ?? [];
+      const retiringGrants = grants.filter(owns);
+      const survivingGrants = grants.filter(row => !owns(row));
+      const retiringReceipts = receipts.filter(owns);
       const remaining = owners.some(owns) ? await FeatureSpellOwnershipService.removeOwner(item, owns) : owners;
       if (remaining.length || survivingReceipts.length || otherAcquisition(item)) {
         const update = {};
         if (survivingReceipts.length !== receipts.length) {
           update["flags." + MODULE_ID + ".mergedItemGrants"] = survivingReceipts;
-          const history = flags.alwaysPreparedReconciliation;
-          if (history) {
-            const grants = (history.grants ?? []).filter(row => !owns(row));
-            if (grants.length) update["flags." + MODULE_ID + ".alwaysPreparedReconciliation.grants"] = grants;
-            else update["flags." + MODULE_ID + ".-=alwaysPreparedReconciliation"] = null;
-          }
-          const augmentation = receipts.find(row => owns(row) && row.augmentation)?.augmentation;
-          if (augmentation && !survivingReceipts.some(row => row.augmentation)) {
-            if (augmentation.previousUses) update["system.uses"] = foundry.data.operators.ForcedReplacement.create(augmentation.previousUses);
-            for (const [id, targets] of Object.entries(augmentation.activityConsumptionPrevious ?? {})) {
-              if (item.system.activities?.get?.(id)) update["system.activities." + id + ".consumption.targets"] = targets;
-            }
+        }
+        if (retiringGrants.length) {
+          if (survivingGrants.length) {
+            update["flags." + MODULE_ID + ".alwaysPreparedReconciliation.grants"] = survivingGrants;
+          } else {
+            update["flags." + MODULE_ID + ".-=alwaysPreparedReconciliation"] = null;
           }
         }
+        // The native ItemGrant survivor has no mergedItemGrants receipt. Its
+        // reconciliation grants still own free casts, use pools, and Forward
+        // Activities; remove those mechanics even though normal spell access
+        // protects the underlying spell from deletion.
+        Object.assign(update, SpellGrantReversalService.removalUpdate(item, {
+          retiring: [...retiringReceipts, ...retiringGrants],
+          surviving: [...survivingReceipts, ...survivingGrants],
+          reconciliation: history,
+          expectedGrantUses: retiringGrants.map(grant => {
+            const owner = actor.items.get(grant.ownerItemId);
+            const step = owner && readAdvancementRecords(owner)[grant.advancementId];
+            return step?.configuration?.spell?.uses;
+          }).filter(Boolean)
+        }));
         if (linked) {
           const survivor = remaining.find(row => row.ownerItemId && row.advancementId);
           for (const key of ["advancementOrigin", "advancementRoot"]) {
@@ -309,13 +369,129 @@ export function nativeHeroChoice(manager, cls, level, registry) {
   };
 }
 
+/**
+ * A source variant can replace an already-acquired feature at class level 3.
+ * Where the native Advancements have the same structural IDs and the existing
+ * selections are still eligible, keep the original embedded Item ID and its
+ * dependent choices. Otherwise retire that source tree and run the replacement
+ * feat through D&D5e's native AdvancementManager, including past-level grants.
+ */
+export function canTransplantHeroFeature(previous, replacement) {
+  if (!previous || !replacement || previous.type !== replacement.type) return false;
+  if (previous.type !== "feat") return false;
+  const oldAdvancements = readAdvancementRecords(previous);
+  const newAdvancements = replacement.toObject().system?.advancement ?? {};
+  if (Object.keys(oldAdvancements).length !== Object.keys(newAdvancements).length) return false;
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const values = rows => Array.isArray(rows) ? rows : Object.values(rows ?? {});
+  const matching = (token, pattern) => {
+    if (token === pattern) return true;
+    if (!String(pattern).includes("*")) return false;
+    const re = new RegExp(`^${String(pattern).split("*").map(part => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`);
+    return re.test(token);
+  };
+  for (const [id, next] of Object.entries(newAdvancements)) {
+    const old = oldAdvancements[id];
+    if (!old || old.type !== next.type) return false;
+    if (old.type === "Trait") {
+      const chosen = values(old.value?.chosen).map(String);
+      const pools = values(next.configuration?.choices).flatMap(choice => values(choice?.pool)).map(String);
+      const count = values(next.configuration?.choices).reduce((n, row) => n + Math.max(0, Number(row?.count ?? 0)), 0);
+      if (chosen.length !== count || chosen.some(token => !pools.some(pool => matching(token, pool)))) return false;
+    } else if (old.type === "ItemChoice") {
+      const before = old.configuration?.restriction ?? {};
+      const after = next.configuration?.restriction ?? {};
+      if (!same(before, after)) return false;
+      const selected = Object.keys(old.value?.added ?? {});
+      const count = Object.values(next.configuration?.choices ?? {}).reduce((n, row) => n + Math.max(0, Number(row?.count ?? 0)), 0);
+      if (selected.length !== count || !selected.every(itemId => previous.parent?.items?.has(itemId))) return false;
+      // Retain specific pool entries only when the new source still offers them.
+      const oldPool = values(old.configuration?.pool).map(row => typeof row === "string" ? row : row?.uuid).filter(Boolean);
+      const newPool = values(next.configuration?.pool).map(row => typeof row === "string" ? row : row?.uuid).filter(Boolean);
+      if (oldPool.some(uuid => !newPool.some(candidate => candidate === uuid
+        || candidate.split(".").at(-1) === uuid.split(".").at(-1)))) return false;
+    } else if (old.type === "ItemGrant") {
+      // Nested grants can be different even with the same advancement ID.
+      // Run their native flow rather than copying a stale linked subtree.
+      if (!same(old.configuration?.items ?? [], next.configuration?.items ?? [])) return false;
+    } else if (!same(old.configuration ?? {}, next.configuration ?? {})) return false;
+  }
+  return true;
+}
+
+async function transplantHeroFeature(previous, replacement, replacementUuid) {
+  const source = replacement.toObject();
+  const previousAdvancements = readAdvancementRecords(previous);
+  const advancements = source.system?.advancement ?? {};
+  for (const [id, record] of Object.entries(advancements)) {
+    if (previousAdvancements[id]) record.value = foundry.utils.deepClone(previousAdvancements[id].value);
+  }
+  // Preserve the embedded ID and native child ownership. Replace only fields
+  // actually authored by this source; do not discard independent CB flags.
+  const newEffects = source.effects ?? [];
+  const oldEffects = previous.toObject().effects ?? [];
+  if (newEffects.length || oldEffects.length) {
+    throw new Error(`Cannot safely transplant the Effects of ${previous.name}; review the source grants before conversion.`);
+  }
+  const update = {
+    name: source.name,
+    img: source.img,
+    // The embedded provenance flag is the writable D&D5e contract. _stats is
+    // core-managed metadata and must not be mutated directly.
+    "flags.dnd5e.sourceId": replacementUuid,
+    // ForcedReplacement must be the direct value of a dotted update path;
+    // nesting it inside a broad system update can silently merge old keyed
+    // Advancements and Activities back into the resulting feature.
+    "system.advancement": foundry.data.operators.ForcedReplacement.create(advancements),
+    "system.activities": foundry.data.operators.ForcedReplacement.create(source.system?.activities ?? {})
+  };
+  for (const [key, value] of Object.entries(source.system ?? {})) {
+    if (key === "advancement" || key === "activities") continue;
+    update[`system.${key}`] = foundry.utils.deepClone(value);
+  }
+  await previous.update(update, { characterBuilderHeroConversion: true });
+}
+
+async function createHeroReplacement(actor, cls, row, source) {
+  const Manager = globalThis.dnd5e?.applications?.advancement?.AdvancementManager;
+  if (!Manager) throw new Error("D&D5e native AdvancementManager is required to resolve converted class features.");
+  const data = source.toObject();
+  delete data._id;
+  data.flags ??= {};
+  data.flags.dnd5e = {
+    ...(data.flags.dnd5e ?? {}),
+    sourceId: row.replacementUuid,
+    advancementOrigin: row.origin,
+    advancementRoot: row.origin
+  };
+  const before = new Set(actor.items.map(item => item.id));
+  const manager = Manager.forNewItem(actor, data, {
+    automaticApplication: true,
+    showVisualizer: false
+  });
+  const result = await NativeAdvancementModalGuard.run(manager);
+  if (!result.completed) throw new Error(`The native choices for ${source.name} were cancelled; restart the Level Up conversion.`);
+  const created = actor.items.filter(item => !before.has(item.id)
+    && sourceOf(item) === row.replacementUuid
+    && item.flags?.dnd5e?.advancementOrigin === row.origin);
+  if (created.length !== 1) {
+    throw new Error(`Cannot verify the new ${source.name} feature and its class ownership after native advancement.`);
+  }
+  return created[0];
+}
+
 async function applyHero(actor, cls, variant) {
   const removed = [];
   const data = await configure(cls.toObject(), variant, removed);
+  const replacements = [];
   for (const row of removed) {
     const item = actor.items.get(row.id);
     if (item && !(sourceOf(item) === row.uuid && [item.flags?.dnd5e?.advancementOrigin,
       item.flags?.dnd5e?.advancementRoot].includes(row.origin))) throw new Error("Cannot verify the class grant " + item.name);
+    if (!item) continue;
+    const source = await fromUuid(row.replacementUuid);
+    if (!source || source.type !== item.type) throw new Error(`The replacement for ${item.name} was not found in the enabled sources.`);
+    replacements.push({ row, item, source, transplant: canTransplantHeroFeature(item, source) });
   }
   const original = cls.getFlag(MODULE_ID, "rulesOriginalAdvancement");
   const updates = { name: data.name, img: data.img, ["flags." + WOW + ".heroClass"]: variant.identifier,
@@ -327,7 +503,34 @@ async function applyHero(actor, cls, variant) {
     updates["flags." + MODULE_ID + ".rulesOriginalAdvancement"] = foundry.data.operators.ForcedReplacement.create(base.system.advancement);
   }
   await cls.update(updates);
-  await retireGrantTree(actor, removed.map(row => row.id));
+
+  const retiredIds = [];
+  const acquired = [];
+  for (const replacement of replacements) {
+    if (replacement.transplant) {
+      await transplantHeroFeature(replacement.item, replacement.source, replacement.row.replacementUuid);
+      acquired.push({ row: replacement.row, id: replacement.item.id });
+    } else retiredIds.push(replacement.item.id);
+  }
+  if (retiredIds.length) await retireGrantTree(actor, retiredIds);
+  for (const replacement of replacements.filter(row => !row.transplant)) {
+    const created = await createHeroReplacement(actor, cls, replacement.row, replacement.source);
+    acquired.push({ row: replacement.row, id: created.id });
+  }
+  if (acquired.length) {
+    // Reconnect each replacement to its *original class ItemGrant*, otherwise
+    // future native advances and Validate see a missing choice or old grant.
+    const records = readAdvancementRecords(cls);
+    for (const { row, id } of acquired) {
+      const stepId = row.origin.split(".")[1];
+      const step = records[stepId];
+      if (!step) throw new Error("The converted class ItemGrant no longer exists.");
+      step.value ??= {};
+      step.value.added ??= {};
+      step.value.added[id] = row.replacementUuid;
+    }
+    await writeAdvancementRecords(cls, records, { characterBuilderHeroConversion: true });
+  }
   return "changed";
 }
 

@@ -2,6 +2,8 @@ import { writeAdvancementValue, readAdvancementRecords } from "../utils/advancem
 import { MODULE_ID, SPELL_ACCESS_MODELS } from "../constants.mjs";
 import { DraftManager } from "./draft-manager.mjs";
 import { LevelUpDraftManager } from "./level-up-draft-manager.mjs";
+import { FeatureSpellOwnershipService } from "./feature-spell-ownership-service.mjs";
+import { SpellGrantReversalService } from "./spell-grant-reversal-service.mjs";
 
 /**
  * Reconciles a native Always Prepared feature grant with a normal acquisition
@@ -619,15 +621,15 @@ export class AlwaysPreparedSpellReconciliationService {
     );
     const existingOwners = foundry.utils.deepClone(canonical.getFlag(MODULE_ID, "featureSpellOwners") ?? []);
     const duplicateOwners = foundry.utils.deepClone(duplicate.getFlag(MODULE_ID, "featureSpellOwners") ?? plan.grant.owners ?? []);
-    const restorablePrepared = Number.isFinite(Number(existingReconciliation.normalAcquisition?.previousPrepared))
-      ? Number(existingReconciliation.normalAcquisition.previousPrepared)
-      : plan.previousPrepared;
+    const restorablePrepared = FeatureSpellOwnershipService.preparedBaseline(canonical)
+      ?? plan.previousPrepared;
     const augmentation = this.#augmentationDelta(canonical, duplicate, plan);
     if (plan.profile?.kind === "augmenting" && !augmentation) return null;
     const owners = [...existingOwners];
     for (const sourceOwner of duplicateOwners) {
       const owner = foundry.utils.deepClone(sourceOwner);
-      if (owner.alwaysPrepared && !Number.isFinite(Number(owner.previousPrepared))) {
+      if (owner.alwaysPrepared && (owner.previousPrepared === null || owner.previousPrepared === undefined
+        || !Number.isFinite(Number(owner.previousPrepared)))) {
         owner.previousPrepared = restorablePrepared;
       }
       const key = this.#ownerKey(owner);
@@ -699,6 +701,7 @@ export class AlwaysPreparedSpellReconciliationService {
         : {}),
       [`flags.${MODULE_ID}.featureGrantedSpell`]: true,
       [`flags.${MODULE_ID}.featureSpellOwners`]: owners,
+      [`flags.${MODULE_ID}.featureSpellPreparedBaseline`]: restorablePrepared,
       [`flags.${MODULE_ID}.mergedItemGrants`]: receipts,
       [`flags.${MODULE_ID}.alwaysPreparedReconciliation`]: {
         schema: 2,
@@ -749,13 +752,13 @@ export class AlwaysPreparedSpellReconciliationService {
     const existingReconciliation = foundry.utils.deepClone(
       canonical.getFlag(MODULE_ID, "alwaysPreparedReconciliation") ?? {}
     );
-    const restorablePrepared = Number.isFinite(Number(existingReconciliation.normalAcquisition?.previousPrepared))
-      ? Number(existingReconciliation.normalAcquisition.previousPrepared)
-      : plan.previousPrepared;
+    const restorablePrepared = FeatureSpellOwnershipService.preparedBaseline(canonical)
+      ?? plan.previousPrepared;
 
     const owners = foundry.utils.deepClone(canonical.getFlag(MODULE_ID, "featureSpellOwners") ?? plan.grant.owners ?? []);
     for (const owner of owners) {
-      if (owner?.alwaysPrepared && !Number.isFinite(Number(owner.previousPrepared))) {
+      if (owner?.alwaysPrepared && (owner.previousPrepared === null || owner.previousPrepared === undefined
+        || !Number.isFinite(Number(owner.previousPrepared)))) {
         owner.previousPrepared = restorablePrepared;
       }
     }
@@ -777,6 +780,10 @@ export class AlwaysPreparedSpellReconciliationService {
       });
     }
 
+    const augmentation = SpellGrantReversalService.nativeReceipt(canonical, duplicate, plan.previousSnapshot);
+    // Do not collapse two spells if the native mechanical difference cannot be
+    // reversed safely when its grant is retired (e.g. an edited Activity).
+    if (!augmentation) return null;
     const grants = Array.isArray(existingReconciliation.grants)
       ? foundry.utils.deepClone(existingReconciliation.grants)
       : [];
@@ -792,7 +799,8 @@ export class AlwaysPreparedSpellReconciliationService {
       mergedFromItemId: duplicate.id,
       label: plan.grant.label,
       grantKind: "augmenting",
-      nativeProjectionSurvivor: true
+      nativeProjectionSurvivor: true,
+      augmentation: foundry.utils.deepClone(augmentation)
     };
     const grantKey = this.#grantKey(grantRecord);
     const mergedGrants = grants.filter(row => this.#grantKey(row) !== grantKey);
@@ -803,6 +811,7 @@ export class AlwaysPreparedSpellReconciliationService {
       "system.prepared": 2,
       [`flags.${MODULE_ID}.featureGrantedSpell`]: true,
       [`flags.${MODULE_ID}.featureSpellOwners`]: owners,
+      [`flags.${MODULE_ID}.featureSpellPreparedBaseline`]: restorablePrepared,
       [`flags.${MODULE_ID}.alwaysPreparedReconciliation`]: {
         schema: 3,
         normalAcquisition: {

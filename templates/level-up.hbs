@@ -1025,6 +1025,19 @@
         </div>
       </section>
 
+      {{#if review.retiredSpellBenefits.length}}
+      <section class="cb-review-diff">
+        <div>
+          <h3>Spell Grant Benefit Changes <span>{{review.retiredSpellBenefits.length}}</span></h3>
+          <div class="cb-review-item-list">
+            {{#each review.retiredSpellBenefits}}
+            <article><img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{detail}}</small><small>The spell remains on the character; only its grant-specific benefits changed.</small></span></article>
+            {{/each}}
+          </div>
+        </div>
+      </section>
+      {{/if}}
+
       {{#if review.alwaysPreparedChangeCount}}
       <section class="cb-review-diff">
         <div>

@@ -1,3 +1,13 @@
+## 0.9.941 — Warcraft Grant Reconciliation, Validator and Level 3 Conversion Fixes
+
+- **Source-effective validation:** resolve Warcraft identity changes from the enabled official source replacements before comparing canonical class/subclass grants. Protect legitimate Death Knight, Shaman, Evoker, and Beast Master alternatives; the validation projection also reads effective sources on applicable repairs, rather than silently restoring an obsolete base-class feature.
+- **Death Knight Smite retirement:** when Paladin’s Smite is replaced by Runic Smite, keep independently accessible Divine Smite but retire only the old feature-owned free casting pool, recovery, and grant-specific Forward Activities. Native grants now record a conservative mechanical reversal receipt. Existing 0.9.940 reconciliation history has a guarded fallback. Rune Strike's independent Runic Smite benefits remain intact.
+- **Always Prepared ownership:** anchor the original preparation state to the spell rather than to the order of feature owners. Removing two grant sources in either order restores the previous normal state only after the final owner is removed; unknown histories do not get an invented state.
+- **Ranger → Demon Hunter at class level 3:** compare native Advancement definitions and transplant eligible Fighting Style and Deft Explorer choices while preserving their embedded ownership and selected languages/expertise. Truly different features use the D&D5e native AdvancementManager to acquire required past-level grants. Cancel/restart remains covered by the existing Level Up draft rollback.
+- **Base-class selection:** clicking the same pending class-base checkbox again deselects it; unselecting a Warcraft variant returns to the base class without changing a confirmed Actor.
+- **Review:** show changed or retired free-casting spell-grant mechanics alongside Added Items and Removed or Replaced. No change to other modules' faction/renown or existing transaction/commit policy.
+- **Verification:** syntax checked across JavaScript modules and 13 directed mocked source/integration scenarios passed against PHB 2024 and Warcraft source fixtures. Foundry 14 / D&D5e 6.1 live Player and GM testing is still required; this is not a claim of full in-game validation.
+
 ## 0.9.940 — Class identity and Free Level Up
 
 - Class creation uses matching checkboxes for base classes and Warcraft variants. The book preview hides the Foundry advice icon while retaining its text and links.

@@ -1,5 +1,5 @@
 import { SourceRegistry } from "./source-registry.mjs";
-import { eligibleWarcraftSpell, invalidListGrant, restrictedOrdinarySpell, reviewRestrictedSpell, sourceOf, hunterReview, prepareHunterChoice } from "./warcraft-progression-service.mjs";
+import { eligibleWarcraftSpell, invalidListGrant, restrictedOrdinarySpell, reviewRestrictedSpell, sourceOf, hunterReview, prepareHunterChoice, effectiveWarcraftAdvancements } from "./warcraft-progression-service.mjs";
 import { NativeAdvancementSupportService } from "./native-advancement-support-service.mjs";
 import { ManagedAdvancementRegistry } from "./managed-advancement-registry.mjs";
 import { AdditionalNativeSpellProgressionService } from "./additional-native-spell-progression-service.mjs";
@@ -1314,7 +1314,9 @@ export class CharacterValidationBuildProjectionService {
       if (!sourceSpell || sourceSpell.type !== "spell") throw new Error("The canonical granted spell source is unavailable.");
 
       const sourceOwner = issue.data?.sourceOwnerUuid ? await fromUuid(issue.data.sourceOwnerUuid) : null;
-      const sourceAdvancement = sourceOwner?.advancement?.byId?.[issue.data?.sourceAdvancementId] ?? null;
+      const effective = await effectiveWarcraftAdvancements(actor, owner, sourceOwner, null);
+      const sourceAdvancement = effective?.[issue.data?.sourceAdvancementId]
+        ?? sourceOwner?.advancement?.byId?.[issue.data?.sourceAdvancementId] ?? null;
       const localAdvancement = owner.toObject?.().system?.advancement?.[issue.data?.advancementId] ?? null;
       let itemData = sourceAdvancement?.configuration?.spell
         ? await NativeSpellGrantProjectionService.materialize({
@@ -1547,6 +1549,9 @@ export class CharacterValidationBuildProjectionService {
     let manager;
     if (issue.data?.mode === "add") {
       const sourceDocument = await fromUuid(issue.data?.sourceUuid);
+      if ((await effectiveWarcraftAdvancements(actor, owner, sourceDocument, null))?.[issue.data?.sourceAdvancementId]) {
+        throw new Error("The class identity replaces this source Advancement; the base-class advancement cannot be replayed.");
+      }
       const advancement = sourceDocument?.advancement?.byId?.[issue.data?.sourceAdvancementId]
         ?? this.#collectionValues(sourceDocument?.advancement).find(row => (row.id ?? row._id) === issue.data?.sourceAdvancementId);
       if (!advancement) throw new Error("The canonical source Advancement is unavailable.");
@@ -1657,7 +1662,8 @@ export class CharacterValidationBuildProjectionService {
       return issue.data.localAdvancementId;
     }
     const source = await fromUuid(issue.data?.sourceUuid);
-    const raw = source?.toObject?.().system?.advancement?.[issue.data?.sourceAdvancementId];
+    const raw = (await effectiveWarcraftAdvancements(owner.parent, owner, source, null))?.[issue.data?.sourceAdvancementId]
+      ?? source?.toObject?.().system?.advancement?.[issue.data?.sourceAdvancementId];
     if (!raw) throw new Error("The canonical Trait Advancement could not be loaded for reconciliation.");
     const id = issue.data.sourceAdvancementId;
     const data = foundry.utils.deepClone(raw);

@@ -99,20 +99,36 @@ export class FeatureSpellOwnershipService {
     return updates;
   }
 
+  // This is a spell-level snapshot, not a property of whichever grant happens
+  // to be removed last. A per-owner previousPrepared value is insufficient when
+  // two Always Prepared grants are retired in opposite orders.
+  static preparedBaseline(spell, owners = spell.getFlag(MODULE_ID, "featureSpellOwners") ?? []) {
+    const flags = spell.getFlag(MODULE_ID, "featureSpellPreparedBaseline");
+    const historical = spell.getFlag(MODULE_ID, "alwaysPreparedReconciliation")?.normalAcquisition?.previousPrepared;
+    for (const value of [flags, historical, ...owners.map(owner => owner?.previousPrepared)]) {
+      if (value === null || value === undefined || value === "") continue;
+      const number = Number(value);
+      if (Number.isInteger(number) && number >= 0 && number <= 2) return number;
+    }
+    return null;
+  }
+
   static async addOwner(spell, ownerRecord, { prepared = null } = {}) {
     const existing = spell.getFlag(MODULE_ID, "featureSpellOwners") ?? [];
     const record = foundry.utils.deepClone(ownerRecord);
-    // Preserve the preparation state that existed before the first feature-owned
-    // Always Prepared grant. Replacements can then remove only the state owned
-    // by that feature without unpreparing a spell selected normally by the user.
-    if (prepared != null && !existing.some(owner => owner.alwaysPrepared)) {
-      record.previousPrepared = Number(spell.system?.prepared ?? 0);
+    const wasAlways = existing.some(owner => owner.alwaysPrepared);
+    let baseline = this.preparedBaseline(spell, existing);
+    if (prepared != null && !wasAlways && baseline == null) {
+      baseline = Number(spell.system?.prepared);
+      if (!Number.isInteger(baseline) || baseline < 0 || baseline > 2) baseline = null;
     }
+    if (prepared != null && baseline != null) record.previousPrepared ??= baseline;
     const owners = this.#mergeOwner(existing, record);
     const update = {
       [`flags.${MODULE_ID}.featureGrantedSpell`]: true,
       [`flags.${MODULE_ID}.featureSpellOwners`]: owners
     };
+    if (prepared != null && baseline != null) update[`flags.${MODULE_ID}.featureSpellPreparedBaseline`] = baseline;
     if (prepared != null) update["system.prepared"] = Number(prepared);
     await spell.update(update, { characterBuilderFeatureOwnership: true });
     return owners;
@@ -122,15 +138,22 @@ export class FeatureSpellOwnershipService {
     const current = spell.getFlag(MODULE_ID, "featureSpellOwners") ?? [];
     const removed = current.filter(predicate);
     const remaining = current.filter(owner => !predicate(owner));
+    const hadAlways = removed.some(owner => owner.alwaysPrepared);
+    const hasAlways = remaining.some(owner => owner.alwaysPrepared);
+    const baseline = this.preparedBaseline(spell, current);
     const update = {
       [`flags.${MODULE_ID}.featureSpellOwners`]: remaining,
       [`flags.${MODULE_ID}.featureGrantedSpell`]: remaining.length > 0
     };
-    if (!remaining.some(owner => owner.alwaysPrepared) && removed.some(owner => owner.alwaysPrepared)) {
-      const prior = [...removed].reverse().find(owner => Number.isFinite(Number(owner.previousPrepared)))?.previousPrepared;
-      // Only restore a known prior state. Legacy records without this value are
-      // left unchanged rather than risking the loss of normal preparation.
-      if (prior != null && Number.isFinite(Number(prior))) update["system.prepared"] = Number(prior);
+    if (hadAlways && !hasAlways) {
+      // No guess for imported/legacy spells whose original preparation is unknown.
+      if (baseline != null) {
+        update["system.prepared"] = baseline;
+        update[`flags.${MODULE_ID}.-=featureSpellPreparedBaseline`] = null;
+      }
+    } else if (hasAlways && baseline != null) {
+      // Carry the baseline forward even if its original owner was removed first.
+      update[`flags.${MODULE_ID}.featureSpellPreparedBaseline`] = baseline;
     }
     await spell.update(update, { characterBuilderFeatureOwnership: true });
     return remaining;
@@ -179,6 +202,10 @@ export class FeatureSpellOwnershipService {
         }
       }
 
+      if (prior.previousPrepared !== undefined && prior.previousPrepared !== null
+        && (next.previousPrepared === undefined || next.previousPrepared === null)) {
+        next.previousPrepared = prior.previousPrepared;
+      }
       next.alwaysPrepared = Boolean(prior.alwaysPrepared || next.alwaysPrepared);
       next.nativeGrant = Boolean(prior.nativeGrant || next.nativeGrant);
       if (prior.validationReconciled || next.validationReconciled) next.validationReconciled = true;
