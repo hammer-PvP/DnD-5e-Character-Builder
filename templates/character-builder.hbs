@@ -299,7 +299,7 @@
       </header>
 
       <div class="cb-step-toolbar">
-        <input type="search" class="cb-toolbar-search" placeholder="Search Classes" data-filter-target="#cb-class-options">
+        <input type="search" class="cb-toolbar-search" placeholder="Search Classes" value="{{classSearch}}" data-filter-target="#cb-class-options">
         <div class="cb-primary-actions">
           <button type="button" class="cb-primary-confirm" data-action="confirm-primary" data-kind="class"
                   {{#if classConfirmDisabled}}disabled{{/if}}>
@@ -311,7 +311,6 @@
           </button>
         </div>
       </div>
-      {{> "modules/dnd5e-character-builder/templates/partials/warcraft-class-options.hbs"}}
       </div>
 
       <div class="cb-browser-layout">
@@ -321,6 +320,22 @@
             <section class="cb-source-group">
               <h3>{{label}}</h3>
               {{#each items}}
+              {{#if hasVariants}}
+              <article class="cb-primary-option {{#if checked}}pending{{/if}}" data-search="{{search}}">
+                <button type="button" class="cb-primary-details cb-tree-choice" data-action="{{#if @root.stepBrowseOnly}}preview{{else}}pick-class-identity{{/if}}" data-kind="class" data-uuid="{{uuid}}" data-identity="standard" aria-expanded="{{expanded}}" aria-pressed="{{this.checked}}">
+                  <i class="fa-regular {{#if checked}}fa-square-check{{else}}fa-square{{/if}}" aria-hidden="true"></i>
+                  <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{sourceLabel}}</small></span>
+                </button>
+              </article>
+              {{#each variants}}
+              <article class="cb-primary-option cb-warcraft-child {{#if checked}}pending{{/if}}" data-search="{{search}}" data-expanded="{{expanded}}" {{#unless expanded}}hidden{{/unless}}>
+                <button type="button" class="cb-primary-details cb-tree-choice" data-action="pick-class-identity" data-uuid="{{uuid}}" data-identity="{{id}}" aria-pressed="{{this.checked}}" {{#if @root.stepBrowseOnly}}disabled{{/if}}>
+                  <i class="fa-regular {{#if checked}}fa-square-check{{else}}fa-square{{/if}}" aria-hidden="true"></i>
+                  <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>World of Warcraft</small></span>
+                </button>
+              </article>
+              {{/each}}
+              {{else}}
               <article class="cb-primary-option {{#if committed}}committed{{/if}} {{#if pending}}pending{{/if}}" data-search="{{search}}">
                 <label class="cb-primary-toggle" title="Choose {{name}}">
                   <input type="checkbox" name="pendingClass" value="{{uuid}}" data-kind="class" {{checked checked}} {{#if @root.stepBrowseOnly}}disabled{{/if}}>
@@ -330,6 +345,7 @@
                   <span><strong>{{name}}</strong><small>{{sourceLabel}}</small></span>
                 </button>
               </article>
+              {{/if}}
               {{/each}}
             </section>
             {{/each}}

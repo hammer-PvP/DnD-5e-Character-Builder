@@ -1,4 +1,5 @@
-import { warcraftChoices, selectWarcraftClass } from "../services/warcraft-progression-service.mjs";
+import { classVariants, warcraftClassPreview } from "../services/warcraft-class-preview.mjs";
+import { selectWarcraftClass } from "../services/warcraft-progression-service.mjs";
 import {
   MODULE_ID, ABILITIES, STANDARD_ARRAY, CUSTOM_ARRAY_SLOT_COUNT, POINT_BUY_COSTS, POINT_BUY_BUDGET, defaultSettings
 } from "../constants.mjs";
@@ -54,7 +55,8 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     this.registry = new SourceRegistry();
     this.previewUuid = null;
     this.previewKind = null;
-    this.warcraftPicks = new Map();
+    this.pendingClassIdentity = "standard";
+    this.classSearch = "";
     this.pendingPrimaryUuid = { species: null, class: null };
     this.pendingCharacterName = null;
     this.primarySelectionBusy = false;
@@ -306,6 +308,27 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       }))
     }));
 
+    const committedIdentity = characterClass?.flags?.["dnd-world-warcraft"]?.heroClass ?? "standard";
+    const identity = pendingClassUuid ? this.pendingClassIdentity : committedIdentity;
+    const classGroups = decoratePrimaryGroups(this.registry.optionsByType("class"), selectedClassUuid, pendingClassUuid, effectiveClassUuid);
+    if (step === "class") {
+      for (const group of classGroups) {
+        for (const row of group.items) {
+          const children = classVariants(row, this.registry);
+          row.expanded = row.checked;
+          row.hasVariants = Boolean(children.length);
+          row.variants = children.map(child => ({ ...child, uuid: row.uuid, expanded: row.expanded,
+            checked: row.expanded && child.id === identity,
+            search: (row.name + " " + child.name + " Warcraft").toLowerCase() }));
+          if (children.length) {
+            row.search += " " + children.map(child => child.name.toLowerCase()).join(" ");
+            row.checked &&= identity === "standard";
+          }
+        }
+      }
+      if (preview?.uuid === effectiveClassUuid) preview = await warcraftClassPreview(preview, identity, this.registry);
+    }
+
     return this.lastCreationContext = {
       actor: this.actor,
       draft: this.draft,
@@ -335,17 +358,12 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       selectedBackgroundUuid,
       selectedBackgroundOption,
       backgroundSelection,
-      warcraft: step === "class" && pendingClassUuid && !activeStepGate?.browseOnly
-        ? warcraftChoices(this.registry.findOption(pendingClassUuid)?.identifier,
-          this.registry.findOption(pendingClassUuid)?.name, this.registry,
-          { level: 1, selected: this.warcraftPicks.get(pendingClassUuid) }) : null,
-      classGroups: decoratePrimaryGroups(
-        this.registry.optionsByType("class"), selectedClassUuid, pendingClassUuid, effectiveClassUuid
-      ),
+      classGroups,
+      classSearch: this.classSearch,
       classConfirmed: Boolean(selectedClassUuid && !pendingClassUuid && !editingStages.class),
       classConfirmDisabled: this.primarySelectionBusy || !effectiveClassUuid
         || !CreationStepGateService.canCommit(this.draft, state, "class")
-        || (effectiveClassUuid === selectedClassUuid && !editingStages.class),
+        || (effectiveClassUuid === selectedClassUuid && identity === committedIdentity && !editingStages.class),
       classCanContinue: Boolean(selectedClassUuid && !pendingClassUuid && !editingStages.class
         && CreationStepGateService.canCommit(this.draft, state, "class")),
       abilities,
@@ -395,9 +413,6 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   _onRender() {
     const root = this.element;
 
-    root.querySelectorAll('[name="warcraftIdentity"]').forEach(input => input.addEventListener("change", () => {
-      if (input.checked) this.warcraftPicks.set(this.pendingPrimaryUuid.class, input.value);
-    }));
     const characterNameInput = root.querySelector('[name="characterName"]');
     characterNameInput?.addEventListener("input", event => {
       this.pendingCharacterName = event.currentTarget.value;
@@ -486,6 +501,8 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       });
     });
     this.#refreshEquipmentVisibility();
+    const classFilter = root.querySelector('[data-filter-target="#cb-class-options"]');
+    if (classFilter) this.#filterOptions({ currentTarget: classFilter });
     this.#restorePrimaryListScroll();
     this.#restoreStepScroll();
   }
@@ -515,6 +532,9 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     switch (action) {
       case "step":
         await this.#navigateToStep(target.dataset.step);
+        break;
+      case "pick-class-identity":
+        await this.#pickClassIdentity(target.dataset.uuid, target.dataset.identity);
         break;
       case "preview":
         this.#rememberPrimaryListScroll(target.dataset.kind);
@@ -687,6 +707,29 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     this.render({ force: true });
   }
 
+  async #pickClassIdentity(uuid, requested = "standard") {
+    if (!this.#allowStageCommit("class")) return;
+    const option = this.registry.findOption(uuid);
+    if (!option || option.type !== "class") return;
+    const variants = classVariants(option, this.registry);
+    if (requested !== "standard" && !variants.some(row => row.id === requested)) return;
+    const current = this.draft.items.find(item => item.type === "class");
+    const baseUuid = this.#primarySourceUuid(current);
+    const currentIdentity = current?.flags?.["dnd-world-warcraft"]?.heroClass ?? "standard";
+    const picked = this.pendingPrimaryUuid.class ? this.pendingClassIdentity : currentIdentity;
+    const selected = this.pendingPrimaryUuid.class ?? baseUuid;
+    const identity = requested !== "standard" && selected === uuid && picked === requested ? "standard" : requested;
+    const unchanged = baseUuid === uuid && identity === currentIdentity;
+    if (!unchanged && !await this.#authorizeConfirmedStageChange("class", { choiceLabel: "Class" })) return;
+    if (unchanged) await this.#setStageEditing("class", false);
+    this.#rememberPrimaryListScroll("class");
+    this.pendingPrimaryUuid.class = unchanged ? null : uuid;
+    this.pendingClassIdentity = identity;
+    this.previewUuid = uuid;
+    this.previewKind = "class";
+    this.render({ force: true });
+  }
+
   async #handlePrimarySelectionAttempt(input) {
     const kind = String(input?.dataset?.kind ?? "");
     if (!Object.hasOwn(this.pendingPrimaryUuid, kind)) return;
@@ -723,6 +766,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     });
     if (!allowed) return this.render({ force: true });
 
+    if (kind === "class") this.pendingClassIdentity = "standard";
     this.pendingPrimaryUuid[kind] = uuid;
     this.previewUuid = uuid;
     this.previewKind = kind;
@@ -866,7 +910,8 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       if (!type) return;
 
       const current = this.draft.items.find(item => item.type === type);
-      if (this.#primarySourceUuid(current) === uuid) {
+      const identity = this.pendingPrimaryUuid.class ? this.pendingClassIdentity : (current?.flags?.["dnd-world-warcraft"]?.heroClass ?? "standard");
+      if (this.#primarySourceUuid(current) === uuid && (type !== "class" || identity === (current?.flags?.["dnd-world-warcraft"]?.heroClass ?? "standard"))) {
         this.pendingPrimaryUuid[kind] = null;
         await this.#setStageEditing(kind, false);
         return;
@@ -874,7 +919,7 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
       NativeAdvancementModalGuard.assertAvailable();
       const preparedClass = type === "class"
-        ? await selectWarcraftClass(document.toObject(), this.registry, this.warcraftPicks.get(uuid)) : null;
+        ? await selectWarcraftClass(document.toObject(), this.registry, identity) : null;
       if (type === "class" && !preparedClass) return;
       ui.notifications.info(`Selecting ${document.name} with the native D&D5e Advancement flow.`);
 
@@ -1885,8 +1930,10 @@ export class CharacterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     const target = this.element.querySelector(input.dataset.filterTarget);
     if (!target) return;
     const query = input.value.trim().toLowerCase();
+    if (target.id === "cb-class-options") this.classSearch = input.value;
     target.querySelectorAll(".cb-primary-option, .cb-spell-option").forEach(card => {
-      card.hidden = Boolean(query && !card.dataset.search.includes(query));
+      const collapsed = card.dataset.expanded === "false";
+      card.hidden = collapsed && !query || Boolean(query && !card.dataset.search.includes(query));
     });
     target.querySelectorAll(".cb-source-group").forEach(group => {
       group.hidden = ![...group.querySelectorAll(".cb-primary-option, .cb-spell-option")].some(card => !card.hidden);

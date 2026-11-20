@@ -6821,19 +6821,33 @@
   .cb-glancing-footer > div { display: grid; grid-template-columns: 1fr 1fr; }
 }
 
-.character-builder .cb-warcraft-identity {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  margin: 4px 0 10px;
-  padding: 6px 12px 10px;
+.cb-primary-option[hidden] { display: none; }
+.cb-primary-option .cb-tree-choice {
+  grid-column: 1 / -1;
+  grid-template-columns: 24px 36px minmax(0, 1fr);
+  height: auto;
 }
-.character-builder .cb-warcraft-identity label {
-  display: flex;
-  align-items: flex-start;
-  flex: 1 1 160px;
-  gap: 6px;
-  cursor: pointer;
+.cb-tree-choice i { justify-self: center; font-size: 20px; }
+.cb-tree-choice[aria-pressed="true"] i { color: #72d895; }
+.cb-primary-option.cb-warcraft-child {
+  margin-inline-start: 20px;
+  width: calc(100% - 20px);
+  min-height: 36px;
+  border-inline-start: 2px solid var(--cb-border);
 }
-.character-builder .cb-warcraft-identity small { display: block; }
-.character-builder .cb-warcraft-identity p { flex-basis: 100%; margin: 0; }
+.cb-warcraft-child .cb-tree-choice { min-height: 36px; grid-template-columns: 20px 26px minmax(0, 1fr); padding-block: 2px; }
+.cb-warcraft-child .cb-tree-choice img { width: 26px; height: 26px; }
+.cb-warcraft-child .cb-tree-choice i { font-size: 16px; }
+.cb-native-identity, .cb-warcraft-identity { display: flex; align-items: center; gap: .5rem; }
+.cb-native-identity select, .cb-warcraft-identity select { flex: 0 1 auto; width: auto; }
+.cb-native-identity { margin-block-start: .5rem; }
+.cb-warcraft-identity { flex: 0 0 auto; margin-block: .5rem; }
+.cb-multiclass-browser { display: grid; grid-template-columns: minmax(260px, 2fr) minmax(0, 3fr); gap: 12px; }
+.cb-multiclass-browser .cb-multiclass-grid { grid-template-columns: minmax(0, 1fr); }
+.cb-multiclass-browser .cb-source-preview { align-self: start; max-height: 60vh; position: sticky; top: 0; }
+.cb-multiclass-variants { grid-column: 1 / -1; display: grid; margin-left: 16px; gap: 4px; }
+.cb-multiclass-variants button[aria-pressed="true"] { border-color: #72d895; }
+@media (max-width: 760px) {
+  .cb-multiclass-browser { grid-template-columns: minmax(0, 1fr); }
+  .cb-multiclass-browser .cb-source-preview { position: static; }
+}

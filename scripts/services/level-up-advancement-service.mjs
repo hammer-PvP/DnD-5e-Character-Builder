@@ -90,10 +90,12 @@ export class LevelUpAdvancementService {
 
       const managed = ManagedFeatureAdvancementBridge.begin(manager, { workflow: "levelUp", classIdentifier });
       let result;
+      const renderHook = subclassChoice ? Hooks.on("renderSubclassFlow", subclassChoice.renderSharedChoice) : null;
       try {
         result = await NativeAdvancementModalGuard.run(manager, { beforeForward: subclassChoice?.beforeForward });
         if (result.completed) await ManagedFeatureAdvancementBridge.restore(draft, managed);
       } finally {
+        if (renderHook !== null) Hooks.off("renderSubclassFlow", renderHook);
         ManagedFeatureAdvancementBridge.end(managed);
       }
       if (!result.completed) {

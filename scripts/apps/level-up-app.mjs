@@ -1,3 +1,4 @@
+import { classVariants, warcraftClassPreview } from "../services/warcraft-class-preview.mjs";
 import { warcraftChoices } from "../services/warcraft-progression-service.mjs";
 import { MODULE_ID } from "../constants.mjs";
 import { SourceResolver } from "../services/source-resolver.mjs";
@@ -35,6 +36,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     this.commitModalToken = null;
     this.metadataReconciled = false;
     this.warcraftPicks = new Map();
+    this.multiclassPreview = null;
   }
 
   static DEFAULT_OPTIONS = {
@@ -88,6 +90,8 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
             const prerequisite = LevelUpService.multiclassPrerequisite(this.draft, option.identifier);
             return {
               ...option,
+              variants: classVariants(option, this.registry),
+              expanded: this.multiclassPreview?.uuid === option.uuid,
               qualified: prerequisite.qualified,
               prerequisiteMessage: prerequisite.message,
               selected: state.multiclass && state.selectedClassSourceUuid === option.uuid
@@ -96,6 +100,16 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       })).filter(group => group.items.length)
       : [];
 
+    let preview = null;
+    if (state.step === "class" && this.multiclassPreview) {
+      const { uuid, identity } = this.multiclassPreview;
+      const row = multiclassGroups.flatMap(group => group.items).find(item => item.uuid === uuid);
+      if (row && row.qualified) {
+        row.baseSelected = identity === "standard";
+        row.variants = row.variants.map(child => ({ ...child, checked: child.id === identity }));
+        preview = await warcraftClassPreview(await this.registry.enrichDocument(uuid), identity, this.registry, { multiclass: true });
+      }
+    }
     const hpMethodAvailability = state.selectedClassIdentifier
       ? await HitPointAdvancementService.methodAvailability(this.draft, this.registry)
       : HitPointAdvancementService.methods().map(method => ({ ...method, disabled: false }));
@@ -108,7 +122,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       : null;
     const cls = state.selectedClassId ? this.draft.items.get(state.selectedClassId) : null;
     const source = this.registry.findOption(state.selectedClassSourceUuid);
-    const warcraft = state.step === "advancements" && !state.nativeComplete
+    const warcraft = state.step === "advancements" && state.targetClassLevel === 3 && !state.nativeComplete
       ? warcraftChoices(state.selectedClassIdentifier,
         source?.name ?? cls?.getFlag(MODULE_ID, "sourceSnapshot")?.name ?? state.selectedClassName, this.registry,
         { level: state.targetClassLevel, current: cls?.flags?.["dnd-world-warcraft"]?.heroClass,
@@ -140,7 +154,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       state,
       settings,
       classes,
-      multiclassGroups,
+      preview, multiclassGroups,
       multiclassAvailable: settings.allowMulticlassing && multiclassGroups.some(group => group.items.length),
       multiclassRequirementsEnforced: settings.enforceMulticlassRequirements,
       hpRollLocked,
@@ -167,7 +181,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const root = this.element;
     root.querySelectorAll('[name="warcraftIdentity"]').forEach(input => input.addEventListener("change", () => {
       const state = LevelUpDraftManager.getState(this.draft);
-      if (input.checked) this.warcraftPicks.set(state.selectedClassId ?? state.selectedClassSourceUuid, input.value);
+      this.warcraftPicks.set(state.selectedClassId ?? state.selectedClassSourceUuid, input.value);
     }));
     root.querySelectorAll("[data-action]").forEach(element => {
       element.addEventListener("click", event => this.#onAction(event));
@@ -230,6 +244,13 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
         case "select-class":
           await this.#selectExistingClass(target.dataset.itemId);
           break;
+        case "preview-multiclass": {
+          const { uuid, identity = "standard" } = target.dataset;
+          const repeat = this.multiclassPreview?.uuid === uuid && this.multiclassPreview.identity === identity;
+          this.multiclassPreview = { uuid, identity: repeat ? "standard" : identity };
+          await this.render({ force: true });
+          break;
+        }
         case "select-multiclass":
           await this.#selectMulticlass(target.dataset.uuid);
           break;
@@ -293,6 +314,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
             await this.close();
           }
           break;
+        case "open-preview":
         case "open-document": {
           const uuid = target.dataset.uuid;
           if (!uuid) break;
@@ -371,6 +393,9 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     }
     const prerequisite = LevelUpService.multiclassPrerequisite(this.draft, option.identifier);
     if (!prerequisite.qualified) throw new Error(prerequisite.message);
+    const identity = this.multiclassPreview?.uuid === uuid ? this.multiclassPreview.identity : "standard";
+    const variant = classVariants(option, this.registry).find(row => row.id === identity);
+    if (identity !== "standard" && !variant) throw new Error("The selected Warcraft identity is no longer available.");
     const lockedResult = HitPointAdvancementService.assertClassSelectionAllowed(this.actor, {
       selectedClassIdentifier: option.identifier,
       targetClassLevel: 1
@@ -380,7 +405,8 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       selectedClassId: null,
       selectedClassSourceUuid: option.uuid,
       selectedClassIdentifier: option.identifier,
-      selectedClassName: option.name,
+      selectedClassName: variant?.name ?? option.name,
+      selectedWarcraftIdentity: identity,
       multiclass: true,
       sourceClassLevel: 0,
       targetClassLevel: 1,
@@ -415,7 +441,8 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   async #runNativeAdvancements() {
-    const identity = this.element.querySelector('[name="warcraftIdentity"]:checked')?.value;
+    const current = LevelUpDraftManager.getState(this.draft);
+    const identity = current.multiclass ? current.selectedWarcraftIdentity : this.element.querySelector('[name="warcraftIdentity"]')?.value;
     this.busy = true;
     this.render({ force: true });
     const result = await LevelUpAdvancementService.apply(this.draft, this.registry, identity);
@@ -677,6 +704,8 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
     this.busy = true;
     this.render({ force: true });
     this.draft = await LevelUpDraftManager.restartClassSelection(this.actor);
+    this.multiclassPreview = null;
+    this.warcraftPicks.clear();
     this.busy = false;
     ui.notifications.info(lock
       ? "Class selection restarted. The locked Hit Die result was preserved."

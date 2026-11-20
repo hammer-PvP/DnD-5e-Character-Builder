@@ -123,6 +123,7 @@
             {{#unless multiclassRequirementsEnforced}}<p class="cb-notice"><i class="fa-solid fa-unlock"></i> Official Multiclass ability-score requirements are disabled by the GM.</p>{{/unless}}
           </div>
         </div>
+        {{#if preview}}<div class="cb-multiclass-browser"><div>{{/if}}
         {{#each multiclassGroups}}
         <h3 class="cb-source-heading">{{label}}</h3>
         <div class="cb-multiclass-grid">
@@ -133,13 +134,28 @@
               <h4>{{name}}</h4>
               <p>{{prerequisiteMessage}}</p>
             </div>
+            {{#if variants.length}}
+            <button type="button" data-action="preview-multiclass" data-uuid="{{uuid}}" aria-expanded="{{expanded}}" aria-pressed="{{baseSelected}}" {{#unless qualified}}disabled{{/unless}}>Choose {{name}}</button>
+            {{#if expanded}}
+            <div class="cb-multiclass-variants">
+              {{#each variants}}
+              <button type="button" data-action="preview-multiclass" data-uuid="{{../uuid}}" data-identity="{{id}}" aria-pressed="{{this.checked}}">
+                <i class="fa-regular {{#if checked}}fa-square-check{{else}}fa-square{{/if}}" aria-hidden="true"></i> {{name}}
+              </button>
+              {{/each}}
+              <button type="button" data-action="select-multiclass" data-uuid="{{uuid}}">Confirm Class</button>
+            </div>
+            {{/if}}
+            {{else}}
             <button type="button" data-action="select-multiclass" data-uuid="{{uuid}}" {{#unless qualified}}disabled{{/unless}}>
               Add Class <i class="fa-solid fa-plus"></i>
             </button>
+            {{/if}}
           </article>
           {{/each}}
         </div>
         {{/each}}
+        {{#if preview}}</div>{{> "modules/dnd5e-character-builder/templates/partials/source-preview.hbs"}}</div>{{/if}}
       </section>
       {{else}}
         {{#unless settings.allowMulticlassing}}

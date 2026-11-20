@@ -1,4 +1,4 @@
-import { heroDialog, confirmWarcraft } from "./warcraft-hero-dialog.mjs";
+import { heroDialog } from "./warcraft-hero-dialog.mjs";
 import { SourceResolver } from "./source-resolver.mjs";
 import { readAdvancementRecords, writeAdvancementRecords } from "../utils/advancement-utils.mjs";
 import { MODULE_ID } from "../constants.mjs";
@@ -65,27 +65,22 @@ export function warcraftChoices(identifier, baseName, registry, { level, current
   if (!variants.length || ![1, 3].includes(level)) return null;
   if (current && !variants.some(row => row.identifier === current && !row.subclass)) return null;
   const first = level === 1;
-  const rows = [{ id: "standard", name: baseName, hint: first ? "Keep your options open until class level 3." : "Use the D&D class progression." }];
+  const rows = [{ id: "standard", name: baseName }];
   const ordered = [...variants.filter(hero => !hero.subclass), ...variants.filter(hero => hero.subclass)];
   for (const hero of ordered) {
     if (!first && hero.subclass) continue;
-    let hint = hero.subclass ? "Start with the Warcraft progression and its required subclass."
-      : "Choose your subclass in the native Advancement window.";
-    if (hero.identifier === "hunter") hint = "Use the Warcraft Hunter class. Hunter, Beast Master and other eligible subclasses are separate choices at Ranger level 3.";
-    const swapHint = hero.identifier === "shaman" ? " At Barbarian level 3, Totems replaces Primal Knowledge." : "";
-    rows.push({ id: hero.identifier, name: game.i18n.localize(hero.name), hint: hint + swapHint });
+    rows.push({ id: hero.identifier, img: hero.img, name: game.i18n.localize(hero.name) });
   }
   const choice = selected ?? current ?? "standard";
+  if (rows.length < 2) return null;
   return { title: first ? "Starting class" : "Class identity at level 3",
-    rows: rows.length > 1 ? rows.map(row => ({ ...row, checked: row.id === choice })) : [],
-    note: first ? "" : "Browse subclasses in D&D5e. If your subclass offers a Warcraft conversion, you can review it before continuing." };
+    rows: rows.map(row => ({ ...row, checked: row.id === choice })) };
 }
 
 export async function selectWarcraftClass(data, registry, selection = "standard") {
   if (!selection || selection === "standard" || data.flags?.[WOW]?.heroClass) return data;
   const variant = optionsFor(data.system.identifier, registry).find(row => row.identifier === selection);
   if (!variant) throw new Error("That Warcraft class is no longer available from the enabled sources.");
-  if ((variant.subclass || variant.replacedClassFeatures) && await confirmWarcraft(variant) !== "apply") return null;
   return configure(data, variant);
 }
 
@@ -190,7 +185,6 @@ export async function resolveHeroProgression(actor, cls, level, registry, select
     else {
       const hero = variants.find(row => !row.subclass && row.identifier === selection);
       if (!hero) throw new Error("That Warcraft class identity is unavailable.");
-      if (hero.replacedClassFeatures && await confirmWarcraft(hero) !== "apply") return null;
       await applyHero(actor, cls, hero);
     }
     return { changed: true };
@@ -207,8 +201,7 @@ export async function resolveHeroProgression(actor, cls, level, registry, select
   return { changed: true };
 }
 
-// Keep browsing and browsing-back native. Only the manager's forward navigation
-// from its own Subclass step may ask to change the selected class.
+// Resolve the chosen native subclass on the manager clone before dependent grants run.
 export function nativeHeroChoice(manager, cls, level, registry) {
   if (Number(level) !== 3) return null;
   const variants = optionsFor(cls.system.identifier, registry).filter(row => row.subclass);
@@ -220,18 +213,44 @@ export function nativeHeroChoice(manager, cls, level, registry) {
   let accepted = null;
   const originalEntries = new Map();
 
+  let sharedSelection = null;
+
+  function renderSharedChoice(application, element) {
+    if (application !== flow) return;
+    const { uuid, document: subclass } = flow.advancement.value;
+    const variant = variants.find(row => row.subclass === uuid && row.replacedSubclassFeatures);
+    const previous = element.querySelector("[data-cb-shared-subclass]");
+    previous?.remove();
+    if (!variant || !subclass) {
+      sharedSelection = null;
+      return;
+    }
+    if (sharedSelection?.id !== subclass.id) sharedSelection = { id: subclass.id, hero: false };
+    const label = element.ownerDocument.createElement("label");
+    label.dataset.cbSharedSubclass = "";
+    label.className = "cb-native-identity";
+    label.append("Class progression ");
+    const select = element.ownerDocument.createElement("select");
+    for (const [value, name] of [["standard", cls.name], [variant.identifier, game.i18n.localize(variant.name)]]) {
+      const option = element.ownerDocument.createElement("option");
+      option.value = value;
+      option.textContent = name;
+      select.append(option);
+    }
+    select.value = sharedSelection.hero ? variant.identifier : "standard";
+    select.addEventListener("change", event => {
+      event.stopPropagation();
+      sharedSelection = { id: subclass.id, hero: select.value === variant.identifier };
+    });
+    label.append(select);
+    const pill = element.querySelector(".pill-lg");
+    if (pill) pill.after(label);
+    else element.append(label);
+  }
+
   async function review(variant, subclass) {
     const shared = Boolean(variant.replacedSubclassFeatures);
-    const choice = await confirmWarcraft(variant, { atSubclass: true, sharedName: shared ? subclass.name : "" });
-    if (!manager.rendered || manager.step !== step || flow.advancement.value.document?.id !== subclass.id) return false;
-    if (choice !== "apply" && !(shared && choice === "standard")) {
-      accepted = null;
-      await flow.advancement.reverse(flow.level);
-      flow.retainedData = null;
-      await flow.render({ force: true });
-      if (manager.rendered && manager.step === step) flow.element?.querySelector('[data-action="browse"]')?.click();
-      return false;
-    }
+    const apply = !shared || (sharedSelection?.id === subclass.id && sharedSelection.hero);
     if (shared) {
       // Back/Restart may retain this subclass with its previously adapted grants.
       // Restore only the entries this review changed before applying a new decision.
@@ -242,7 +261,7 @@ export function nativeHeroChoice(manager, cls, level, registry) {
         if (entry?.uuid === edit.after) entry.uuid = edit.before;
       }
       const edits = [];
-      if (choice === "apply") {
+      if (apply) {
         const previous = foundry.utils.deepClone(records);
         await replaceGrants(data, variant.replacedSubclassFeatures);
         for (const [id, record] of Object.entries(records)) {
@@ -252,15 +271,17 @@ export function nativeHeroChoice(manager, cls, level, registry) {
           }
         }
       }
+      if (!manager.rendered || manager.step !== step || flow.advancement.value.document?.id !== subclass.id) return false;
       originalEntries.set(subclass.id, edits);
       subclass.updateSource({ "system.advancement": records });
       flow.retainedData = null;
     }
-    accepted = { id: subclass.id, uuid: variant.subclass, variant: choice === "apply" ? variant : null };
+    accepted = { id: subclass.id, uuid: variant.subclass, variant: apply ? variant : null };
     return true;
   }
 
   return {
+    renderSharedChoice,
     beforeForward() {
       if (manager.step !== step) return null;
       accepted = null;
@@ -273,7 +294,7 @@ export function nativeHeroChoice(manager, cls, level, registry) {
       const receipt = readAdvancementRecords(owner)[flow.advancement.id]?.value;
       if (!variants.some(row => row.subclass === receipt?.uuid)) return;
       if (receipt.document !== accepted?.id || receipt.uuid !== accepted?.uuid) {
-        throw new Error("The native subclass choice changed before its Warcraft confirmation.");
+        throw new Error("The native subclass changed during progression. Restart class selection to review it.");
       }
       if (accepted.variant) await applyHero(actor, owner, accepted.variant);
     }

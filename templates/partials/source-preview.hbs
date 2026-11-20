@@ -21,9 +21,20 @@
   </section>
   {{/if}}
 
+  {{#if preview.warcraft}}
+  <section class="cb-source-description">
+    <h3>{{preview.warcraft.heading}}</h3>
+    {{{preview.warcraft.rules}}}
+    {{#each preview.warcraft.levels}}
+    <h4>Level {{level}}</h4><ul>{{{html}}}</ul>
+    {{/each}}
+    <details><summary>{{preview.warcraft.baseName}} class details</summary>{{{preview.description}}}</details>
+  </section>
+  {{else}}
   <div class="cb-source-description">{{{preview.description}}}</div>
+  {{/if}}
   <footer>
-    <button type="button" data-action="open-preview" data-uuid="{{preview.uuid}}">
+    <button type="button" data-action="open-preview" data-uuid="{{#if preview.sourceDocumentUuid}}{{preview.sourceDocumentUuid}}{{else}}{{preview.uuid}}{{/if}}">
       <i class="fa-solid fa-arrow-up-right-from-square"></i> Open Source Document
     </button>
   </footer>

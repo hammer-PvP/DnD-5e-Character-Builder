@@ -1,3 +1,8 @@
+## 0.9.939 — Warcraft variants in the class list
+
+- Expand a base class to choose its Warcraft variant during creation or multiclassing. The details panel shows the installed book entry and feature changes. Selecting the base class again keeps its normal progression.
+- At class level 3, selecting a dedicated heroic subclass prepares the conversion for the existing Level Up review. Draconic Sorcery offers an inline Sorcerer or Evoker choice. Restart Class Selection still lets you revise the draft before committing.
+
 ## 0.9.938 — Warcraft class and subclass choices
 
 - Choose the starting identity on the class page, also when adding a new class. Each option shows what it means for the character’s progression.
