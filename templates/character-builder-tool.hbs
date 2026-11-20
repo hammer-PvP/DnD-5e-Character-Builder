@@ -4,7 +4,7 @@
     <div>
       <span class="cb-kicker">GM Progression</span>
       <h1>Character Builder Tool</h1>
-      {{#if milestone}}<p>Grant one Milestone Level Up to each selected character.</p>{{else}}<p>Divide a total XP award equally among the selected characters.</p>{{/if}}
+      {{#if milestone}}<p>Grant one Milestone Level Up to each selected character.</p>{{else if freeMode}}<p>Free Level Up is available on eligible character sheets.</p>{{else}}<p>Divide a total XP award equally among the selected characters.</p>{{/if}}
     </div>
   </header>
 
@@ -105,10 +105,12 @@
         </button>
       </div>
       {{/if}}
+      {{#unless freeMode}}
       <button type="button" class="cb-primary-confirm" data-action="apply" disabled>
         <i class="fa-solid {{#if milestone}}fa-arrow-up{{else}}fa-star{{/if}}"></i>
         <span><strong>{{#if milestone}}Grant Level Ups{{else}}Distribute XP{{/if}}</strong><small>{{#if milestone}}Selected characters only{{else}}Equal integer award{{/if}}</small></span>
       </button>
+      {{/unless}}
       {{#if epicBoonEnabled}}
       <button type="button" class="cb-primary-confirm" data-action="grant-epic-boon" disabled>
         <i class="fa-solid fa-star"></i>

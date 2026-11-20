@@ -78,6 +78,12 @@ export class LevelUpService {
       return result;
     }
 
+    if (settings.levelUpMode === "free") {
+      result.ready = true;
+      result.reason = "Free Level Up is enabled.";
+      return result;
+    }
+
     if (settings.levelUpMode === "xp") {
       result.ready = Number.isFinite(result.xpRequired) && result.xpValue >= result.xpRequired;
       result.reason = result.ready

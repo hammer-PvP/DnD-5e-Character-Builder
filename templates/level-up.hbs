@@ -71,7 +71,7 @@
 
     <section class="cb-level-up-policy">
       <h3>Advancement Policy</h3>
-      <p>{{#if (dnd5eCharacterBuilderEq settings.levelUpMode "xp")}}Experience Points{{else}}Milestone — GM Grant{{/if}}</p>
+      <p>{{#if (dnd5eCharacterBuilderEq settings.levelUpMode "xp")}}Experience Points{{else if (dnd5eCharacterBuilderEq settings.levelUpMode "free")}}Free Level Up{{else}}Milestone — GM Grant{{/if}}</p>
       <p>Multiclassing: {{#if settings.allowMulticlassing}}Enabled{{else}}Disabled{{/if}}</p>
       <p class="hint">Sources: {{sourceOrder}}</p>
     </section>

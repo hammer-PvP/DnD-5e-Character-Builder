@@ -1,5 +1,4 @@
-import { classVariants, warcraftClassPreview } from "../services/warcraft-class-preview.mjs";
-import { warcraftChoices } from "../services/warcraft-progression-service.mjs";
+import { classVariants, levelThreeIdentity, warcraftClassPreview } from "../services/warcraft-class-preview.mjs";
 import { MODULE_ID } from "../constants.mjs";
 import { SourceResolver } from "../services/source-resolver.mjs";
 import { SourceRegistry } from "../services/source-registry.mjs";
@@ -121,12 +120,9 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
       ? await this.#subclassReviewContext(state)
       : null;
     const cls = state.selectedClassId ? this.draft.items.get(state.selectedClassId) : null;
-    const source = this.registry.findOption(state.selectedClassSourceUuid);
     const warcraft = state.step === "advancements" && state.targetClassLevel === 3 && !state.nativeComplete
-      ? warcraftChoices(state.selectedClassIdentifier,
-        source?.name ?? cls?.getFlag(MODULE_ID, "sourceSnapshot")?.name ?? state.selectedClassName, this.registry,
-        { level: state.targetClassLevel, current: cls?.flags?.["dnd-world-warcraft"]?.heroClass,
-          selected: this.warcraftPicks.get(state.selectedClassId ?? state.selectedClassSourceUuid) }) : null;
+      ? await levelThreeIdentity(cls, state.selectedClassSourceUuid, this.registry, this.warcraftPicks.get(state.selectedClassId))
+      : null;
     const review = this.#reviewContext(state);
     const stepOrder = ["class", "hp", "advancements", "choices", "review"];
     const activeIndex = Math.max(0, stepOrder.indexOf(state.step ?? "class"));
@@ -442,7 +438,7 @@ export class LevelUpApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
   async #runNativeAdvancements() {
     const current = LevelUpDraftManager.getState(this.draft);
-    const identity = current.multiclass ? current.selectedWarcraftIdentity : this.element.querySelector('[name="warcraftIdentity"]')?.value;
+    const identity = current.multiclass ? current.selectedWarcraftIdentity : this.element.querySelector('[name="warcraftIdentity"]:checked')?.value;
     this.busy = true;
     this.render({ force: true });
     const result = await LevelUpAdvancementService.apply(this.draft, this.registry, identity);

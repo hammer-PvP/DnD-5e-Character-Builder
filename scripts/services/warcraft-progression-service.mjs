@@ -226,26 +226,34 @@ export function nativeHeroChoice(manager, cls, level, registry) {
       return;
     }
     if (sharedSelection?.id !== subclass.id) sharedSelection = { id: subclass.id, hero: false };
-    const label = element.ownerDocument.createElement("label");
-    label.dataset.cbSharedSubclass = "";
-    label.className = "cb-native-identity";
-    label.append("Class progression ");
-    const select = element.ownerDocument.createElement("select");
+    const doc = element.ownerDocument;
+    const group = doc.createElement("fieldset");
+    group.dataset.cbSharedSubclass = "";
+    group.className = "cb-identity-options";
+    const legend = doc.createElement("legend");
+    legend.textContent = "Class Identity";
+    group.append(legend);
     for (const [value, name] of [["standard", cls.name], [variant.identifier, game.i18n.localize(variant.name)]]) {
-      const option = element.ownerDocument.createElement("option");
-      option.value = value;
-      option.textContent = name;
-      select.append(option);
+      const label = doc.createElement("label");
+      const radio = doc.createElement("input");
+      radio.type = "radio";
+      radio.name = "cb-hero-" + cls.id;
+      radio.value = value;
+      radio.checked = sharedSelection.hero === (value === variant.identifier);
+      radio.addEventListener("change", event => {
+        event.stopPropagation();
+        sharedSelection = { id: subclass.id, hero: value === variant.identifier };
+      });
+      const title = doc.createElement("strong");
+      title.textContent = name;
+      label.append(radio, title);
+      // Draconic Sorcery is shared by the PHB Sorcerer and the WoW Evoker.
+      if (variant.identifier === "evoker") label.append(value === "standard" ? "Draconic Spells" : "Evoker Spells");
+      group.append(label);
     }
-    select.value = sharedSelection.hero ? variant.identifier : "standard";
-    select.addEventListener("change", event => {
-      event.stopPropagation();
-      sharedSelection = { id: subclass.id, hero: select.value === variant.identifier };
-    });
-    label.append(select);
     const pill = element.querySelector(".pill-lg");
-    if (pill) pill.after(label);
-    else element.append(label);
+    if (pill) pill.after(group);
+    else element.append(group);
   }
 
   async function review(variant, subclass) {

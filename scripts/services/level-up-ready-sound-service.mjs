@@ -24,7 +24,7 @@ export class LevelUpReadySoundService {
     if (!actor || actor.type !== "character") return;
     if (actor.getFlag?.(MODULE_ID, "isDraft") || actor.getFlag?.(MODULE_ID, "isLevelUpDraft")) return;
     const settings = this.settings();
-    if (!this.path(settings)) return;
+    if (settings.levelUpMode === "free" || !this.path(settings)) return;
     if (!actor.items?.some?.(item => item.type === "class")) return;
 
     const mode = settings.levelUpMode === "xp" ? "xp" : "milestone";

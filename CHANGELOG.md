@@ -1,3 +1,9 @@
+## 0.9.940 — Class identity and Free Level Up
+
+- Class creation uses matching checkboxes for base classes and Warcraft variants. The book preview hides the Foundry advice icon while retaining its text and links.
+- Level 3 identity choices show the class features for the selected progression. Flexible Warcraft identities can switch at level 3. Committed heroic classes keep their progression. Draconic Sorcery shows both available identities in the native subclass step for an undecided Sorcerer.
+- GMs can select Free Level Up as an advancement method. Eligible characters can advance directly from their sheet and the completed transaction sets XP to the threshold for their new total level.
+
 ## 0.9.939 — Warcraft variants in the class list
 
 - Expand a base class to choose its Warcraft variant during creation or multiclassing. The details panel shows the installed book entry and feature changes. Selecting the base class again keeps its normal progression.

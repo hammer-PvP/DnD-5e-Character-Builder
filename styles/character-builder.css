@@ -6822,26 +6822,28 @@
 }
 
 .cb-primary-option[hidden] { display: none; }
-.cb-primary-option .cb-tree-choice {
-  grid-column: 1 / -1;
-  grid-template-columns: 24px 36px minmax(0, 1fr);
-  height: auto;
-}
-.cb-tree-choice i { justify-self: center; font-size: 20px; }
-.cb-tree-choice[aria-pressed="true"] i { color: #72d895; }
 .cb-primary-option.cb-warcraft-child {
   margin-inline-start: 20px;
   width: calc(100% - 20px);
   min-height: 36px;
   border-inline-start: 2px solid var(--cb-border);
 }
-.cb-warcraft-child .cb-tree-choice { min-height: 36px; grid-template-columns: 20px 26px minmax(0, 1fr); padding-block: 2px; }
-.cb-warcraft-child .cb-tree-choice img { width: 26px; height: 26px; }
-.cb-warcraft-child .cb-tree-choice i { font-size: 16px; }
-.cb-native-identity, .cb-warcraft-identity { display: flex; align-items: center; gap: .5rem; }
-.cb-native-identity select, .cb-warcraft-identity select { flex: 0 1 auto; width: auto; }
-.cb-native-identity { margin-block-start: .5rem; }
-.cb-warcraft-identity { flex: 0 0 auto; margin-block: .5rem; }
+.cb-warcraft-child .cb-primary-details { min-height: 36px; grid-template-columns: 26px minmax(0, 1fr); padding-block: 2px; }
+.cb-warcraft-child .cb-primary-details img { width: 26px; height: 26px; }
+.cb-warcraft-preview .fvtt.advice figure.icon:has(> img[src="icons/vtt-512.png"]:only-child) { display: none; }
+.cb-identity-options {
+  min-width: 0;
+  flex: 0 0 auto;
+  margin: .5rem 0;
+  padding: .5rem .75rem;
+  border: 1px solid rgba(209,176,107,.45);
+  border-radius: 5px;
+}
+.cb-identity-options legend, .cb-identity-options label:has(input:checked) strong { color: #e9c788; }
+.cb-identity-options label { display: flex; align-items: center; gap: .6rem; padding: .25rem 0; cursor: pointer; }
+.cb-identity-options input[type=radio] { flex: none; width: 20px; height: 20px; margin: 0; }
+.cb-identity-options small { display: block; }
+.cb-identity-options p { margin: .2rem 0; }
 .cb-multiclass-browser { display: grid; grid-template-columns: minmax(260px, 2fr) minmax(0, 3fr); gap: 12px; }
 .cb-multiclass-browser .cb-multiclass-grid { grid-template-columns: minmax(0, 1fr); }
 .cb-multiclass-browser .cb-source-preview { align-self: start; max-height: 60vh; position: sticky; top: 0; }

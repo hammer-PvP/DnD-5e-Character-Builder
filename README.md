@@ -1,6 +1,6 @@
 # Character Builder
 
-**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14. **v0.9.939** groups Warcraft variants under their D&D classes. Choose a variant to read its book entry and feature changes alongside the list, then confirm the class. At class level 3, the native subclass picker and the existing Level Up review guide conversion. Sorcerers choosing Draconic Sorcery can select Sorcerer or Evoker within the native step.
+**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14. **v0.9.940** groups Warcraft variants under their D&D classes. Choose a variant to read its book entry and feature changes alongside the list, then confirm the class. At class level 3, the native subclass picker and the existing Level Up review guide conversion. The level 3 identity choices show feature changes for each eligible class. Committed Death Knights, Demon Hunters and Evokers keep their heroic progression.
 
 > **Post-migration status:** the `v0.9.x1–x4` series was the D&D5e 6.x migration branch. v0.9.921 preserves the stabilized D&D5e 6.x runtime baseline on the normal `v0.9.9xx` line and continues the evidence-driven compatibility-fix policy.
 
@@ -142,6 +142,8 @@ Character Builder changes only the Advancement schedule required by the selected
 ## Level Up and Multiclass
 
 The Level Up flow loads the Actor's current classes, features, spells, feats, equipment, proficiencies, historical choices, and managed ownership data.
+
+With **Free Level Up**, eligible owners can start an advance directly from the character sheet. Committing sets XP to the threshold for the new total character level, including multiclass levels. Milestone remains the default.
 
 When the world uses **Milestone** Level Ups, a GM grant also updates the Actor's numeric XP bookkeeping to at least the D&D5e threshold for the granted target level. Existing XP above that threshold is preserved. This does not change XP-mode progression; it only keeps Milestone characters ready for a later switch to XP tracking.
 

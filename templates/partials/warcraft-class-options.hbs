@@ -1,9 +1,17 @@
 {{#if warcraft}}
-<label class="cb-warcraft-identity">{{warcraft.title}}
-  <select name="warcraftIdentity" {{#if busy}}disabled{{/if}}>
-    {{#each warcraft.rows}}
-    <option value="{{id}}" {{#if checked}}selected{{/if}}>{{name}}</option>
-    {{/each}}
-  </select>
-</label>
+<fieldset class="cb-identity-options" {{#if busy}}disabled{{/if}}>
+  <legend>Class Identity</legend>
+  {{#if warcraft.locked}}
+  <strong>{{warcraft.name}}</strong> · Hero Class{{#if warcraft.subclass}} · {{warcraft.subclass}}{{/if}}
+  {{#if warcraft.features}}<p>Level 3: {{warcraft.features}}</p>{{/if}}
+  {{else}}
+  <p>Choose which class progression your character will use from level 3.</p>
+  {{#each warcraft.rows}}
+  <label>
+    <input type="radio" name="warcraftIdentity" value="{{id}}" {{checked this.checked}}>
+    <span><strong>{{name}}</strong> · {{source}}<small>{{detail}}</small></span>
+  </label>
+  {{/each}}
+  {{/if}}
+</fieldset>
 {{/if}}

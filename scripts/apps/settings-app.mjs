@@ -266,7 +266,7 @@ export class CharacterBuilderSettingsApp extends HandlebarsApplicationMixin(Appl
     if (!enabledHpMethods.length) {
       return ui.notifications.error("Enable at least one Hit Point advancement method.");
     }
-    if (!['xp', 'milestone'].includes(settings.levelUpMode)) {
+    if (!['xp', 'milestone', 'free'].includes(settings.levelUpMode)) {
       return ui.notifications.error("Choose a valid Level Up mode.");
     }
     if (settings.levelUpReadySound) {

@@ -1,3 +1,4 @@
+import { activeWarcraft } from "./warcraft-progression-service.mjs";
 import { documentFingerprint, fieldChanges, reconcileEmbeddedDocuments } from "../utils/embedded-document-utils.mjs";
 import { repairAdvancementRecords } from "../utils/advancement-utils.mjs";
 import { MODULE_ID, MODULE_VERSION } from "../constants.mjs";
@@ -61,6 +62,7 @@ export class LevelUpCommitService {
       if (draft.getFlag(MODULE_ID, "sourceActorId") !== actor.id) {
         throw new Error("This Level Up draft does not belong to the selected Actor.");
       }
+      const advancementMode = LevelUpService.settings().levelUpMode;
       const currentLevel = LevelUpService.actorLevel(actor);
       const originalClassId = actor?.system?.details?.originalClass?.id
         ?? actor?.system?.details?.originalClass
@@ -122,6 +124,12 @@ export class LevelUpCommitService {
         img: draftData.img,
         name: actor.name
       });
+
+      if (advancementMode === "free") {
+        const threshold = CONFIG.DND5E.CHARACTER_EXP_LEVELS?.[currentLevel] ?? actor.system?.details?.xp?.max;
+        if (!Number.isFinite(threshold)) throw new Error("The XP threshold for the new character level is unavailable.");
+        baseUpdate["system.details.xp.value"] = threshold;
+      }
 
       stage = "Applying Class and Subclass Progression";
       await progress(28, stage, "Applying the validated class, subclass, and Actor source data.");
@@ -242,7 +250,7 @@ export class LevelUpCommitService {
       this.#assertToken(actor, token);
       await HitPointAdvancementService.clearLockedRoll(actor, { reason: "committed", archive: false, render: false });
       const finalFlagCleanup = { [`flags.${MODULE_ID}.levelUpDraftId`]: new foundry.data.operators.ForcedDeletion() };
-      if (LevelUpService.settings().levelUpMode === "milestone") {
+      if (advancementMode === "milestone" || advancementMode === "free") {
         finalFlagCleanup[`flags.${MODULE_ID}.levelUpGrant`] = new foundry.data.operators.ForcedDeletion();
       }
       await actor.update(finalFlagCleanup, {
@@ -470,6 +478,13 @@ export class LevelUpCommitService {
       : actor.items.get(state.selectedClassId)
         ?? actor.items.find(item => item.type === "class" && item.system?.identifier === state.selectedClassIdentifier);
     if (!reference) throw new Error("The source Class document could not be found for integrity validation.");
+
+    const committedHero = reference.flags?.["dnd-world-warcraft"]?.heroClass;
+    const fixed = activeWarcraft()?.config?.heroClasses?.[reference.system?.identifier]
+      ?.find(hero => hero.identifier === committedHero && hero.subclass);
+    if (fixed && draftClass.flags?.["dnd-world-warcraft"]?.heroClass !== committedHero) {
+      throw new Error("The committed heroic class changed on the draft. Restart Class Selection.");
+    }
 
     const comparisons = [
       ["identifier", reference.system?.identifier, draftClass.system?.identifier],

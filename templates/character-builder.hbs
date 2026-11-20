@@ -322,15 +322,19 @@
               {{#each items}}
               {{#if hasVariants}}
               <article class="cb-primary-option {{#if checked}}pending{{/if}}" data-search="{{search}}">
-                <button type="button" class="cb-primary-details cb-tree-choice" data-action="{{#if @root.stepBrowseOnly}}preview{{else}}pick-class-identity{{/if}}" data-kind="class" data-uuid="{{uuid}}" data-identity="standard" aria-expanded="{{expanded}}" aria-pressed="{{this.checked}}">
-                  <i class="fa-regular {{#if checked}}fa-square-check{{else}}fa-square{{/if}}" aria-hidden="true"></i>
+                <label class="cb-primary-toggle" title="Choose {{name}}">
+                  <input type="checkbox" aria-label="{{name}}" data-action="pick-class-identity" data-uuid="{{uuid}}" data-identity="standard" {{checked this.checked}} {{#if @root.stepBrowseOnly}}disabled{{/if}}>
+                </label>
+                <button type="button" class="cb-primary-details" data-action="{{#if @root.stepBrowseOnly}}preview{{else}}pick-class-identity{{/if}}" data-kind="class" data-uuid="{{uuid}}" data-identity="standard" aria-expanded="{{expanded}}" aria-pressed="{{this.checked}}">
                   <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>{{sourceLabel}}</small></span>
                 </button>
               </article>
               {{#each variants}}
               <article class="cb-primary-option cb-warcraft-child {{#if checked}}pending{{/if}}" data-search="{{search}}" data-expanded="{{expanded}}" {{#unless expanded}}hidden{{/unless}}>
-                <button type="button" class="cb-primary-details cb-tree-choice" data-action="pick-class-identity" data-uuid="{{uuid}}" data-identity="{{id}}" aria-pressed="{{this.checked}}" {{#if @root.stepBrowseOnly}}disabled{{/if}}>
-                  <i class="fa-regular {{#if checked}}fa-square-check{{else}}fa-square{{/if}}" aria-hidden="true"></i>
+                <label class="cb-primary-toggle" title="Choose {{name}}">
+                  <input type="checkbox" aria-label="{{name}}" data-action="pick-class-identity" data-uuid="{{uuid}}" data-identity="{{id}}" {{checked this.checked}} {{#if @root.stepBrowseOnly}}disabled{{/if}}>
+                </label>
+                <button type="button" class="cb-primary-details" data-action="pick-class-identity" data-uuid="{{uuid}}" data-identity="{{id}}" aria-pressed="{{this.checked}}" {{#if @root.stepBrowseOnly}}disabled{{/if}}>
                   <img src="{{img}}" alt=""><span><strong>{{name}}</strong><small>World of Warcraft</small></span>
                 </button>
               </article>

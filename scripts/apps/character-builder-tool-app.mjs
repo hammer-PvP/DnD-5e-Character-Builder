@@ -31,7 +31,7 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
   async _prepareContext() {
     if (!game.user.isGM) throw new Error("Only a GM can use the Character Builder Tool.");
     const settings = LevelUpService.settings();
-    const mode = settings.levelUpMode === "xp" ? "xp" : "milestone";
+    const mode = settings.levelUpMode;
     const epicBoonEnabled = Boolean(settings.enableEpicBoons && settings.enableGrantEpicBoons);
     const managedRestAccess = settings.gmManagedRestAccess === true;
     const partyGroups = PartyGroupService.groups();
@@ -60,7 +60,7 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
                 ? "Level Up already granted."
                 : "";
         const boonEligibility = EpicBoonService.grantEligibility(actor);
-        const levelUpEligible = !levelUpDisabledReason;
+        const levelUpEligible = mode !== "free" && !levelUpDisabledReason;
         const epicBoonEligible = epicBoonEnabled && boonEligibility.eligible;
         const restEligible = managedRestAccess && created;
         const restAccess = RestAccessService.state(actor);
@@ -107,6 +107,7 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
       mode,
       milestone: mode === "milestone",
       xpMode: mode === "xp",
+      freeMode: mode === "free",
       epicBoonEnabled,
       managedRestAccess,
       actors,
@@ -262,6 +263,7 @@ export class CharacterBuilderToolApp extends HandlebarsApplicationMixin(Applicat
   async #applyProgression(event) {
     event.preventDefault();
     if (this.busy) return;
+    if (LevelUpService.settings().levelUpMode === "free") return;
     const actors = this.#selectedActors("levelUp");
     if (!actors.length) return ui.notifications.warn("Select at least one character eligible for this progression action.");
 
