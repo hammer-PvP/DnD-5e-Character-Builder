@@ -3,7 +3,6 @@ import { CharacterBuilderSettingsApp } from "./apps/settings-app.mjs";
 import { SupportCreatorApp } from "./apps/support-creator-app.mjs";
 import { CharacterBuilderApp } from "./apps/character-builder-app.mjs";
 import { CharacterBuilderToolApp } from "./apps/character-builder-tool-app.mjs";
-import { CharacterValidationApp } from "./apps/character-validation-app.mjs";
 import { LevelUpCommitService } from "./services/level-up-commit-service.mjs";
 import { LevelUpApp } from "./apps/level-up-app.mjs";
 import { LevelUpService } from "./services/level-up-service.mjs";
@@ -171,7 +170,6 @@ Hooks.once("init", async () => {
     }),
     openTool: () => game.user.isGM ? new CharacterBuilderToolApp().render({ force: true }) : null,
     recoverFailedLevelUp: recoverLevelUp,
-    validateCharacter: actor => game.user.isGM ? CharacterValidationApp.launch(actor) : null,
     openTutorial: () => SplashTutorialService.openNow()
   };
   game.modules.get(MODULE_ID).api = api;
@@ -271,26 +269,7 @@ Hooks.on("renderActorDirectory", (app, html) => injectActorDirectoryTool(app, ht
 Hooks.on("getActorDirectoryEntryContext", (_application, options) => {
   if (!game.user.isGM || !Array.isArray(options)) return;
   LibWrapperService.addRecoveryControl(options);
-  if (options.some(option => option?.classes?.includes?.("cb-validate-character-context"))) return;
-  options.push({
-    label: "Validate Character",
-    icon: "fa-solid fa-stethoscope",
-    classes: "cb-validate-character-context",
-    visible: target => {
-      const actor = actorFromDirectoryTarget(target);
-      return Boolean(actor && actor.type === "character"
-        && !actor.getFlag(MODULE_ID, "isDraft")
-        && !actor.getFlag(MODULE_ID, "isLevelUpDraft"));
-    },
-    onClick: (_event, target) => {
-      const actor = actorFromDirectoryTarget(target);
-      if (!actor) return ui.notifications.warn("Character Builder could not resolve that Actor directory entry.");
-      void CharacterValidationApp.launch(actor).catch(error => {
-        console.error(`${MODULE_ID} | Character Validation could not start.`, error);
-        ui.notifications.error(error.message, { permanent: true });
-      });
-    }
-  });
+
 });
 
 // Retain a small compatibility fallback for any legacy Actor sheet selected by the world.

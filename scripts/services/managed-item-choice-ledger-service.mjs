@@ -6,7 +6,7 @@ import { MODULE_ID } from "../constants.mjs";
  * Reconciles a CB-handled ItemChoice with *real* Items already created by CB.
  * The native AdvancementManager must never run these dependent choices again;
  * its original advancement definitions and ledger are retained for D&D5e
- * provenance and Character Validation. No content UUID or choice title is
+ * provenance and native advancement ownership. No content UUID or choice title is
  * hardcoded here; the caller supplies the validated acquisition groups.
  */
 export class ManagedItemChoiceLedgerService {

@@ -99,7 +99,7 @@ export class SpellGrantReversalService {
       const activity = currentActivities[id];
       if (!activity || claimedBySurvivor.has(id)) continue;
       if (activity.type !== "forward" || !(activity.consumption?.targets ?? []).some(row => row?.type === "itemUses")) continue;
-      update[`system.activities.-=${id}`] = null;
+      update[`system.activities.${id}`] = new foundry.data.operators.ForcedDeletion();
     }
 
     const consumption = new Map();

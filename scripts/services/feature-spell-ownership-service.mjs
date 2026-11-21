@@ -149,7 +149,7 @@ export class FeatureSpellOwnershipService {
       // No guess for imported/legacy spells whose original preparation is unknown.
       if (baseline != null) {
         update["system.prepared"] = baseline;
-        update[`flags.${MODULE_ID}.-=featureSpellPreparedBaseline`] = null;
+        update[`flags.${MODULE_ID}.featureSpellPreparedBaseline`] = new foundry.data.operators.ForcedDeletion();
       }
     } else if (hasAlways && baseline != null) {
       // Carry the baseline forward even if its original owner was removed first.
@@ -166,19 +166,6 @@ export class FeatureSpellOwnershipService {
     const next = foundry.utils.deepClone(record);
 
     if (prior) {
-      // Validation is a repair observation, not a new acquisition. Preserve
-      // historical acquisition fields when the Validator re-observes a proven
-      // owner. Normal progression/runtime maintenance remains free to record a
-      // legitimate new configuration transaction for that same owner.
-      if (record.validationReconciled) {
-        for (const field of [
-          "transactionId", "acquiredAtCharacterLevel",
-          "acquiredAtClassLevel", "previousPrepared"
-        ]) {
-          if (prior[field] !== undefined && prior[field] !== null && prior[field] !== "") next[field] = foundry.utils.deepClone(prior[field]);
-        }
-      }
-
       // Never discard an established structural pointer just because a later
       // observer has less context. Missing legacy metadata may still be filled
       // by the new record.
@@ -192,23 +179,12 @@ export class FeatureSpellOwnershipService {
         }
       }
 
-      // Validator reconciliation is not permission to rename/reclassify a
-      // proven owner. Runtime maintenance may legitimately update presentation
-      // labels (for example a reconfigured Circle of the Land), so this
-      // preservation is deliberately limited to validation observations.
-      if (record.validationReconciled) {
-        for (const field of ["category", "label"]) {
-          if (prior[field] !== undefined && prior[field] !== null && prior[field] !== "") next[field] = foundry.utils.deepClone(prior[field]);
-        }
-      }
-
       if (prior.previousPrepared !== undefined && prior.previousPrepared !== null
         && (next.previousPrepared === undefined || next.previousPrepared === null)) {
         next.previousPrepared = prior.previousPrepared;
       }
       next.alwaysPrepared = Boolean(prior.alwaysPrepared || next.alwaysPrepared);
       next.nativeGrant = Boolean(prior.nativeGrant || next.nativeGrant);
-      if (prior.validationReconciled || next.validationReconciled) next.validationReconciled = true;
     }
 
     rows.push(next);

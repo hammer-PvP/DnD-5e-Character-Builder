@@ -159,7 +159,7 @@ export class LibWrapperService {
           async function (wrapped, ...args) {
             if (LevelUpFeatureService.isTrackedWildShapeActivity(this) && this.item.isOwner && this.canUse
               && !(await LevelUpFeatureService.availableWildShapeForms(this)).length) {
-              ui.notifications.warn("Choose Known Wild Shape Forms in Level Up or Validate Character first.");
+              ui.notifications.warn("Choose Known Wild Shape Forms through Level Up before using this activity.");
               return;
             }
             return wrapped(...args);
@@ -216,36 +216,6 @@ export class LibWrapperService {
           const options = wrapped(...args);
           if (!Array.isArray(options) || !game.user?.isGM) return options;
           LibWrapperService.addRecoveryControl(options);
-          if (options.some(option => String(option?.classes ?? "").split(/\s+/).includes("cb-validate-character-context"))) {
-            return options;
-          }
-          options.push({
-            label: "Validate Character",
-            icon: "fa-solid fa-stethoscope",
-            classes: "cb-validate-character-context",
-            visible: target => {
-              const actor = LibWrapperService.#actorFromDirectoryTarget(target);
-              return Boolean(actor && actor.type === "character"
-                && !actor.getFlag(MODULE_ID, "isDraft")
-                && !actor.getFlag(MODULE_ID, "isLevelUpDraft"));
-            },
-            onClick: (_event, target) => {
-              const actor = LibWrapperService.#actorFromDirectoryTarget(target);
-              if (!actor) {
-                ui.notifications.warn("Character Builder could not resolve that Actor directory entry.");
-                return;
-              }
-              const launch = game.modules.get(MODULE_ID)?.api?.validateCharacter;
-              if (typeof launch !== "function") {
-                ui.notifications.error("Character Validation is not available yet. Reload the world and try again.");
-                return;
-              }
-              void Promise.resolve(launch(actor)).catch(error => {
-                console.error(`${MODULE_ID} | Character Validation could not start.`, error);
-                ui.notifications.error(error.message, { permanent: true });
-              });
-            }
-          });
           return options;
         },
         "WRAPPER"

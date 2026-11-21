@@ -1,6 +1,6 @@
 export const MODULE_ID = "dnd5e-character-builder";
-export const MODULE_VERSION = "0.9.941";
-export const MODULE_BUILD = "warcraft-grant-reconciliation-fixes";
+export const MODULE_VERSION = "0.9.942";
+export const MODULE_BUILD = "core-stabilization";
 export const DRAFT_FOLDER_NAME = "Character Builder Drafts";
 
 export const SOURCE_DEFINITIONS = {

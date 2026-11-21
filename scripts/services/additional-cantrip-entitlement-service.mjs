@@ -27,7 +27,7 @@ export class AdditionalCantripEntitlementService {
       for (const effect of this.#effects(item)) {
         // The selected feature Item is the entitlement source. A manually
         // disabled transfer effect must not erase a rules-granted cantrip from
-        // Character Creation, Level Up, or Validator projection.
+        // Character Creation or Level Up.
         if (!effect || effect.transfer === false) continue;
         const changes = this.#changes(effect);
         for (const change of changes) {
@@ -70,8 +70,7 @@ export class AdditionalCantripEntitlementService {
     transactionId = null,
     acquiredAtCharacterLevel = null,
     acquiredAtClassLevel = null,
-    alwaysPrepared = true,
-    validationReconciled = false
+    alwaysPrepared = true
   } = {}) {
     return {
       category: grant.category,
@@ -88,8 +87,7 @@ export class AdditionalCantripEntitlementService {
       sourceUuid: spellSource?.uuid ?? spellSource?.getFlag?.("dnd5e", "sourceId") ?? spellSource?._stats?.compendiumSource ?? null,
       spellLevel: Number(spellSource?.system?.level ?? 0),
       alwaysPrepared: Boolean(alwaysPrepared),
-      nativeGrant: false,
-      ...(validationReconciled ? { validationReconciled: true } : {})
+      nativeGrant: false
     };
   }
 

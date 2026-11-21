@@ -83,8 +83,8 @@ export function warcraftChoices(identifier, baseName, registry, { level, current
 /**
  * Compute the effective canonical advancement contracts for an already-built
  * character, without mutating either the source document or the Actor. The
- * Validator must interpret the source through the same WoW replacement map
- * that creation and Level Up use, otherwise it restores legally retired grants.
+ * Core progression checks must interpret the same WoW replacement map
+ * that creation and Level Up use, without replaying retired grants.
  */
 export async function effectiveWarcraftAdvancements(actor, owner, sourceDocument, registry) {
   if (!activeWarcraft() || !sourceDocument || !owner) return null;
@@ -164,7 +164,7 @@ export async function retireGrantTree(actor, parentIds) {
           if (survivingGrants.length) {
             update["flags." + MODULE_ID + ".alwaysPreparedReconciliation.grants"] = survivingGrants;
           } else {
-            update["flags." + MODULE_ID + ".-=alwaysPreparedReconciliation"] = null;
+            update["flags." + MODULE_ID + ".alwaysPreparedReconciliation"] = new foundry.data.operators.ForcedDeletion();
           }
         }
         // The native ItemGrant survivor has no mergedItemGrants receipt. Its
@@ -186,9 +186,9 @@ export async function retireGrantTree(actor, parentIds) {
           for (const key of ["advancementOrigin", "advancementRoot"]) {
             if (native[key]?.split(".")[0] !== parentId) continue;
             if (survivor) update["flags.dnd5e." + key] = survivor.ownerItemId + "." + survivor.advancementId;
-            else update["flags.dnd5e.-=" + key] = null;
+            else update["flags.dnd5e." + key] = new foundry.data.operators.ForcedDeletion();
           }
-          if (flags.itemGrantInstance?.ownerItemId === parentId) update["flags." + MODULE_ID + ".-=itemGrantInstance"] = null;
+          if (flags.itemGrantInstance?.ownerItemId === parentId) update["flags." + MODULE_ID + ".itemGrantInstance"] = new foundry.data.operators.ForcedDeletion();
         }
         if (Object.keys(update).length) await item.update(update);
       } else retired.add(item.id);
@@ -206,7 +206,7 @@ async function restoreBaseClass(cls, variant) {
   if (!base || base.type !== "class" || base.system.identifier !== cls.system.identifier || base === cls || base.parent?.documentName === "Actor") {
     throw new Error("The original class source could not be verified.");
   }
-  const update = { name: base.name, img: base.img, ["flags." + WOW + ".-=heroClass"]: null };
+  const update = { name: base.name, img: base.img, ["flags." + WOW + ".heroClass"]: new foundry.data.operators.ForcedDeletion() };
   if (variant.replacedClassFeatures) {
     const replacements = new Map();
     for (const step of Object.values(base.toObject().system.advancement ?? {})) {
@@ -379,6 +379,12 @@ export function nativeHeroChoice(manager, cls, level, registry) {
 export function canTransplantHeroFeature(previous, replacement) {
   if (!previous || !replacement || previous.type !== replacement.type) return false;
   if (previous.type !== "feat") return false;
+  // An Active Effect belongs to its source feature, not to a compatible
+  // Advancement record. Recreate the target natively so source-specific
+  // effects (including creature type changes) are never lost or inherited.
+  const previousEffects = previous.toObject?.().effects ?? previous.effects ?? [];
+  const replacementEffects = replacement.toObject?.().effects ?? replacement.effects ?? [];
+  if (Object.values(previousEffects).length || Object.values(replacementEffects).length) return false;
   const oldAdvancements = readAdvancementRecords(previous);
   const newAdvancements = replacement.toObject().system?.advancement ?? {};
   if (Object.keys(oldAdvancements).length !== Object.keys(newAdvancements).length) return false;
@@ -495,7 +501,7 @@ async function applyHero(actor, cls, variant) {
   }
   const original = cls.getFlag(MODULE_ID, "rulesOriginalAdvancement");
   const updates = { name: data.name, img: data.img, ["flags." + WOW + ".heroClass"]: variant.identifier,
-    ["flags." + MODULE_ID + ".-=deferredDeathKnight"]: null,
+    ["flags." + MODULE_ID + ".deferredDeathKnight"]: new foundry.data.operators.ForcedDeletion(),
     "system.advancement": foundry.data.operators.ForcedReplacement.create(data.system.advancement) };
   if (original) {
     const base = { ...data, system: { advancement: foundry.utils.deepClone(original) } };
@@ -583,7 +589,7 @@ export async function reviewRestrictedSpell(actor, spell) {
   if (!choice) return "cancelled";
   if (!restrictedOrdinarySpell(actor, spell)) return "unchanged";
   if (choice === "keep") await spell.setFlag(MODULE_ID, "warcraftRetainedSpell", sourceOf(spell));
-  else await actor.deleteEmbeddedDocuments("Item", [spell.id], { characterBuilderValidationRepair: true });
+  else await actor.deleteEmbeddedDocuments("Item", [spell.id], { characterBuilderWarcraftSpellCleanup: true });
   return "changed";
 }
 

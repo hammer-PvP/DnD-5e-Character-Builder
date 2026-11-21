@@ -1,6 +1,8 @@
 # Character Builder
 
-**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14. **v0.9.941** retains the Warcraft class-variant interface and Free Level Up while correcting grant ownership, legitimate Validator replacements, Level 3 Ranger → Demon Hunter conversions, and base-class checkbox toggles. **v0.9.940** introduced the class-variant interface. Choose a variant to read its book entry and feature changes alongside the list, then confirm the class. At class level 3, the native subclass picker and the existing Level Up review guide conversion. The level 3 identity choices show feature changes for each eligible class. Committed Death Knights, Demon Hunters and Evokers keep their heroic progression.
+> **v0.9.942 Core Stabilization:** the former independent Character Validator/GM repair wizard has been removed. Character Creation and Level Up still enforce their own native Advancement, prerequisite, ownership and transaction safeguards. Foundry V14.370 and D&D5e 6.1.1 are the declared verified versions (live conversion QA remains recommended).
+
+**Character Builder** is a guided D&D 5e character creation, Level Up, multiclass, Epic Boon, and Character Keeper module for Foundry Virtual Tabletop 14. **v0.9.942** focuses on the Builder/Level Up core: safer Warcraft feature replacement with Active Effects, cross-level Always Prepared spell consolidation, and removal of the standalone GM Character Validator. The Warcraft class-variant interface and Free Level Up remain available. Choose a variant to read its book entry and feature changes, then confirm the class. At class level 3, native subclass choices and the Level Up review guide identity conversion. Committed Death Knights, Demon Hunters and Evokers keep their heroic progression.
 
 > **Post-migration status:** the `v0.9.x1–x4` series was the D&D5e 6.x migration branch. v0.9.921 preserves the stabilized D&D5e 6.x runtime baseline on the normal `v0.9.9xx` line and continues the evidence-driven compatibility-fix policy.
 
@@ -12,8 +14,8 @@ It uses the official D&D5e documents and native Advancement system as its rules 
 
 ## Compatibility
 
-- Foundry VTT 14.367 or newer within v14 (verified target: 14.368)
-- D&D5e 6.0.0–6.1.999 (declared target: 6.1.0; live QA pending)
+- Foundry VTT 14.367 or newer within v14 (declared verified: 14.370)
+- D&D5e 6.0.0–6.1.999 (declared verified: 6.1.1; live QA pending)
 - Player's Handbook 2024 content package
 - SRD 5.2 Modern
 - SRD 5.1 Legacy and compatible 2014 compendiums through the Legacy progression mode
@@ -186,17 +188,13 @@ For limited-list casters, a normally selected spell that becomes Always Prepared
 
 **Paladin's Smite** remains a separate native Feature, while its native ItemGrant enriches the single canonical **Divine Smite** spell with Always Prepared status, the 1/Long Rest free-cast pool, and the forwarding Activities created by D&D5e. The original spell-slot Activities remain intact, so after the free cast is spent the same Divine Smite can still consume normal spell slots.
 
-The merge is intentionally conservative. It requires the same canonical spell source and mechanically equivalent base Activities/effects. Non-mechanical metadata such as embedded-document timestamps is ignored. A native ItemGrant may contribute a use pool and free-cast forwarding Activities only when those additions are explicitly declared by that same ItemGrant; arbitrary spell modifications are still rejected. Spells from Items, different classes, casting abilities, or casting methods remain separate. Reconciliation is limited to the active Draft transaction and does not migrate existing Actors.
+The merge is intentionally conservative. It requires the same canonical spell source and mechanically equivalent base Activities/effects. Non-mechanical metadata such as embedded-document timestamps is ignored. A native ItemGrant may contribute a use pool and free-cast forwarding Activities only when those additions are explicitly declared by that same ItemGrant; arbitrary spell modifications are still rejected. Spells from Items, different classes, casting abilities, or casting methods remain separate. Reconciliation runs only inside an active Draft transaction and never performs a background migration of existing Actors. A spell grant acquired at an earlier level may be merged with the new normal acquisition when its persisted feature, source UUID, native ItemGrant ledger and original Actor provenance all agree.
 
-## Character Validation
+## Advancement safeguards (Validator removed)
 
-Game Masters can right-click a Player Character in the Actor Directory and choose **Validate Character**. The tool always creates a revised copy first (`<Name> - Validated 1`, then `Validated 2`, `Validated 3`, and so on) and never modifies the original Actor. Revalidating a validation copy keeps the original character name and advances the validation number instead of stacking suffixes.
+The standalone GM Character Validator, its revision/repair wizard, context menus and repair API were removed in v0.9.942. It no longer clones or changes finished character sheets. A separately scoped rewrite may be developed in the future.
 
-Character Validator is a secondary integrity and migration safety net, not a required completion step for Character Builder. A healthy character created and progressed entirely through Character Builder should normally require no Validator repairs; findings on such a character should be treated as evidence to audit the owning primary workflow rather than as a reason to rely on post-processing.
-
-The Validator treats Character Builder data as read-only evidence: it may consult source snapshots, progression rules, choice badges, history, provenance, and canonical enabled sources, but it does not edit Character Builder settings, compendiums, registries, templates, or runtime rules. Repairs are limited to the revised Actor and are classified as deterministic restore, metadata/state reconciliation, guided native choice replay, or review-only when provenance is ambiguous.
-
-Current validation includes structural Activity/Active Effect links, missing deterministic Advancement Items, stale copied Actor references, dependent Advancement completion, class/subclass grants, Weapon Mastery, Fighting Style, spell access/repertoire and grant ownership, malformed empty Spell placeholders, and source-accounted Traits such as skills, Expertise, saves, languages, tools, weapon/armor training, damage resistances/immunities/vulnerabilities, and condition immunities. For Tools specifically, the Validator also checks final Advancement/source references before offering a safe repair for an unreferenced default proficiency-0 mapping; customized ambiguous entries are preserved for review. Equipment, money, ammunition quantities, current HP, spent spell slots, and spent resource amounts are intentionally outside validation scope.
+Character Creation and Level Up still enforce source-native prerequisite checks, required Advancement choices, ownership and duplicate-grant protections, spell preparation consistency, rollback and commit integrity. Their read-only completion gate inspects the **active Draft** and compares newly introduced deficits against the unchanged source Actor during Level Up; it never attempts to repair legacy sheets. Existing optional Character Keeper/Rest management is unaffected.
 
 ## Character Keeper and Rest Management
 

@@ -25,7 +25,6 @@ export class InternalActorReferenceRebindingService {
     };
     let actorRefs = this.#collect(actor, actorScope);
     if (excludeValidationFlag) {
-      actorRefs = actorRefs.filter(row => !row.path.startsWith(`flags.${MODULE_ID}.characterValidation`));
     }
     if (actorRefs.length) {
       documentRows.push({ documentType: "Actor", documentId: actor.id, name: actor.name, refs: actorRefs });

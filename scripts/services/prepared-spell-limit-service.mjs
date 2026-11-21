@@ -271,7 +271,7 @@ export class PreparedSpellLimitService {
     if (sourceItem) return sourceItem === `class:${classIdentifier}`;
 
     // A missing owner on an otherwise modern CB spell is ambiguous. Do not
-    // count it against a class or auto-unprepare it; Character Validation owns
+    // count it against a class or auto-unprepare it; future manual review owns
     // provenance repair for that case.
     return false;
   }

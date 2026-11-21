@@ -1,4 +1,4 @@
-import { CharacterValidationProgressionService } from "./character-validation-progression-service.mjs";
+import { AdvancementCompletionProjectionService } from "./advancement-completion-projection-service.mjs";
 import { SourceRegistry } from "./source-registry.mjs";
 import { itemPrerequisiteLabel, itemPrerequisites, newMissingItemPrerequisites } from "../utils/advancement-utils.mjs";
 
@@ -15,8 +15,8 @@ const BLOCKING_KINDS = new Set([
 
 /**
  * Transaction-boundary completeness guard shared by Character Creation and
- * Level Up. The Character Validator remains the canonical projection engine;
- * this service only turns proven progression deficits into a commit gate.
+ * Level Up. Only native/source-proven deficits from the current progression
+ * are commit blockers; there is no character-sheet repair dependency.
  *
  * Level Up compares the pending Draft against the live Actor so legacy gaps do
  * not become unrelated blockers. Only a newly introduced or worsened deficit
@@ -30,12 +30,12 @@ export class AdvancementCompletionGateService {
     if (!registry.loaded) await registry.load();
 
     const draftIssues = this.#blocking(
-      await CharacterValidationProgressionService.scanBlockingAdvancementCompletion(draft, registry)
+      await AdvancementCompletionProjectionService.scan(draft, registry)
     );
     if (!baselineActor || !draftIssues.length) return draftIssues;
 
     const baselineIssues = this.#blocking(
-      await CharacterValidationProgressionService.scanBlockingAdvancementCompletion(baselineActor, registry)
+      await AdvancementCompletionProjectionService.scan(baselineActor, registry)
     );
     const baselineByIdentity = new Map();
     for (const issue of baselineIssues) {

@@ -1,3 +1,12 @@
+## 0.9.942 — Core Stabilization (Foundry V14 / D&D5e 6.1.x)
+
+- **Hero conversion with source-specific Effects:** do not transplant incompatible features containing Active Effects across Warcraft class identity replacements; retire the previous grant tree and apply the replacement with native D&D5e Advancement to retain its own effects and activities (e.g. Paladin Lay on Hands → Death Coil).
+- **Always Prepared across levels:** safely recognize a grant from a prior committed level when the original Actor, native ItemGrant ledger, source UUID and active feature all agree. Merge a duplicate normal spell acquisition into the established source-enhanced spell while preserving its free-use Activity and preparation status.
+- **Retired Character Validator:** remove the GM repair wizard, exported validation API, context-menu entries, dedicated template/styles and Validator-only services. Preserve the Builder/Level Up prerequisites, transactional integrity and a separate read-only native Advancement completion gate. Character validation will return in a future independently scoped rewrite.
+- **Foundry V14 data operators:** migrate Warcraft hero conversion and grant retirement field deletions from legacy `-=` syntax to `foundry.data.operators.ForcedDeletion`.
+- **Compatibility:** declare Foundry V14.370 verified and D&D5e 6.1.1 verified; retain the previous minimum requirements and system maximum.
+- **QA scope:** targeted code-level regression checks and ZIP integrity; live Foundry V14 tests are still required before calling the converted Paladin and older-grant merge fully validated.
+
 ## 0.9.941 — Warcraft Grant Reconciliation, Validator and Level 3 Conversion Fixes
 
 - **Source-effective validation:** resolve Warcraft identity changes from the enabled official source replacements before comparing canonical class/subclass grants. Protect legitimate Death Knight, Shaman, Evoker, and Beast Master alternatives; the validation projection also reads effective sources on applicable repairs, rather than silently restoring an obsolete base-class feature.

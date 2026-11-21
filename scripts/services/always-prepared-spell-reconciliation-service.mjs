@@ -243,13 +243,35 @@ export class AlwaysPreparedSpellReconciliationService {
       ?? []);
     const integrityRow = receipts.find(row => row.itemId === spell.id) ?? receipts.find(row =>
       row.ownerItemId === grant?.ownerItemId && row.advancementId === grant?.advancementId && row.configuredUuid === grant?.configuredUuid);
-    const owners = (spell.getFlag(MODULE_ID, "featureSpellOwners") ?? [])
-      .filter(owner => owner?.alwaysPrepared && owner.transactionId === transactionId);
+    const allOwners = (spell.getFlag(MODULE_ID, "featureSpellOwners") ?? [])
+      .filter(owner => owner?.alwaysPrepared);
+    const currentOwners = allOwners.filter(owner => owner.transactionId === transactionId);
     const levelUpSpell = spell.getFlag(MODULE_ID, "levelUpSpell");
     const managedFeatureGrant = levelUpSpell?.transactionId === transactionId
       && Boolean(levelUpSpell.featureItemId)
       && Number(spell.system?.prepared ?? 0) === 2;
-    if (!(grant?.transactionId === transactionId) && !owners.length && !managedFeatureGrant) return null;
+    // The level-2 grant is still authoritative when the same spell is selected
+    // normally at level 3. Only recognize an earlier owner if this spell AND
+    // its owning feature exist on the live source Actor, with the exact native
+    // ItemGrant receipt proving continued ownership. No legacy name matching.
+    const sourceActor = game.actors?.get?.(draft.getFlag(MODULE_ID, "sourceActorId"));
+    const persistent = Boolean(sourceActor?.items?.get?.(spell.id));
+    const provenOldOwners = persistent ? allOwners.filter(owner => {
+      if (!owner?.ownerItemId || !owner?.advancementId) return false;
+      const feature = draft.items.get(owner.ownerItemId);
+      const previousFeature = sourceActor.items.get(owner.ownerItemId);
+      const record = feature && readAdvancementRecords(feature)[owner.advancementId];
+      const recorded = record?.value?.added ?? {};
+      const uuid = this.#sourceUuid(spell);
+      return Boolean(previousFeature && record?.type === "ItemGrant"
+        && recorded[spell.id] === uuid
+        && owner.sourceUuid === uuid
+        && spell.getFlag("dnd5e", "advancementOrigin") === `${owner.ownerItemId}.${owner.advancementId}`);
+    }) : [];
+    const owners = currentOwners.length ? currentOwners : provenOldOwners;
+    const currentGrant = grant?.transactionId === transactionId;
+    const priorGrant = persistent && owners.length > 0;
+    if (!currentGrant && !owners.length && !managedFeatureGrant) return null;
 
     const ownerItemId = grant?.ownerItemId
       ?? owners[0]?.ownerItemId
@@ -277,7 +299,7 @@ export class AlwaysPreparedSpellReconciliationService {
       ?? this.#configuredUuidForSpell(rawAdvancement, spell)
       ?? owners[0]?.sourceUuid
       ?? null;
-    const nativeGrant = grant?.transactionId === transactionId
+    const nativeGrant = currentGrant || priorGrant
       || owners.some(row => Boolean(row?.nativeGrant))
       || Boolean(rawAdvancement?.type === "ItemGrant" && configuredUuid);
     const advancementOrigin = spell.getFlag("dnd5e", "advancementOrigin")

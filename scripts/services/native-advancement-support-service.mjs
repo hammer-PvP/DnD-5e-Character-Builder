@@ -1,12 +1,9 @@
 import { SPELL_CHOICE_SCHOOLS } from "../utils/native-advancement-source-rules.mjs";
-import { NativeSpellGrantProjectionService } from "./native-spell-grant-projection-service.mjs";
 import { MODULE_ID } from "../constants.mjs";
 import { ManagedAdvancementRegistry } from "./managed-advancement-registry.mjs";
 import { NativeFeatChoiceGuard } from "./native-feat-choice-guard.mjs";
 import { SpellPreparationPolicyService } from "./spell-preparation-policy-service.mjs";
-import { advancementName, readAdvancementRecords, writeAdvancementValue } from "../utils/advancement-utils.mjs";
-
-const REPAIR_OPTIONS = { characterBuilderValidationRepair: true };
+import { advancementName, readAdvancementRecords } from "../utils/advancement-utils.mjs";
 
 /**
  * Error raised when a source-native Advancement completed in a state that the
@@ -503,102 +500,4 @@ export class NativeAdvancementSupportService {
       .trim();
   }
 
-  static spellReplacementOptions(registry, choice) {
-    return registry.optionsByType("spell").flatMap(group => group.items)
-      .filter(spell => this.isEligibleSpell(spell, choice.rule) && registry.isUuidAllowed(spell.uuid))
-      .sort((a, b) => a.name.localeCompare(b.name, game.i18n.lang));
-  }
-
-  static canReplaceSpell(actor, { owner, advancementId, level, spell }) {
-    const flags = spell.flags?.[MODULE_ID] ?? {};
-    const grant = flags.itemGrantInstance;
-    const ownsSpell = row => row.ownerItemId === owner.id && row.advancementId === advancementId;
-    if (flags.classSpellAccess || flags.levelUpSpell || flags.mergedItemGrants?.length
-      || (grant && !ownsSpell(grant)) || !(flags.featureSpellOwners ?? []).every(ownsSpell)) return false;
-    // A separate acquisition may reference this same embedded Item even when
-    // only one native origin is recorded on the spell itself.
-    return !actor.items.some(item => Object.entries(readAdvancementRecords(item)).some(([id, record]) => {
-      const added = record?.value?.added ?? {};
-      if (record?.type === "ItemGrant") return Object.hasOwn(added, spell.id);
-      return record?.type === "ItemChoice" && Object.entries(added).some(([key, bucket]) => {
-        if (item.id === owner.id && id === advancementId && key === level) return false;
-        return bucket && typeof bucket === "object" && Object.hasOwn(bucket, spell.id);
-      });
-    }));
-  }
-
-  static async replaceInvalidSpell(actor, registry, { ownerId, advancementId, spellId, level, sourceUuid }) {
-    const choice = this.invalidSpellChoices(actor).find(row => row.owner.id === ownerId
-      && row.advancementId === advancementId && row.spell.id === spellId && row.level === level);
-    if (!choice || !this.canReplaceSpell(actor, choice)) throw new Error("The invalid spell choice could no longer be safely replaced.");
-
-    const option = registry.sourceForUuid(sourceUuid);
-    const sourceSpell = this.isEligibleSpell(option, choice.rule) && registry.isUuidAllowed(sourceUuid) ? await fromUuid(sourceUuid) : null;
-    if (!this.isEligibleSpell(sourceSpell, choice.rule)) throw new Error("Choose an eligible spell from an enabled source.");
-
-    const { owner, advancement, spell } = choice;
-    const native = owner.advancement?.byId?.[advancementId] ?? owner.system?.advancement?.get?.(advancementId);
-    if (!native?.configuration?.spell?.applySpellChanges) {
-      throw new Error("The native Advancement spell configuration is unavailable.");
-    }
-
-    const originalValue = advancement.value;
-    const ability = originalValue.ability || spell.system?.ability;
-    const data = await NativeSpellGrantProjectionService.materialize({
-      sourceAdvancement: native,
-      sourceUuid: sourceSpell.uuid,
-      sourceItem: sourceSpell,
-      owner,
-      localAdvancement: { value: { ability } }
-    });
-    if (!data) throw new Error(`D&D5e could not prepare ${sourceSpell.name} for ${owner.name}.`);
-    const origin = `${owner.id}.${advancementId}`;
-    const root = spell.getFlag("dnd5e", "advancementRoot")
-      ?? owner.getFlag("dnd5e", "advancementRoot") ?? origin;
-    delete data._id;
-    data.flags ??= {};
-    data.flags.dnd5e = { ...data.flags.dnd5e, sourceId: sourceSpell.uuid, advancementOrigin: origin, advancementRoot: root };
-    if (owner.system?.identifier) data.system.sourceItem = `${owner.type}:${owner.system.identifier}`;
-    if (data.system.uses?.max) data.system.uses.spent = Number(spell.system?.uses?.spent ?? 0);
-    data.flags[MODULE_ID] = {
-      ...data.flags[MODULE_ID],
-      featureGrantedSpell: true,
-      featureSpellOwners: [{
-        ...(spell.getFlag(MODULE_ID, "featureSpellOwners")?.[0] ?? {}),
-        category: dnd5e.utils.formatIdentifier(advancementName(advancement, owner.name)),
-        label: advancementName(advancement, owner.name),
-        featureItemId: owner.id,
-        ownerItemId: owner.id,
-        advancementId,
-        sourceUuid: sourceSpell.uuid,
-        spellLevel: choice.rule.spellLevel,
-        alwaysPrepared: Number(data.system.prepared) === 2,
-        nativeGrant: true,
-        validationReconciled: true
-      }]
-    };
-
-    // Creating the replacement first lets failures leave the original spell intact.
-    const [replacement] = await actor.createEmbeddedDocuments("Item", [data], REPAIR_OPTIONS);
-    if (!replacement) throw new Error(`D&D5e did not create ${sourceSpell.name}.`);
-    const added = { ...originalValue.added, [level]: { ...originalValue.added[level] } };
-    delete added[level][spellId];
-    added[level][replacement.id] = sourceSpell.uuid;
-    let linked = false;
-    try {
-      await writeAdvancementValue(owner, advancementId, { ...originalValue, added }, REPAIR_OPTIONS);
-      linked = true;
-      await actor.deleteEmbeddedDocuments("Item", [spellId], { ...REPAIR_OPTIONS, deleteContents: false });
-      if (actor.items.get(spellId)) throw new Error(`D&D5e did not remove the invalid ${spell.name} grant.`);
-    } catch (error) {
-      if (!actor.items.get(spellId)) {
-        if (linked) return replacement;
-        throw error;
-      }
-      await writeAdvancementValue(owner, advancementId, originalValue, REPAIR_OPTIONS);
-      await actor.deleteEmbeddedDocuments("Item", [replacement.id], { ...REPAIR_OPTIONS, deleteContents: false });
-      throw error;
-    }
-    return replacement;
-  }
 }
